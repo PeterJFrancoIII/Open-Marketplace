@@ -1,0 +1,106 @@
+# Architecture
+
+## Design rule
+
+The registry is a searchable bulletin board, not a file host. It can disappear and be rebuilt from signed listing envelopes without taking seller-owned media with it.
+
+## Components
+
+| Component | Holds | Must not hold |
+| --- | --- | --- |
+| Browser media vault | Original image blobs, local previews, device key | Other sellers' durable media by default |
+| Metadata registry | Listing fields, filters, social claims, reputation summaries, hashes, availability hints | Photos, videos, message contents |
+| Peer transport | Short-lived encrypted image chunks | Durable media or listing authority |
+| Identity adapter | OAuth attestation metadata | Social passwords or copied session cookies |
+| Donation provider | Contributions and receipts | Marketplace identity graph |
+
+## Listing publication
+
+1. The seller chooses images in the listing composer.
+2. The browser computes a SHA-256 digest for every image.
+3. The browser stores each blob in IndexedDB under its digest.
+4. The browser publishes listing metadata plus the image manifest to the registry.
+5. The registry indexes only fields needed for search, sort, policy, and discovery.
+
+The current code implements steps 1–5. It does not upload image bytes.
+
+## Media retrieval protocol
+
+`lib/media-transport.ts` is the implementation boundary for the next layer.
+
+1. A buyer requests a manifest hash.
+2. The registry relays a short-lived WebRTC offer to the seller's active session.
+3. Seller and buyer exchange ICE candidates through expiring signaling records.
+4. The seller streams chunks over an encrypted WebRTC data channel.
+5. The buyer reassembles the blob and verifies its SHA-256 digest.
+6. A mismatch is discarded and reported; a match may be cached locally with explicit consent.
+7. Signaling records expire within minutes. No media chunk enters the registry.
+
+Start with polling for offers. It is simpler and cheaper than a permanent WebSocket service. TURN relays may be necessary for some networks; make relay use visible because TURN can temporarily carry encrypted traffic and creates the main variable cost.
+
+## Availability trade-offs
+
+There is no magic offline peer. Choose one or more explicit modes:
+
+- **Seller online only:** cheapest and strongest seller control; images disappear when the seller closes the app.
+- **Trusted-device seeding:** the seller keeps a low-power device online.
+- **Encrypted community pinning:** opt-in peers store ciphertext and the seller controls decryption capability.
+- **External content address:** the seller publishes an IPFS/other content address and accepts that third parties may retain the bytes.
+
+The default framework chooses seller-online-only.
+
+## Identity proofs
+
+The UI accepts public profile URLs so the information architecture can be tested. Treat these as unverified claims. A production identity adapter should use official OAuth flows and store:
+
+- provider name;
+- provider subject identifier;
+- current public handle;
+- verification timestamp;
+- scopes granted;
+- optional signed attestation version.
+
+Never ask users to paste social passwords, cookies, access tokens, or private profile exports into the app.
+
+The live-link checker accepts only allowlisted HTTPS Facebook, Instagram, and
+TikTok profile hosts. It follows only allowlisted redirects, caps response
+inspection, treats 404/410 and recognized unavailable-page markers as dead,
+and returns unknown when a platform blocks automated checks. Unknown is not
+silently mislabeled as verified. Dead or malformed links block publication.
+
+## Reputation
+
+Profile reputation is independent of individual listings. The registry keeps
+items sold, buyer rating/count, and seller rating/count in the profile record,
+while atomic rating events live in `reputation_ratings`. The public UI reads
+the central summary on every listing. A production rating write must require
+an authenticated completed transaction and allow no more than one rating per
+party, listing, and role.
+
+## Integrity and portability
+
+The next protocol revision should wrap every listing in a canonical JSON envelope signed by the seller's device key. A registry then indexes envelopes without becoming their authority. Include a monotonic revision, prior revision hash, expiry, and tombstone state so edits and deletions are auditable.
+
+## Minimal central cost
+
+Keep the registry lean:
+
+- paginate every query;
+- index status/date, category/price, and seller ID;
+- cap text and manifest sizes;
+- expire signaling data aggressively;
+- perform no image transcoding;
+- let sellers calculate hashes;
+- publish operating costs and donation balances.
+
+## Security work before launch
+
+- Public authentication and server-side authorization.
+- Rate limits per account, device, and network.
+- Signed listing envelopes and replay protection.
+- File-type sniffing and safe image decoding on the buyer device.
+- Report, quarantine, appeal, and transparent moderation workflows.
+- CSAM detection/reporting plan that does not turn the registry into a media store.
+- Jurisdiction-aware restricted-item rules.
+- Abuse-resistant signaling and TURN quotas.
+- Privacy, retention, and law-enforcement request policies.

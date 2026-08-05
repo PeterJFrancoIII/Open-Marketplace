@@ -72,6 +72,13 @@ npm run db:generate
 
 Commit the generated SQL under `drizzle/`. The hosting platform applies the migration to the real D1 database during deployment.
 
+## Architecture
+
+See `ARCHITECTURE.md` for media/registry boundaries and
+`SOCIAL_TRUST_FRAMEWORK.md` for the evidence-based social trust system
+(transaction-bound reviews, 14-day double-blind reveal, separate buyer/seller
+reputation, social context that never ranks listings).
+
 ## Cursor Auto Agent handoff
 
 Give Cursor this repository and ask it to work through these milestones in order:

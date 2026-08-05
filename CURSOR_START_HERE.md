@@ -1,7 +1,8 @@
 # Cursor Agent Handoff — Open Marketplace
 
 Open this extracted folder as the project root in Cursor. Read this file,
-`README.md`, `ARCHITECTURE.md`, and `POLICY.md` before changing code.
+`README.md`, `SOCIAL_TRUST_FRAMEWORK.md`, `ARCHITECTURE.md`, and `POLICY.md`
+before changing code.
 
 ## Project state
 
@@ -53,6 +54,10 @@ Open this extracted folder as the project root in Cursor. Read this file,
 9. Preserve the default restricted-items policy and applicable-law checks.
 10. Keep D1 structured data behind the existing database helper and commit every
     generated migration.
+11. Never create one universal trust score or use social popularity in ranking,
+    permissions, reputation, or enforcement.
+12. Accept reviews only from authenticated counterparties to a completed
+    transaction and keep two-sided reviews sealed until simultaneous reveal.
 
 ## Important honesty boundaries
 
@@ -92,21 +97,26 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
 - `db/schema.ts` — listings, profiles, reports, and reputation-rating tables.
 - `drizzle/` — generated D1 migrations.
 - `ARCHITECTURE.md` — protocol, integrity, and availability design.
+- `SOCIAL_TRUST_FRAMEWORK.md` — researched trust architecture, data contracts,
+  threat model, acceptance criteria, and staged Cursor plan.
 - `POLICY.md` — default public-instance restrictions.
 
 ## Recommended next milestones
 
-1. Add real public authentication and enforce listing/profile ownership on the
-   server.
-2. Add an authenticated profile editor so a seller can repair or remove a dead
-   social link across every listing.
-3. Add provider OAuth adapters and refresh account metadata through official APIs.
-4. Recompute rating summaries only from completed, authenticated transactions.
-5. Implement WebRTC data-channel media transfer with expiring registry signaling.
-6. Hash-check every received media blob before rendering it.
-7. Add reports, quarantine, appeal, rate limits, and an auditable moderation log.
-8. Add signed canonical listing envelopes and revision/tombstone history.
-9. Configure the donation destination (`NEXT_PUBLIC_DONATION_URL`). Repo URL is already set to `PeterJFrancoIII/Open-Marketplace`.
+1. Complete PR 1 in `SOCIAL_TRUST_FRAMEWORK.md`: normalized trust storage,
+   append-only events, deterministic projections, migration, and compatibility
+   reads.
+2. Complete PRs 2–3: authenticated transactions, two-party completion, and
+   14-day double-blind reviews.
+3. Complete PR 4: one accessible evidence-based trust card on every marketplace
+   surface.
+4. Complete PR 5: official OAuth adapters, encrypted grants, and honest field
+   degradation; keep link health separate from identity verification.
+5. Complete PR 6: disputes, appeals, rate limits, and transparent moderation.
+6. Complete PR 7: signed portable trust claims and verifiable exports.
+7. Implement WebRTC data-channel media transfer and hash-check every received
+   blob.
+8. Configure the donation destination (`NEXT_PUBLIC_DONATION_URL`).
 
 ## Definition of done for each Cursor change
 
@@ -120,8 +130,11 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
 
 ## Suggested first Cursor Agent prompt
 
-> Read CURSOR_START_HERE.md, README.md, ARCHITECTURE.md, and POLICY.md. Inspect
-> the current code before editing. Build the next milestone without violating
-> the local-media, live-link, reputation-integrity, or restricted-items rules.
-> Explain your plan, make focused changes, generate migrations if required, and
-> finish by running lint and tests.
+> Read CURSOR_START_HERE.md, SOCIAL_TRUST_FRAMEWORK.md, README.md,
+> ARCHITECTURE.md, and POLICY.md. Inspect the current code before editing.
+> Implement only PR 1 from the Social Trust delivery plan. Preserve local-only
+> media, the allowlisted link checker, and current compatibility reads. Do not
+> create a universal trust score or any rating path without an authenticated
+> completed transaction. Explain the plan, make focused changes, generate and
+> inspect the migration, add tests, and finish by running lint and the full test
+> suite.

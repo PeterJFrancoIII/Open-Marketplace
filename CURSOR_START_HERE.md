@@ -11,11 +11,11 @@ before changing code.
 - Framework: Next.js-compatible Vinext, React 19, TypeScript, Cloudflare Worker.
 - Registry: Cloudflare D1 via Drizzle migrations.
 - Media: image bytes remain in the seller's IndexedDB media vault.
-- Latest validated source commit: `d4ee5f7` (SOL 5.6 Max scaffold).
+- Latest validated source commit: social-trust PR 1+2 on `codex/social-trust-framework`.
 - Current deployment:
   `https://open-exchange-market.tempus-innov-6508.chatgpt.site`
 - Validation completed: ESLint, production build, artifact validation,
-  rendered-page tests, and invalid-social-link endpoint test.
+  rendered-page tests, trust-domain tests, and transaction-lifecycle tests.
 
 ## Implemented functionality
 
@@ -103,20 +103,22 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
 
 ## Recommended next milestones
 
-1. Complete PR 1 in `SOCIAL_TRUST_FRAMEWORK.md`: normalized trust storage,
+1. ~~Complete PR 1 in `SOCIAL_TRUST_FRAMEWORK.md`: normalized trust storage,
    append-only events, deterministic projections, migration, and compatibility
-   reads.
-2. Complete PRs 2–3: authenticated transactions, two-party completion, and
-   14-day double-blind reviews.
-3. Complete PR 4: one accessible evidence-based trust card on every marketplace
+   reads.~~
+2. ~~Complete PR 2: authenticated transactions, two-party meetup completion,
+   review eligibility, idempotency, and rate limits.~~
+3. Complete PR 3: 14-day double-blind reviews and Bayesian projections from
+   eligible reviews.
+4. Complete PR 4: one accessible evidence-based trust card on every marketplace
    surface.
-4. Complete PR 5: official OAuth adapters, encrypted grants, and honest field
+5. Complete PR 5: official OAuth adapters, encrypted grants, and honest field
    degradation; keep link health separate from identity verification.
-5. Complete PR 6: disputes, appeals, rate limits, and transparent moderation.
-6. Complete PR 7: signed portable trust claims and verifiable exports.
-7. Implement WebRTC data-channel media transfer and hash-check every received
+6. Complete PR 6: disputes, appeals, rate limits, and transparent moderation.
+7. Complete PR 7: signed portable trust claims and verifiable exports.
+8. Implement WebRTC data-channel media transfer and hash-check every received
    blob.
-8. Configure the donation destination (`NEXT_PUBLIC_DONATION_URL`).
+9. Configure the donation destination (`NEXT_PUBLIC_DONATION_URL`).
 
 ## Definition of done for each Cursor change
 

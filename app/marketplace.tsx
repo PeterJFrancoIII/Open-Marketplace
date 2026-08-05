@@ -863,10 +863,14 @@ export default function Marketplace() {
 
       let listing: Listing;
       try {
+        const deviceId = getDeviceId();
         const response = await fetch("/api/listings", {
           method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(payload),
+          headers: {
+            "content-type": "application/json",
+            "x-profile-id": deviceId,
+          },
+          body: JSON.stringify({ ...payload, sellerId: deviceId }),
         });
         const result = (await response.json()) as {
           listing?: RegistryRow;

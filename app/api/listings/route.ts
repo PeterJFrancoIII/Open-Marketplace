@@ -12,6 +12,7 @@ import {
 import { getDb } from "../../../db";
 import { listings, profiles } from "../../../db/schema";
 import { checkSocialAccounts } from "../../../lib/social-health";
+import { AuthError, assertListingOwner, parseActor, rateLimit } from "../../../lib/trust";
 import type { SocialProof } from "../../../lib/types";
 
 const conditions = ["New", "Like new", "Good", "Fair"] as const;
@@ -26,6 +27,9 @@ const restrictedTerms = [
 ];
 
 function registryError(error: unknown) {
+  if (error instanceof AuthError) {
+    return Response.json({ error: error.message }, { status: error.status });
+  }
   const message = error instanceof Error ? error.message : "Unexpected registry error";
   const unavailable = message.includes("no such table") || message.includes("binding `DB`");
   return Response.json(
@@ -118,6 +122,16 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const limited = rateLimit({
+      key: `listing:create:${actor.profileId}`,
+      limit: 20,
+      windowMs: 60_000,
+    });
+    if (!limited.ok) {
+      return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
+    }
+
     const payload = (await request.json()) as Record<string, unknown>;
     const title = typeof payload.title === "string" ? payload.title.trim() : "";
     const description =
@@ -139,6 +153,15 @@ export async function POST(request: Request) {
       ? payload.imageManifest.slice(0, 6)
       : [];
 
+    assertListingOwner(actor, { sellerId: sellerId || actor.profileId });
+    if (sellerId && sellerId !== actor.profileId) {
+      return Response.json(
+        { error: "sellerId must match the authenticated profile" },
+        { status: 403 },
+      );
+    }
+    const ownedSellerId = actor.profileId;
+
     if (!title || title.length > 90) {
       return Response.json({ error: "A title of 1–90 characters is required." }, { status: 400 });
     }
@@ -148,7 +171,7 @@ export async function POST(request: Request) {
     if (!Number.isSafeInteger(priceCents) || priceCents < 0 || priceCents > 1_000_000_000) {
       return Response.json({ error: "A valid price is required." }, { status: 400 });
     }
-    if (!category || !locationLabel || !sellerId || !sellerName) {
+    if (!category || !locationLabel || !sellerName) {
       return Response.json({ error: "Category, area, and seller identity are required." }, { status: 400 });
     }
     if (!conditions.includes(condition as (typeof conditions)[number])) {
@@ -185,7 +208,7 @@ export async function POST(request: Request) {
     await db
       .insert(profiles)
       .values({
-        id: sellerId,
+        id: ownedSellerId,
         displayName: sellerName,
         socialAccountsJson: JSON.stringify(checkedSocialProofs),
         updatedAt,
@@ -213,7 +236,7 @@ export async function POST(request: Request) {
         distanceMiles: null,
         format,
         delivery,
-        sellerId,
+        sellerId: ownedSellerId,
         sellerName,
         socialProofsJson: JSON.stringify(checkedSocialProofs),
         imageManifestJson: JSON.stringify(imageManifest),

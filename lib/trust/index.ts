@@ -4,3 +4,7 @@ export * from "./projections.ts";
 export * from "./events.ts";
 export * from "./compatibility.ts";
 export * from "./fixtures.ts";
+export * from "./auth.ts";
+export * from "./rate-limit.ts";
+export * from "./idempotency.ts";
+export * from "./transactions.ts";

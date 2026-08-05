@@ -60,4 +60,5 @@ test("renders the marketplace shell and local-media principle", async () => {
   assert.match(html, /trust facts travel with every listing/i);
   assert.match(html, /buyer\/seller ratings are always visible/i);
   assert.match(html, /Fresh near you/i);
+  assert.match(html, /Why this is shown|Trust evidence|completed sale/i);
 });

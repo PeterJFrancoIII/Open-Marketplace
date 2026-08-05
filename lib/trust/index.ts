@@ -9,3 +9,4 @@ export * from "./rate-limit.ts";
 export * from "./idempotency.ts";
 export * from "./transactions.ts";
 export * from "./reviews.ts";
+export * from "./trust-card-model.ts";

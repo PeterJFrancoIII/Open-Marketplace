@@ -8,9 +8,15 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { getLocalMediaUrl, storeMedia } from "../lib/media-store";
 import type { Listing, SocialProof } from "../lib/types";
+import { TrustCard } from "./components/TrustCard";
+import {
+  buildTrustCardFromListing,
+  hasProviderConnected,
+} from "../lib/trust/trust-card-model";
 
 const categories = [
   "All",
@@ -500,22 +506,6 @@ function socialAccountsFor(listing: Listing): SocialProof[] {
   });
 }
 
-function formatRating(rating: number | undefined, count: number) {
-  return rating === undefined || count === 0 ? "Unrated" : `${rating.toFixed(1)} (${count})`;
-}
-
-function formatCompactCount(value: number | undefined) {
-  if (value === undefined) return "Not supplied";
-  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
-}
-
-function formatAccountDate(value: string | undefined) {
-  if (!value) return "Date not supplied";
-  return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(
-    new Date(`${value}T00:00:00Z`),
-  );
-}
-
 function hasBrokenAccount(listing: Listing) {
   return socialAccountsFor(listing).some(
     (account) => account.health === "dead" || account.health === "invalid",
@@ -543,6 +533,15 @@ export default function Marketplace() {
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sort, setSort] = useState("best");
+  const [requireSocialProfile, setRequireSocialProfile] = useState(false);
+  const [requireProviderConnected, setRequireProviderConnected] = useState(false);
+  const [minCompletedSales, setMinCompletedSales] = useState("");
+  const [requireMediaLocal, setRequireMediaLocal] = useState(false);
+  const deviceId = useSyncExternalStore(
+    () => () => {},
+    () => getDeviceId(),
+    () => null,
+  );
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<ModalName>(null);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -659,9 +658,22 @@ export default function Marketplace() {
     const query = search.trim().toLowerCase();
     const minimum = minPrice ? Number(minPrice) * 100 : null;
     const maximum = maxPrice ? Number(maxPrice) * 100 : null;
+    const minSales = minCompletedSales ? Number(minCompletedSales) : null;
 
     const result = listings.filter((listing) => {
       const searchable = `${listing.title} ${listing.description} ${listing.category} ${listing.locationLabel}`.toLowerCase();
+      const trust = buildTrustCardFromListing({
+        profileId: listing.sellerId,
+        displayName: listing.sellerName,
+        memberSince: listing.createdAt,
+        itemsSold: reputationFor(listing).itemsSold,
+        sellerRating: reputationFor(listing).sellerRating,
+        sellerRatingCount: reputationFor(listing).sellerRatingCount,
+        buyerRating: reputationFor(listing).buyerRating,
+        buyerRatingCount: reputationFor(listing).buyerRatingCount,
+        socialProofs: socialAccountsFor(listing),
+        socialActionRequired: hasBrokenAccount(listing),
+      });
       return (
         (!query || searchable.includes(query)) &&
         (category === "All" || listing.category === category) &&
@@ -671,10 +683,15 @@ export default function Marketplace() {
           listing.delivery === delivery ||
           listing.delivery === "Both") &&
         (minimum === null || listing.priceCents >= minimum) &&
-        (maximum === null || listing.priceCents <= maximum)
+        (maximum === null || listing.priceCents <= maximum) &&
+        (!requireSocialProfile || trust.social.length > 0) &&
+        (!requireProviderConnected || hasProviderConnected(trust)) &&
+        (minSales === null || Number.isNaN(minSales) || trust.seller.completedSales >= minSales) &&
+        (!requireMediaLocal || Boolean(localMedia[listing.id]) || listing.mediaAvailability === "local")
       );
     });
 
+    // Explicit trust filters only — never use social popularity as a default rank factor.
     return [...result].sort((a, b) => {
       if (sort === "newest") {
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -707,6 +724,11 @@ export default function Marketplace() {
     minPrice,
     maxPrice,
     sort,
+    requireSocialProfile,
+    requireProviderConnected,
+    minCompletedSales,
+    requireMediaLocal,
+    localMedia,
   ]);
 
   const hasFilters =
@@ -714,7 +736,11 @@ export default function Marketplace() {
     condition !== "Any" ||
     format !== "Any" ||
     delivery !== "Any" ||
-    Boolean(minPrice || maxPrice);
+    Boolean(minPrice || maxPrice) ||
+    requireSocialProfile ||
+    requireProviderConnected ||
+    requireMediaLocal ||
+    Boolean(minCompletedSales);
 
   function resetFilters() {
     setCategory("All");
@@ -723,6 +749,10 @@ export default function Marketplace() {
     setDelivery("Any");
     setMinPrice("");
     setMaxPrice("");
+    setRequireSocialProfile(false);
+    setRequireProviderConnected(false);
+    setRequireMediaLocal(false);
+    setMinCompletedSales("");
   }
 
   function toggleFavorite(id: string) {
@@ -1069,12 +1099,43 @@ export default function Marketplace() {
           />
 
           <div className="filter-group">
-            <div className="filter-heading">Trust signals</div>
+            <div className="filter-heading">Trust filters</div>
+            <p className="filter-hint">Optional evidence filters — never used as hidden ranking.</p>
             <label>
-              <input type="checkbox" defaultChecked /> Social profile linked
+              <input
+                type="checkbox"
+                checked={requireSocialProfile}
+                onChange={(event) => setRequireSocialProfile(event.target.checked)}
+              />{" "}
+              Social profile linked
             </label>
             <label>
-              <input type="checkbox" /> Media available now
+              <input
+                type="checkbox"
+                checked={requireProviderConnected}
+                onChange={(event) => setRequireProviderConnected(event.target.checked)}
+              />{" "}
+              Provider-connected social account
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={requireMediaLocal}
+                onChange={(event) => setRequireMediaLocal(event.target.checked)}
+              />{" "}
+              Media available on this device
+            </label>
+            <label className="filter-stack">
+              Minimum completed sales
+              <input
+                type="number"
+                min="0"
+                inputMode="numeric"
+                placeholder="Any"
+                value={minCompletedSales}
+                onChange={(event) => setMinCompletedSales(event.target.value)}
+                aria-label="Minimum completed sales"
+              />
             </label>
           </div>
 
@@ -1170,8 +1231,18 @@ export default function Marketplace() {
             {filteredListings.map((listing) => {
               const visual = categoryVisuals[listing.category] ?? { glyph: "OE", tone: "slate" };
               const saved = favorites.has(listing.id);
-              const reputation = reputationFor(listing);
-              const socialAccounts = socialAccountsFor(listing);
+              const trustModel = buildTrustCardFromListing({
+                profileId: listing.sellerId,
+                displayName: listing.sellerName,
+                memberSince: listing.createdAt,
+                itemsSold: reputationFor(listing).itemsSold,
+                sellerRating: reputationFor(listing).sellerRating,
+                sellerRatingCount: reputationFor(listing).sellerRatingCount,
+                buyerRating: reputationFor(listing).buyerRating,
+                buyerRatingCount: reputationFor(listing).buyerRatingCount,
+                socialProofs: socialAccountsFor(listing),
+                socialActionRequired: hasBrokenAccount(listing),
+              });
               return (
                 <article
                   className="listing-card"
@@ -1219,36 +1290,14 @@ export default function Marketplace() {
                       <span className="meta-separator">·</span>
                       <span>{listing.distanceMiles ? `${listing.distanceMiles} mi` : relativeTime(listing.createdAt)}</span>
                     </div>
-                    <div className="reputation-row" aria-label="Seller and buyer reputation">
-                      <span>★ {formatRating(reputation.sellerRating, reputation.sellerRatingCount)} seller</span>
-                      <span>★ {formatRating(reputation.buyerRating, reputation.buyerRatingCount)} buyer</span>
-                      <span>{reputation.itemsSold} sold</span>
-                    </div>
-                    <div className="social-facts" aria-label={`${socialAccounts.length} linked social accounts`}>
-                      {socialAccounts.length ? socialAccounts.map((account, index) => (
-                        <a
-                          className={`social-fact status-${account.health ?? "unknown"}`}
-                          href={account.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          key={`${account.provider}-${index}`}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => event.stopPropagation()}
-                          title={account.healthMessage}
-                        >
-                          <span className="proof-mark">{socialLabel(account.provider)}</span>
-                          <span className="social-fact-copy">
-                            <strong>@{account.handle ?? providerName(account.provider)}</strong>
-                            <small>
-                              Joined {formatAccountDate(account.accountCreatedAt)} · {formatCompactCount(account.connectionCount)} {account.connectionLabel ?? "connections"}
-                            </small>
-                          </span>
-                          <span className="link-health">{healthLabel(account.health)}</span>
-                        </a>
-                      )) : (
-                        <span className="no-social">No social account supplied</span>
-                      )}
-                    </div>
+                    <TrustCard
+                      model={trustModel}
+                      variant="compact"
+                      isOwner={deviceId != null && listing.sellerId === deviceId}
+                      onFixSocial={() =>
+                        setToast("Open the listing details to recheck or replace dead social links.")
+                      }
+                    />
                   </div>
                 </article>
               );
@@ -1470,41 +1519,24 @@ export default function Marketplace() {
                   <p className="detail-description">{selectedListing.description}</p>
                   <div className="seller-card">
                     <strong>Listed by {selectedListing.sellerName}</strong>
-                    <p>{selectedListing.locationLabel} · public trust record</p>
-                    <div className="reputation-grid">
-                      <div>
-                        <span>Seller rating</span>
-                        <strong>★ {formatRating(reputationFor(selectedListing).sellerRating, reputationFor(selectedListing).sellerRatingCount)}</strong>
-                      </div>
-                      <div>
-                        <span>Buyer rating</span>
-                        <strong>★ {formatRating(reputationFor(selectedListing).buyerRating, reputationFor(selectedListing).buyerRatingCount)}</strong>
-                      </div>
-                      <div>
-                        <span>Items sold</span>
-                        <strong>{reputationFor(selectedListing).itemsSold}</strong>
-                      </div>
-                    </div>
-                    <div className="detail-social-list">
-                      {socialAccountsFor(selectedListing).length ? socialAccountsFor(selectedListing).map((account, index) => (
-                        <a
-                          className={`detail-social-account status-${account.health ?? "unknown"}`}
-                          href={account.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          key={`${account.provider}-${index}`}
-                        >
-                          <span className="proof-mark">{socialLabel(account.provider)}</span>
-                          <span>
-                            <strong>{providerName(account.provider)} · @{account.handle}</strong>
-                            <small>
-                              Created {formatAccountDate(account.accountCreatedAt)} · {formatCompactCount(account.connectionCount)} {account.connectionLabel ?? "connections"} · {account.metricsSource === "oauth" ? "provider verified" : "self-reported"}
-                            </small>
-                          </span>
-                          <span className="link-health">{healthLabel(account.health)}</span>
-                        </a>
-                      )) : <span className="no-social">No social account supplied</span>}
-                    </div>
+                    <p>{selectedListing.locationLabel} · live trust evidence</p>
+                    <TrustCard
+                      model={buildTrustCardFromListing({
+                        profileId: selectedListing.sellerId,
+                        displayName: selectedListing.sellerName,
+                        memberSince: selectedListing.createdAt,
+                        itemsSold: reputationFor(selectedListing).itemsSold,
+                        sellerRating: reputationFor(selectedListing).sellerRating,
+                        sellerRatingCount: reputationFor(selectedListing).sellerRatingCount,
+                        buyerRating: reputationFor(selectedListing).buyerRating,
+                        buyerRatingCount: reputationFor(selectedListing).buyerRatingCount,
+                        socialProofs: socialAccountsFor(selectedListing),
+                        socialActionRequired: hasBrokenAccount(selectedListing),
+                      })}
+                      variant="full"
+                      isOwner={deviceId != null && selectedListing.sellerId === deviceId}
+                      onFixSocial={() => void recheckListingSocial(selectedListing)}
+                    />
                     <button
                       className="recheck-button"
                       onClick={() => void recheckListingSocial(selectedListing)}

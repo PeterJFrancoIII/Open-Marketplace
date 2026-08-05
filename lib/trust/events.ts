@@ -1,15 +1,17 @@
 import type { TrustEventEnvelope } from "./types.ts";
+import { canonicalize, sha256Hex } from "./portable/canonicalize.ts";
+import { signCanonical, type RegistryKeyPair } from "./portable/keys.ts";
 
 export type TrustEventStore = {
   append(event: Omit<TrustEventEnvelope, "payloadHash" | "priorEventHash" | "signature"> & {
     payload: unknown;
     priorEventHash?: string;
-  }): TrustEventEnvelope;
+  }): Promise<TrustEventEnvelope> | TrustEventEnvelope;
   listForSubject(subjectProfileId: string): TrustEventEnvelope[];
 };
 
-/** Deterministic content digest for event chaining (PR 7 replaces with signed hashes). */
-function hashPayload(payload: unknown): string {
+/** Legacy non-crypto digest kept for unsigned local fixtures. */
+function legacyHashPayload(payload: unknown): string {
   const input = JSON.stringify(payload);
   let h1 = 0x811c9dc5;
   let h2 = 0x811c9dc5 ^ 0x9e3779b9;
@@ -24,16 +26,39 @@ function hashPayload(payload: unknown): string {
 /** In-memory append-only store for domain tests and local fixtures. */
 export function createMemoryTrustEventStore(
   registryId = "open-marketplace-local",
+  signer?: Pick<RegistryKeyPair, "privateKey" | "keyId">,
 ): TrustEventStore {
   const events: TrustEventEnvelope[] = [];
 
   return {
     append(input) {
-      const payloadHash = hashPayload(input.payload);
       const prior =
         input.priorEventHash ??
         events.filter((e) => e.subjectProfileId === input.subjectProfileId).at(-1)
           ?.payloadHash;
+
+      if (signer) {
+        return (async () => {
+          const payloadHash = await sha256Hex(canonicalize(input.payload));
+          const body = {
+            eventId: input.eventId,
+            subjectProfileId: input.subjectProfileId,
+            actorProfileId: input.actorProfileId,
+            eventType: input.eventType,
+            occurredAt: input.occurredAt,
+            payloadHash,
+            priorEventHash: prior,
+            registryId: input.registryId ?? registryId,
+            schemaVersion: input.schemaVersion,
+          };
+          const signature = await signCanonical(signer.privateKey, body);
+          const envelope: TrustEventEnvelope = { ...body, signature };
+          events.push(envelope);
+          return envelope;
+        })();
+      }
+
+      const payloadHash = legacyHashPayload(input.payload);
       const envelope: TrustEventEnvelope = {
         eventId: input.eventId,
         subjectProfileId: input.subjectProfileId,

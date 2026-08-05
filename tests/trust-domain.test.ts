@@ -121,26 +121,30 @@ test("bayesian projection hides precise mean below three reviews", () => {
   assert.ok((wilsonLowerBound(9, 10) ?? 0) < 0.95);
 });
 
-test("append-only trust events chain by payload hash", () => {
+test("append-only trust events chain by payload hash", async () => {
   const store = createMemoryTrustEventStore();
-  const first = store.append({
-    eventId: "e1",
-    subjectProfileId: "p1",
-    eventType: "profile.created",
-    occurredAt: "2026-08-01T00:00:00.000Z",
-    payload: { standing: "new" },
-    schemaVersion: 1,
-    registryId: "test",
-  });
-  const second = store.append({
-    eventId: "e2",
-    subjectProfileId: "p1",
-    eventType: "social.link_checked",
-    occurredAt: "2026-08-02T00:00:00.000Z",
-    payload: { status: "live" },
-    schemaVersion: 1,
-    registryId: "test",
-  });
+  const first = await Promise.resolve(
+    store.append({
+      eventId: "e1",
+      subjectProfileId: "p1",
+      eventType: "profile.created",
+      occurredAt: "2026-08-01T00:00:00.000Z",
+      payload: { standing: "new" },
+      schemaVersion: 1,
+      registryId: "test",
+    }),
+  );
+  const second = await Promise.resolve(
+    store.append({
+      eventId: "e2",
+      subjectProfileId: "p1",
+      eventType: "social.link_checked",
+      occurredAt: "2026-08-02T00:00:00.000Z",
+      payload: { status: "live" },
+      schemaVersion: 1,
+      registryId: "test",
+    }),
+  );
   assert.equal(second.priorEventHash, first.payloadHash);
   assert.equal(store.listForSubject("p1").length, 2);
 });

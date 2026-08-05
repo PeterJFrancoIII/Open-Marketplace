@@ -446,3 +446,32 @@ export const reviewReports = sqliteTable(
     ),
   ],
 );
+
+/** External VC evidence — never folded into native rating aggregates. */
+export const externalTrustClaims = sqliteTable(
+  "external_trust_claims",
+  {
+    id: text("id").primaryKey(),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    sourceLabel: text("source_label").notNull(),
+    issuer: text("issuer").notNull(),
+    claimType: text("claim_type").notNull(),
+    valueJson: text("value_json").notNull(),
+    evidenceLabel: text("evidence_label").notNull().default("external"),
+    credentialId: text("credential_id").notNull(),
+    status: text("status").notNull().default("unverified"),
+    validFrom: text("valid_from").notNull(),
+    validUntil: text("valid_until").notNull(),
+    rawCredentialJson: text("raw_credential_json").notNull(),
+    importedAt: text("imported_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("external_trust_claims_profile_idx").on(table.profileId),
+    uniqueIndex("external_trust_claims_credential_idx").on(
+      table.profileId,
+      table.credentialId,
+    ),
+  ],
+);

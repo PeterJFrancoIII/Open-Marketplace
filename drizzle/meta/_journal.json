@@ -43,6 +43,13 @@
       "when": 1785966423582,
       "tag": "0005_green_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1785966786435,
+      "tag": "0006_fixed_magdalene",
+      "breakpoints": true
     }
   ]
 }

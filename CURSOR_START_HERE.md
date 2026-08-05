@@ -96,6 +96,9 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
   `reviews/:id/report` — safety workflow (PR 6).
 - `lib/trust/oauth/` — adapters, AES-GCM grant sealing, claim normalization.
 - `lib/trust/safety.ts` — dispute/moderation/appeal/report domain rules.
+- `lib/trust/portable/` — canonical serialization, ECDSA signing, VC export/verify.
+- `app/api/profiles/[id]/trust/export`, `import-external`, `/api/trust/verify`,
+  `/api/trust/keys` — portable trust (PR 7).
 - `lib/social-health.ts` — allowlisted URL normalization, redirects, and health
   classification.
 - `lib/media-store.ts` — IndexedDB media vault and SHA-256 asset storage.
@@ -122,7 +125,7 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
 5. ~~Complete PR 5: official OAuth adapters, encrypted grants, and honest field
    degradation; keep link health separate from identity verification.~~
 6. ~~Complete PR 6: disputes, appeals, rate limits, and transparent moderation.~~
-7. Complete PR 7: signed portable trust claims and verifiable exports.
+7. ~~Complete PR 7: signed portable trust claims and verifiable exports.~~
 8. Implement WebRTC data-channel media transfer and hash-check every received
    blob.
 9. Configure the donation destination (`NEXT_PUBLIC_DONATION_URL`).

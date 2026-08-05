@@ -90,17 +90,38 @@ test("blocker2: listing schema rejects data URLs and unknown media fields", () =
         category: "Sporting goods",
         locationLabel: "Town",
         sellerName: "Sam",
-        imageManifest: [
+        socialProofs: [
           {
-            contentHash: "a".repeat(64),
-            mimeType: "image/jpeg",
-            filename: "x.jpg",
-            byteLength: 12,
-            data: "data:image/png;base64,AAAA",
+            provider: "facebook",
+            url: "https://facebook.com/x",
+            bytes: Array.from({ length: 64 }, (_, i) => i),
           },
         ],
+        imageManifest: [],
       }),
-    /Forbidden media field|data\/blob/i,
+    /numeric byte array|Forbidden media field/i,
+  );
+
+  assert.throws(
+    () =>
+      parseStrictListingWrite({
+        title: "Bike",
+        description: "Nice",
+        priceCents: 100,
+        condition: "Good",
+        category: "Sporting goods",
+        locationLabel: "Town",
+        sellerName: "Sam",
+        socialProofs: [
+          {
+            provider: "facebook",
+            url: "https://facebook.com/x",
+            nestedEvil: { bytes: [1, 2, 3, 4] },
+          },
+        ],
+        imageManifest: [],
+      }),
+    /Forbidden media field|numeric byte array/i,
   );
 
   const ok = parseStrictListingWrite({
@@ -112,21 +133,32 @@ test("blocker2: listing schema rejects data URLs and unknown media fields", () =
     locationLabel: "Town",
     sellerName: "Sam",
     evilExtra: "strip-me",
+    socialProofs: [
+      {
+        provider: "facebook",
+        url: "https://facebook.com/x",
+        handle: "x",
+        ignoredField: "gone",
+      },
+    ],
     imageManifest: [
       {
-        contentHash: "ab".repeat(32),
-        mimeType: "image/jpeg",
-        filename: "x.jpg",
-        byteLength: 12,
+        // Browser vault shape aliases must be accepted.
+        hash: `sha256:${"ab".repeat(32)}`,
+        name: "x.jpg",
+        size: 12,
+        type: "image/jpeg",
         unknown: "ignored",
       },
     ],
   });
-  assert.equal(ok.imageManifest.length, 1);
+  assert.equal(ok.imageManifest[0].contentHash, "ab".repeat(32));
+  assert.equal(ok.socialProofs[0].handle, "x");
+  assert.equal("ignoredField" in ok.socialProofs[0], false);
   assert.equal("evilExtra" in ok, false);
 });
 
-test("blocker2: external credential rejects binary-shaped fields", () => {
+test("blocker2: external credential strips nested unknowns and rejects byte arrays", () => {
   assert.throws(
     () =>
       parseStrictExternalCredential({
@@ -136,6 +168,51 @@ test("blocker2: external credential rejects binary-shaped fields", () => {
       }),
     /Forbidden media field|base64/i,
   );
+
+  assert.throws(
+    () =>
+      parseStrictExternalCredential({
+        type: ["VerifiableCredential"],
+        issuer: "did:example:1",
+        credentialSubject: {
+          id: "p1",
+          claimType: "sellerAggregateRating",
+          value: { pixels: Array.from({ length: 40 }, (_, i) => i) },
+        },
+      }),
+    /numeric byte array/i,
+  );
+
+  assert.throws(
+    () =>
+      parseStrictExternalCredential({
+        type: ["VerifiableCredential"],
+        issuer: "did:example:1",
+        credentialSubject: {
+          id: "p1",
+          claimType: "sellerAggregateRating",
+          value: 4.5,
+          smuggledBytes: Array.from({ length: 8 }, (_, i) => i),
+        },
+      }),
+    /numeric byte array|Forbidden media field/i,
+  );
+
+  const strict = parseStrictExternalCredential({
+    type: ["VerifiableCredential"],
+    issuer: "did:example:1",
+    credentialSubject: {
+      id: "p1",
+      claimType: "sellerAggregateRating",
+      value: 4.5,
+      ignored: "strip-me",
+    },
+    evilTop: "strip-me-too",
+  });
+  const subject = strict.credentialSubject as Record<string, unknown>;
+  assert.equal(subject.claimType, "sellerAggregateRating");
+  assert.equal("ignored" in subject, false);
+  assert.equal("evilTop" in strict, false);
 });
 
 test("blocker3: complete requires independent buyer+seller attestations", () => {

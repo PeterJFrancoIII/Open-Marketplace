@@ -126,6 +126,26 @@ test("export bundle omits private material and verifies as a whole", async () =>
   });
   assert.equal(verified.ok, true);
   assert.equal(verified.bundleSignatureValid, true);
+  assert.equal(verified.eventsValid, true);
+
+  const tampered = structuredClone(bundle);
+  tampered.events[0] = {
+    ...tampered.events[0],
+    signature: "invalid-event-signature",
+  };
+  // Re-sign bundle so only the event signature is wrong.
+  const { signCanonical } = await import("../lib/trust/portable/keys.ts");
+  const { proof: _drop, ...unsigned } = tampered;
+  void _drop;
+  const proofValue = await signCanonical(keys.privateKey, unsigned);
+  tampered.proof = { ...bundle.proof, proofValue };
+  const badEvent = await verifyTrustBundle({
+    bundle: tampered,
+    publicKey: keys.publicKey,
+  });
+  assert.equal(badEvent.ok, false);
+  assert.equal(badEvent.eventsValid, false);
+  assert.ok(badEvent.reasons.some((r) => /signature invalid/i.test(r)));
 
   assert.throws(
     () => assertExportSafe({ accessToken: "secret-token-value" }),

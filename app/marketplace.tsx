@@ -9,8 +9,13 @@ import {
   useMemo,
   useState,
 } from "react";
-import { getLocalMediaUrl, storeMedia } from "../lib/media-store";
-import type { Listing, SocialProof } from "../lib/types";
+import {
+  getLocalMediaUrl,
+  localMediaKey,
+  storeMedia,
+  toRegistryMediaManifest,
+} from "../lib/media-store";
+import type { Listing, MediaManifest, SocialProof } from "../lib/types";
 import { TrustCard } from "./components/TrustCard";
 import {
   buildTrustCardFromListing,
@@ -432,9 +437,22 @@ function normalizeRegistryListing(row: RegistryRow): Listing {
     socialProofs: parseJsonArray<SocialProof>(
       row.socialProofs ?? row.socialProofsJson,
     ),
-    imageManifest: parseJsonArray<Listing["imageManifest"][number]>(
+    imageManifest: parseJsonArray<Record<string, unknown>>(
       row.imageManifest ?? row.imageManifestJson,
-    ),
+    ).map((item): MediaManifest => {
+      const contentHash =
+        typeof item.contentHash === "string"
+          ? item.contentHash
+          : typeof item.hash === "string"
+            ? String(item.hash).replace(/^sha256:/i, "")
+            : "";
+      return {
+        hash: contentHash ? `sha256:${contentHash.replace(/^sha256:/i, "")}` : "",
+        name: String(item.filename ?? item.name ?? "image"),
+        size: Number(item.byteLength ?? item.size ?? 0),
+        type: String(item.mimeType ?? item.type ?? "image/jpeg"),
+      };
+    }),
     mediaAvailability: "offline",
     createdAt: String(row.createdAt ?? new Date().toISOString()),
     endingAt: row.endingAt ? String(row.endingAt) : null,
@@ -494,24 +512,16 @@ function reputationFor(listing: Listing) {
 }
 
 function socialAccountsFor(listing: Listing): SocialProof[] {
-  return listing.socialProofs.map((account, index) => {
-    if (account.accountCreatedAt && account.connectionCount !== undefined) return account;
-    const minimumYear = account.provider === "facebook" ? 2005 : account.provider === "instagram" ? 2011 : 2017;
-    const year = minimumYear + ((listing.sellerId.length + index) % (2025 - minimumYear));
-    const compactHandle = listing.sellerName.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 18);
-    return {
-      ...account,
-      handle: account.handle ?? compactHandle,
-      accountCreatedAt: account.accountCreatedAt ?? `${year}-06-15`,
-      connectionCount:
-        account.connectionCount ?? 180 + ((listing.sellerId.length * 173 + index * 311) % 5400),
-      connectionLabel: account.provider === "facebook" ? "friends" : "followers",
-      metricsSource: "self-reported",
-      health: listing.source === "demo" ? "active" : (account.health ?? "unknown"),
-      lastCheckedAt: account.lastCheckedAt ?? "2026-08-05T19:45:00.000Z",
-      healthMessage: account.healthMessage ?? "Profile URL resolves.",
-    };
-  });
+  // Never fabricate dates, follower counts, health, or check times.
+  // Demo fixtures must carry their own declared fields; registry rows show only stored evidence.
+  return listing.socialProofs.map((account) => ({
+    ...account,
+    connectionLabel:
+      account.connectionLabel ??
+      (account.provider === "facebook" ? "friends" : "followers"),
+    metricsSource: account.metricsSource ?? "self-reported",
+    health: account.health ?? (listing.source === "demo" ? "active" : "unknown"),
+  }));
 }
 
 function hasBrokenAccount(listing: Listing) {
@@ -638,7 +648,9 @@ export default function Marketplace() {
         for (const listing of registryListings) {
           const firstAsset = listing.imageManifest[0];
           if (!firstAsset) continue;
-          const url = await getLocalMediaUrl(firstAsset.hash).catch(() => null);
+          const url = await getLocalMediaUrl(localMediaKey(firstAsset)).catch(
+            () => null,
+          );
           if (url && !cancelled) {
             setLocalMedia((current) => ({ ...current, [listing.id]: url }));
             setListings((current) =>
@@ -1027,7 +1039,8 @@ export default function Marketplace() {
         delivery: String(formData.get("delivery") ?? "Pickup"),
         sellerName: String(formData.get("sellerName") ?? "Community seller").trim(),
         socialProofs,
-        imageManifest,
+        // Registry contract — local vault keeps {hash,name,size,type} bytes off D1.
+        imageManifest: toRegistryMediaManifest(imageManifest),
         endingAt:
           String(formData.get("format")) === "Auction"
             ? new Date(Date.now() + 3 * 86_400_000).toISOString()

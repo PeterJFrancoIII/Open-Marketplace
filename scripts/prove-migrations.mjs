@@ -1,5 +1,5 @@
 /**
- * Prove drizzle migrations on empty + upgrade + dirty-0006 paths.
+ * Prove drizzle migrations on empty + upgrade + dirty paths.
  * Uses Node's built-in node:sqlite (Node ≥ 22.13).
  */
 import assert from "node:assert/strict";
@@ -47,6 +47,7 @@ function assertUniqueIndex(db, indexName) {
 
 function seedDirtyReviewResponses(db) {
   const now = "2026-08-05T00:00:00.000Z";
+  const later = "2026-08-05T01:00:00.000Z";
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec(`
     INSERT INTO profiles (id, display_name, created_at, updated_at)
@@ -74,8 +75,20 @@ function seedDirtyReviewResponses(db) {
     );
     INSERT INTO review_responses (id, review_id, author_id, body, created_at)
     VALUES
-      ('rr1', 'r1', 'p1', 'first', '${now}'),
-      ('rr2', 'r1', 'p1', 'duplicate dirty', '${now}');
+      ('rr-late', 'r1', 'p1', 'later duplicate', '${later}'),
+      ('rr-early', 'r1', 'p1', 'earliest chronologically', '${now}');
+  `);
+}
+
+function seedDirtyProviderSubjects(db) {
+  const now = "2026-08-05T00:00:00.000Z";
+  const later = "2026-08-05T02:00:00.000Z";
+  db.exec(`
+    INSERT INTO social_connections (
+      id, profile_id, provider, provider_subject_hash, canonical_url, status, created_at, updated_at
+    ) VALUES
+      ('sc-late', 'p2', 'facebook', 'subj-fb-1', 'https://facebook.com/a', 'oauth_verified', '${later}', '${later}'),
+      ('sc-early', 'p1', 'facebook', 'subj-fb-1', 'https://facebook.com/b', 'oauth_verified', '${now}', '${now}');
   `);
 }
 
@@ -94,7 +107,6 @@ console.log("Migration files:", migrationFiles().join(", "));
 }
 
 {
-  // Fixture already at 0000; prove 0001→0008 upgrade path.
   const db = new DatabaseSync(":memory:");
   applyRange(db, 0, 0);
   applyRange(db, 1, 8);
@@ -114,13 +126,57 @@ console.log("Migration files:", migrationFiles().join(", "));
   const after = db
     .prepare("SELECT COUNT(*) AS c FROM review_responses WHERE review_id = 'r1'")
     .get();
-  assert.equal(after.c, 1, "0007 must dedupe before unique index");
+  assert.equal(after.c, 1, "0007 must leave one live response");
   const kept = db
     .prepare("SELECT id FROM review_responses WHERE review_id = 'r1'")
     .get();
-  assert.equal(kept.id, "rr1", "earliest response retained");
+  assert.equal(kept.id, "rr-early", "chronologically earliest response retained");
+  const quarantined = db
+    .prepare("SELECT id FROM review_responses_quarantine ORDER BY id")
+    .all();
+  assert.equal(quarantined.length, 1);
+  assert.equal(quarantined[0].id, "rr-late");
   assertUniqueIndex(db, "review_responses_one_per_review_idx");
-  console.log("PASS dirty 0006→0007 dedupe");
+  console.log("PASS dirty 0006→0007 quarantine");
+}
+
+{
+  const db = new DatabaseSync(":memory:");
+  applyRange(db, 0, 7);
+  // Ensure profiles exist for FK (0007 path already has tables).
+  const now = "2026-08-05T00:00:00.000Z";
+  db.exec(`
+    INSERT OR IGNORE INTO profiles (id, display_name, created_at, updated_at)
+    VALUES ('p1', 'Seller', '${now}', '${now}'),
+           ('p2', 'Buyer', '${now}', '${now}');
+  `);
+  seedDirtyProviderSubjects(db);
+  const before = db
+    .prepare(
+      "SELECT COUNT(*) AS c FROM social_connections WHERE provider='facebook' AND provider_subject_hash='subj-fb-1'",
+    )
+    .get();
+  assert.equal(before.c, 2, "dirty 0007 fixture must have duplicate facebook subjects");
+  applyRange(db, 8, 8);
+  const after = db
+    .prepare(
+      "SELECT COUNT(*) AS c FROM social_connections WHERE provider='facebook' AND provider_subject_hash='subj-fb-1'",
+    )
+    .get();
+  assert.equal(after.c, 1, "0008 must leave one live provider subject");
+  const kept = db
+    .prepare(
+      "SELECT id FROM social_connections WHERE provider='facebook' AND provider_subject_hash='subj-fb-1'",
+    )
+    .get();
+  assert.equal(kept.id, "sc-early", "chronologically earliest connection retained");
+  const quarantined = db
+    .prepare("SELECT id FROM social_connections_quarantine")
+    .all();
+  assert.equal(quarantined.length, 1);
+  assert.equal(quarantined[0].id, "sc-late");
+  assertUniqueIndex(db, "social_connections_provider_subject_idx");
+  console.log("PASS dirty 0007→0008 provider-subject quarantine");
 }
 
 console.log("All migration proofs passed.");

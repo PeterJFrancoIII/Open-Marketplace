@@ -4,33 +4,32 @@ Open this extracted folder as the project root in Cursor. Read this file,
 `README.md`, `SOCIAL_TRUST_FRAMEWORK.md`, `ARCHITECTURE.md`, and `POLICY.md`
 before changing code.
 
-## Current merge gate — REMEDIATION LANDED (awaiting Main re-review)
+## Current merge gate — second remediation pass (awaiting Main re-review)
 
 - Prior verdict: `OPEN_MARKETPLACE_MAIN_REVIEW_FIX_REQUIRED`
 - Pull request: [PR 1](https://github.com/PeterJFrancoIII/Open-Marketplace/pull/1)
-- Prior Main-reviewed head: `e0e3653e6b9d42ad293fd3b759a3df732b9a6dec`
+- Prior blocked heads: `e0e3653…`, `076765e…`
 - Rule: do **not** merge, deploy, wire production services, or begin WebRTC work until a **new** Main review returns PASS.
 - This GitHub branch is the source of truth. Ignore older ZIP files, patch files, and local handoff bundles.
 
-### Required remediation — implemented locally
+### Round-2 defect fixes
 
-1. **Server sessions:** `POST /api/auth/session` mints HMAC `om_session` cookies; `parseActor` rejects header-only `X-Profile-Id` / `X-Device-Id`. Marketplace bootstraps session with `credentials: "include"`.
-2. **Strict schemas:** `parseStrictListingWrite` / `parseStrictExternalCredential` strip unknown fields and reject data/blob/base64 media-shaped payloads.
-3. **Dual attestation:** `complete` requires both `buyerConfirmedAt` and `sellerConfirmedAt`.
-4. **Projections + signed events:** export reads `trust_projections`; runtime trust events use `buildSignedTrustEvent` (no `unsigned:` provenance).
-5. **Provider uniqueness / OAuth hygiene:** unique index on `(provider, provider_subject_hash)`; Facebook token exchange uses POST body + Bearer; `returnTo` is same-origin relative only.
-6. **Keypair fail-closed:** `requireMatchingRegistryKeypair` on export/verify/keys (and signed events).
-7. **Migration `0007`:** dedupes dirty `review_responses` before unique index; proven via `npm run test:migrations`.
+1. **Strict schemas:** reject numeric byte arrays; allow-list social/credential nested fields; strip unknowns; accept browser `{hash,name,size,type}` aliases.
+2. **Bundle verify:** `verifyTrustBundle` validates every event signature + hash chain; review edit/reveal emit signed events; `lastEventId` is a trust-event id.
+3. **Migrations:** `0007`/`0008` quarantine duplicates chronologically before unique indexes; dirty `0007→0008` proven.
+4. **Manifest contract:** marketplace posts `toRegistryMediaManifest(...)`; local vault unchanged.
+5. **Trust display:** listing API serves projection aggregates only; UI no longer fabricates social metrics.
+6. **CI + split:** `.github/workflows/ci.yml` installed; staged carve plan + tracking issues in `docs/handoffs/PR-SPLIT-PLAN.md`.
 
 ### Evidence required before Main re-review
 
-- [ ] Install `.github/workflows/ci.yml` from `docs/ci/github-actions.ci.yml` (requires a GitHub token with the `workflow` scope; OAuth App push was refused)
-- [x] Regression tests in `tests/merge-gate-remediation.test.ts`
-- [x] Migration proofs (`0000→0008`, upgrade `0001→0008`, dirty `0006→0007`)
-- [x] Dependency advisories documented in `docs/dependency-advisories.md`
-- [x] PR split plan in `docs/handoffs/PR-SPLIT-PLAN.md`
-- Run on the remediation commit: `npm ci`, `npm run lint`, `npm test`, `npm run build`, `npm audit --omit=dev`, `npm run test:migrations`
-- Request a fresh defect-first Main review. Only a PASS authorizes merge/deploy/wiring or new feature work.
+- [x] Install `.github/workflows/ci.yml`
+- [x] Adversarial regression tests (schemas, invalid event signatures, dual attestation, keypair)
+- [x] Migration proofs including dirty `0007→0008`
+- [x] Dependency advisories in `docs/dependency-advisories.md`
+- [x] Staged PR split plan + tracking issues
+- Run on the new tip: `npm ci`, `npm run lint`, `npm test`, `npm run build`, `npm audit --omit=dev`, `npm run test:migrations`
+- Request a fresh defect-first Main review of the **new** SHA (not `076765e`). Only a PASS authorizes merge/deploy/wiring or new feature work.
 
 
 ## Project state

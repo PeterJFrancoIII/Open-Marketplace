@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { getDb } from "../../../../../db";
 import {
   profiles,
@@ -6,14 +6,12 @@ import {
   reviews,
   transactionEvents,
   transactions,
-  trustEvents,
   trustProjections,
 } from "../../../../../db/schema";
 import {
   applyReveal,
   assertTransactionParticipant,
   AuthError,
-  buildSignedTrustEvent,
   createSealedReview,
   fingerprintPayload,
   InvalidTrustTransitionError,
@@ -27,6 +25,7 @@ import {
   type ReviewRole,
   type TransactionStatus,
 } from "../../../../../lib/trust";
+import { appendSignedTrustEvent } from "../../../../../lib/trust/persist-event.ts";
 import { PROJECTION_VERSION } from "../../../../../lib/trust/projections.ts";
 
 type Params = { params: Promise<{ id: string }> };
@@ -136,6 +135,7 @@ async function persistRevealAndProjections(
 
   const stamped = applyReveal(records, decision.revealIds);
   const now = new Date().toISOString();
+  const lastRevealEventBySubject = new Map<string, string>();
   for (const review of stamped.filter((r) => decision.revealIds.includes(r.id))) {
     await db
       .update(reviews)
@@ -145,6 +145,20 @@ async function persistRevealAndProjections(
         updatedAt: now,
       })
       .where(eq(reviews.id, review.id));
+    const envelope = await appendSignedTrustEvent({
+      subjectProfileId: review.subjectId,
+      actorProfileId: review.reviewerId,
+      eventType: "review.revealed",
+      occurredAt: now,
+      payload: {
+        type: "review.revealed",
+        reviewId: review.id,
+        transactionId,
+        score: review.overallScore,
+        reason: decision.reason,
+      },
+    });
+    lastRevealEventBySubject.set(review.subjectId, envelope.eventId);
   }
 
   const subjects = [...new Set(stamped.map((r) => r.subjectId))];
@@ -188,13 +202,24 @@ async function persistRevealAndProjections(
             ? buyerProj.experienceLabel
             : "New",
     };
+    let lastEventId = lastRevealEventBySubject.get(subjectId);
+    if (!lastEventId) {
+      lastEventId = (
+        await appendSignedTrustEvent({
+          subjectProfileId: subjectId,
+          eventType: "projection.rebuilt",
+          occurredAt: now,
+          payload: { type: "projection.rebuilt", projectionVersion: PROJECTION_VERSION },
+        })
+      ).eventId;
+    }
     await db
       .insert(trustProjections)
       .values({
         profileId: subjectId,
         projectionVersion: PROJECTION_VERSION,
         calculatedAt: now,
-        lastEventId: decision.revealIds[0] ?? null,
+        lastEventId,
         payloadJson: JSON.stringify(payload),
       })
       .onConflictDoUpdate({
@@ -202,7 +227,7 @@ async function persistRevealAndProjections(
         set: {
           projectionVersion: PROJECTION_VERSION,
           calculatedAt: now,
-          lastEventId: decision.revealIds[0] ?? null,
+          lastEventId,
           payloadJson: JSON.stringify(payload),
         },
       });
@@ -360,14 +385,7 @@ export async function POST(request: Request, context: Params) {
       priorEventHash: null,
       occurredAt: sealed.createdAt,
     });
-    const [prior] = await db
-      .select({ payloadHash: trustEvents.payloadHash })
-      .from(trustEvents)
-      .where(eq(trustEvents.subjectProfileId, sealed.subjectId))
-      .orderBy(desc(trustEvents.occurredAt))
-      .limit(1);
-    const envelope = await buildSignedTrustEvent({
-      eventId: crypto.randomUUID(),
+    await appendSignedTrustEvent({
       subjectProfileId: sealed.subjectId,
       actorProfileId: actor.profileId,
       eventType: "review.sealed",
@@ -377,19 +395,6 @@ export async function POST(request: Request, context: Params) {
         reviewId: sealed.id,
         score: sealed.overallScore,
       },
-      priorEventHash: prior?.payloadHash ?? null,
-    });
-    await db.insert(trustEvents).values({
-      id: envelope.eventId,
-      subjectProfileId: envelope.subjectProfileId,
-      actorProfileId: envelope.actorProfileId ?? null,
-      eventType: envelope.eventType,
-      occurredAt: envelope.occurredAt,
-      payloadHash: envelope.payloadHash,
-      priorEventHash: envelope.priorEventHash ?? null,
-      registryId: envelope.registryId,
-      schemaVersion: envelope.schemaVersion,
-      signature: envelope.signature,
     });
 
     const reveal = await persistRevealAndProjections(

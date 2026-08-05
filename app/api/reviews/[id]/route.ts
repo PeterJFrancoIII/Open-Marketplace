@@ -1,9 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
-import { reviewDimensions, reviews, trustEvents } from "../../../../db/schema";
+import { reviewDimensions, reviews } from "../../../../db/schema";
 import {
   AuthError,
-  buildSignedTrustEvent,
   editSealedReview,
   InvalidTrustTransitionError,
   parseActor,
@@ -14,6 +13,7 @@ import {
   type ReviewRecord,
   type ReviewRole,
 } from "../../../../lib/trust";
+import { appendSignedTrustEvent } from "../../../../lib/trust/persist-event.ts";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -145,6 +145,18 @@ export async function PATCH(request: Request, context: Params) {
       }
     }
 
+    await appendSignedTrustEvent({
+      subjectProfileId: existing.subjectId,
+      actorProfileId: actor.profileId,
+      eventType: "review.edited",
+      occurredAt: edited.updatedAt,
+      payload: {
+        type: "review.edited",
+        reviewId: id,
+        score: edited.overallScore,
+      },
+    });
+
     return Response.json({
       review: toPublicReviewView({
         review: edited,
@@ -186,32 +198,12 @@ export async function DELETE(request: Request, context: Params) {
       })
       .where(eq(reviews.id, id));
 
-    const [prior] = await db
-      .select({ payloadHash: trustEvents.payloadHash })
-      .from(trustEvents)
-      .where(eq(trustEvents.subjectProfileId, existing.subjectId))
-      .orderBy(desc(trustEvents.occurredAt))
-      .limit(1);
-    const envelope = await buildSignedTrustEvent({
-      eventId: crypto.randomUUID(),
+    await appendSignedTrustEvent({
       subjectProfileId: existing.subjectId,
       actorProfileId: actor.profileId,
       eventType: "review.tombstone",
       occurredAt: tombstoned.updatedAt,
       payload: { type: "review.tombstone", reviewId: id, reasonCode },
-      priorEventHash: prior?.payloadHash ?? null,
-    });
-    await db.insert(trustEvents).values({
-      id: envelope.eventId,
-      subjectProfileId: envelope.subjectProfileId,
-      actorProfileId: envelope.actorProfileId ?? null,
-      eventType: envelope.eventType,
-      occurredAt: envelope.occurredAt,
-      payloadHash: envelope.payloadHash,
-      priorEventHash: envelope.priorEventHash ?? null,
-      registryId: envelope.registryId,
-      schemaVersion: envelope.schemaVersion,
-      signature: envelope.signature,
     });
 
     return Response.json({

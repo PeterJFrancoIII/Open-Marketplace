@@ -170,17 +170,49 @@ export async function verifyTrustBundle(input: {
     }
   }
 
+  let eventsValid = true;
+  let priorHash: string | undefined;
+  const sortedEvents = [...input.bundle.events].sort((a, b) =>
+    a.occurredAt === b.occurredAt
+      ? a.eventId.localeCompare(b.eventId)
+      : a.occurredAt.localeCompare(b.occurredAt),
+  );
+  for (const event of sortedEvents) {
+    if (!event.signature || event.signature.startsWith("unsigned:")) {
+      eventsValid = false;
+      reasons.push(`event ${event.eventId} is unsigned`);
+      continue;
+    }
+    const eventOk = await verifyTrustEventEnvelope({
+      envelope: event,
+      publicKey: input.publicKey,
+    });
+    if (!eventOk) {
+      eventsValid = false;
+      reasons.push(`event ${event.eventId} signature invalid`);
+    }
+    if (priorHash && event.priorEventHash && event.priorEventHash !== priorHash) {
+      eventsValid = false;
+      reasons.push(`event ${event.eventId} breaks hash chain`);
+    }
+    if (priorHash && !event.priorEventHash) {
+      eventsValid = false;
+      reasons.push(`event ${event.eventId} missing priorEventHash`);
+    }
+    priorHash = event.payloadHash;
+  }
+
   const nativeFailed = credentials.some(
     (c) => c.evidenceLabel === "native_registry" && !c.ok,
   );
   return {
-    ok: bundleSignatureValid && !nativeFailed,
+    ok: bundleSignatureValid && !nativeFailed && eventsValid,
     bundleSignatureValid,
+    eventsValid,
     credentials,
     reasons,
   };
 }
-
 export async function signTrustEventEnvelope(input: {
   unsigned: Omit<TrustEventEnvelope, "payloadHash" | "signature"> & {
     payload: unknown;

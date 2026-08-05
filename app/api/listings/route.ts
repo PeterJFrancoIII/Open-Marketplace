@@ -11,7 +11,12 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { listings, profiles, socialConnections } from "../../../db/schema";
+import {
+  listings,
+  profiles,
+  socialConnections,
+  trustProjections,
+} from "../../../db/schema";
 import { checkSocialAccounts } from "../../../lib/social-health";
 import {
   AuthError,
@@ -199,6 +204,17 @@ export async function GET(request: Request) {
       oauthBySeller.set(row.profileId, list);
     }
 
+    const projectionRows =
+      sellerIds.length > 0
+        ? await db
+            .select()
+            .from(trustProjections)
+            .where(inArray(trustProjections.profileId, sellerIds))
+        : [];
+    const projectionBySeller = new Map(
+      projectionRows.map((row) => [row.profileId, row]),
+    );
+
     return Response.json({
       listings: rows.map(({ listing, profile }) => {
         const baseProofs = parseSocialAccounts(
@@ -208,15 +224,43 @@ export async function GET(request: Request) {
           baseProofs,
           oauthBySeller.get(listing.sellerId) ?? [],
         );
+        const projection = projectionBySeller.get(listing.sellerId);
+        let itemsSold = 0;
+        let sellerRating: number | null = null;
+        let sellerRatingCount = 0;
+        let buyerRating: number | null = null;
+        let buyerRatingCount = 0;
+        if (projection?.payloadJson) {
+          try {
+            const payload = JSON.parse(projection.payloadJson) as {
+              seller?: {
+                completedSales?: number;
+                displayMean?: number | null;
+                ratingCount?: number;
+              };
+              buyer?: {
+                displayMean?: number | null;
+                ratingCount?: number;
+              };
+            };
+            itemsSold = Number(payload.seller?.completedSales ?? 0);
+            sellerRating = payload.seller?.displayMean ?? null;
+            sellerRatingCount = Number(payload.seller?.ratingCount ?? 0);
+            buyerRating = payload.buyer?.displayMean ?? null;
+            buyerRatingCount = Number(payload.buyer?.ratingCount ?? 0);
+          } catch {
+            // Projections-only: leave zeros rather than legacy profile denorms.
+          }
+        }
         return {
           ...listing,
           sellerName: profile?.displayName ?? listing.sellerName,
           socialProofsJson: JSON.stringify(enriched),
-          itemsSold: profile?.itemsSold ?? 0,
-          sellerRating: profile?.sellerRating ?? null,
-          sellerRatingCount: profile?.sellerRatingCount ?? 0,
-          buyerRating: profile?.buyerRating ?? null,
-          buyerRatingCount: profile?.buyerRatingCount ?? 0,
+          itemsSold,
+          sellerRating,
+          sellerRatingCount,
+          buyerRating,
+          buyerRatingCount,
         };
       }),
     });
@@ -250,7 +294,7 @@ export async function POST(request: Request) {
     const condition = write.condition;
     const format = write.format;
     const delivery = write.delivery;
-    const socialProofs = write.socialProofs.slice(0, 3) as SocialProof[];
+    const socialProofs = write.socialProofs.slice(0, 3) as unknown as SocialProof[];
     const imageManifest = write.imageManifest;
 
     if (!conditions.includes(condition as (typeof conditions)[number])) {

@@ -4,16 +4,82 @@ import {
   desc,
   eq,
   gte,
+  inArray,
   like,
   lte,
   or,
   type SQL,
 } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { listings, profiles } from "../../../db/schema";
+import { listings, profiles, socialConnections } from "../../../db/schema";
 import { checkSocialAccounts } from "../../../lib/social-health";
 import { AuthError, assertListingOwner, parseActor, rateLimit } from "../../../lib/trust";
 import type { SocialProof } from "../../../lib/types";
+
+function parseSocialAccounts(raw: string | null | undefined): SocialProof[] {
+  try {
+    const parsed = JSON.parse(raw || "[]") as unknown;
+    return Array.isArray(parsed) ? (parsed as SocialProof[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Merge oauth_verified social_connections into listing/profile social proofs. */
+function enrichSocialProofsWithOAuth(
+  proofs: SocialProof[],
+  connections: Array<{
+    provider: string;
+    canonicalUrl: string;
+    handle: string | null;
+    status: string;
+    accountCreatedAt: string | null;
+    connectionCount: number | null;
+    connectionLabel: string | null;
+    verifiedAt: string | null;
+    lastSuccessfulRefreshAt: string | null;
+  }>,
+): SocialProof[] {
+  const oauthByProvider = new Map(
+    connections
+      .filter((c) => c.status === "oauth_verified")
+      .map((c) => [c.provider, c] as const),
+  );
+  if (!oauthByProvider.size) return proofs;
+
+  const next = proofs.map((proof) => {
+    const oauth = oauthByProvider.get(proof.provider);
+    if (!oauth) return proof;
+    oauthByProvider.delete(proof.provider);
+    return {
+      ...proof,
+      url: oauth.canonicalUrl || proof.url,
+      handle: oauth.handle ?? proof.handle,
+      metricsSource: "oauth" as const,
+      health: proof.health === "dead" || proof.health === "invalid" ? proof.health : "active",
+      accountCreatedAt: oauth.accountCreatedAt ?? proof.accountCreatedAt,
+      connectionCount: oauth.connectionCount ?? proof.connectionCount,
+      connectionLabel:
+        (oauth.connectionLabel as SocialProof["connectionLabel"]) ?? proof.connectionLabel,
+      lastCheckedAt: oauth.lastSuccessfulRefreshAt ?? oauth.verifiedAt ?? proof.lastCheckedAt,
+    };
+  });
+
+  for (const [provider, oauth] of oauthByProvider) {
+    next.push({
+      provider: provider as SocialProof["provider"],
+      url: oauth.canonicalUrl,
+      handle: oauth.handle ?? undefined,
+      metricsSource: "oauth",
+      health: "active",
+      accountCreatedAt: oauth.accountCreatedAt ?? undefined,
+      connectionCount: oauth.connectionCount ?? undefined,
+      connectionLabel: (oauth.connectionLabel as SocialProof["connectionLabel"]) ?? undefined,
+      lastCheckedAt: oauth.lastSuccessfulRefreshAt ?? oauth.verifiedAt ?? undefined,
+    });
+  }
+  return next;
+}
 
 const conditions = ["New", "Like new", "Good", "Fair"] as const;
 const formats = ["Fixed price", "Auction"] as const;
@@ -102,18 +168,48 @@ export async function GET(request: Request) {
       .orderBy(order, desc(listings.id))
       .limit(limit);
 
+    const sellerIds = [
+      ...new Set(rows.map(({ listing }) => listing.sellerId).filter(Boolean)),
+    ];
+    const oauthRows =
+      sellerIds.length > 0
+        ? await db
+            .select()
+            .from(socialConnections)
+            .where(
+              and(
+                inArray(socialConnections.profileId, sellerIds),
+                eq(socialConnections.status, "oauth_verified"),
+              ),
+            )
+        : [];
+    const oauthBySeller = new Map<string, typeof oauthRows>();
+    for (const row of oauthRows) {
+      const list = oauthBySeller.get(row.profileId) ?? [];
+      list.push(row);
+      oauthBySeller.set(row.profileId, list);
+    }
+
     return Response.json({
-      listings: rows.map(({ listing, profile }) => ({
-        ...listing,
-        sellerName: profile?.displayName ?? listing.sellerName,
-        socialProofsJson:
+      listings: rows.map(({ listing, profile }) => {
+        const baseProofs = parseSocialAccounts(
           profile?.socialAccountsJson ?? listing.socialProofsJson,
-        itemsSold: profile?.itemsSold ?? 0,
-        sellerRating: profile?.sellerRating ?? null,
-        sellerRatingCount: profile?.sellerRatingCount ?? 0,
-        buyerRating: profile?.buyerRating ?? null,
-        buyerRatingCount: profile?.buyerRatingCount ?? 0,
-      })),
+        );
+        const enriched = enrichSocialProofsWithOAuth(
+          baseProofs,
+          oauthBySeller.get(listing.sellerId) ?? [],
+        );
+        return {
+          ...listing,
+          sellerName: profile?.displayName ?? listing.sellerName,
+          socialProofsJson: JSON.stringify(enriched),
+          itemsSold: profile?.itemsSold ?? 0,
+          sellerRating: profile?.sellerRating ?? null,
+          sellerRatingCount: profile?.sellerRatingCount ?? 0,
+          buyerRating: profile?.buyerRating ?? null,
+          buyerRatingCount: profile?.buyerRatingCount ?? 0,
+        };
+      }),
     });
   } catch (error) {
     return registryError(error);

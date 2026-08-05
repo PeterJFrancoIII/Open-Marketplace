@@ -47,6 +47,7 @@ export async function POST(request: Request, context: Params) {
       connection: existing,
     });
     await runtime.upsertConnection(result.connection);
+    await runtime.syncProfileSocialAccounts(actor.profileId);
 
     return Response.json({
       provider: raw,

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../db";
-import { reviewResponses } from "../../../../../db/schema";
+import { reviewDimensions, reviewResponses, reviews } from "../../../../../db/schema";
 import {
   addPublicResponse,
   AuthError,
@@ -10,7 +10,6 @@ import {
   type ReviewRecord,
   type ReviewRole,
 } from "../../../../../lib/trust";
-import { reviews, reviewDimensions } from "../../../../../db/schema";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -68,13 +67,26 @@ export async function POST(request: Request, context: Params) {
       body: typeof payload.body === "string" ? payload.body : "",
       existingResponse: prior.length > 0,
     });
-    await db.insert(reviewResponses).values({
-      id: crypto.randomUUID(),
-      reviewId: response.reviewId,
-      authorId: response.authorId,
-      kind: response.kind,
-      body: response.body,
-    });
+
+    try {
+      await db.insert(reviewResponses).values({
+        id: crypto.randomUUID(),
+        reviewId: response.reviewId,
+        authorId: response.authorId,
+        kind: response.kind,
+        body: response.body,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (/UNIQUE|unique/i.test(message)) {
+        return Response.json(
+          { error: "Only one public response is allowed" },
+          { status: 422 },
+        );
+      }
+      throw error;
+    }
+
     return Response.json({ response }, { status: 201 });
   } catch (error) {
     if (error instanceof AuthError) {

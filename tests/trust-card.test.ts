@@ -54,6 +54,39 @@ test("low sample sizes hide precise means", () => {
   assert.equal(model.experienceLabel, "New");
 });
 
+test("oauth metricsSource marks provider connected for filters", () => {
+  const connected = buildTrustCardFromListing({
+    profileId: "s-oauth",
+    displayName: "OAuth Seller",
+    itemsSold: 3,
+    socialProofs: [
+      {
+        provider: "facebook",
+        url: "https://facebook.com/oauth-seller",
+        health: "active",
+        metricsSource: "oauth",
+      },
+    ],
+  });
+  assert.equal(hasProviderConnected(connected), true);
+  assert.equal(connected.social[0]?.status, "oauth_verified");
+
+  const selfReported = buildTrustCardFromListing({
+    profileId: "s-self",
+    displayName: "Self",
+    itemsSold: 3,
+    socialProofs: [
+      {
+        provider: "facebook",
+        url: "https://facebook.com/self",
+        health: "active",
+        metricsSource: "self-reported",
+      },
+    ],
+  });
+  assert.equal(hasProviderConnected(selfReported), false);
+});
+
 test("dead social links mark action required", () => {
   const model = buildTrustCardFromListing({
     profileId: "s2",

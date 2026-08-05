@@ -50,6 +50,13 @@
       "when": 1785966786435,
       "tag": "0006_fixed_magdalene",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1785967836584,
+      "tag": "0007_acoustic_natasha_romanoff",
+      "breakpoints": true
     }
   ]
 }

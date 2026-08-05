@@ -209,6 +209,8 @@ export async function buildRuntimeOAuthService(): Promise<{
     profileId: string,
     provider: SocialProvider,
   ) => Promise<SocialConnection | null>;
+  /** Keep profiles.social_accounts_json aligned with oauth_verified connections. */
+  syncProfileSocialAccounts: (profileId: string) => Promise<void>;
 }> {
   const encryptionKey = process.env.OAUTH_TOKEN_ENCRYPTION_KEY;
   if (!encryptionKey) {
@@ -331,6 +333,59 @@ export async function buildRuntimeOAuthService(): Promise<{
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       };
+    },
+    async syncProfileSocialAccounts(profileId) {
+      const db = await getDb();
+      const [profile] = await db
+        .select()
+        .from(profiles)
+        .where(eq(profiles.id, profileId))
+        .limit(1);
+      let accounts: Array<Record<string, unknown>> = [];
+      try {
+        const parsed = JSON.parse(profile?.socialAccountsJson || "[]") as unknown;
+        accounts = Array.isArray(parsed) ? (parsed as Array<Record<string, unknown>>) : [];
+      } catch {
+        accounts = [];
+      }
+
+      const connections = await db
+        .select()
+        .from(socialConnections)
+        .where(eq(socialConnections.profileId, profileId));
+
+      for (const connection of connections) {
+        const idx = accounts.findIndex((a) => a.provider === connection.provider);
+        const next = {
+          provider: connection.provider,
+          url: connection.canonicalUrl,
+          handle: connection.handle ?? undefined,
+          metricsSource:
+            connection.status === "oauth_verified" ? "oauth" : "self-reported",
+          health:
+            connection.status === "dead" || connection.status === "invalid"
+              ? connection.status
+              : connection.status === "oauth_verified" || connection.status === "live"
+                ? "active"
+                : "unknown",
+          accountCreatedAt: connection.accountCreatedAt ?? undefined,
+          connectionCount: connection.connectionCount ?? undefined,
+          connectionLabel: connection.connectionLabel ?? undefined,
+          lastCheckedAt:
+            connection.lastSuccessfulRefreshAt ??
+            connection.verifiedAt ??
+            connection.lastCheckedAt ??
+            undefined,
+        };
+        if (idx >= 0) accounts[idx] = { ...accounts[idx], ...next };
+        else accounts.push(next);
+      }
+
+      const updatedAt = new Date().toISOString();
+      await db
+        .update(profiles)
+        .set({ socialAccountsJson: JSON.stringify(accounts), updatedAt })
+        .where(eq(profiles.id, profileId));
     },
   };
 }

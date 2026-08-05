@@ -72,6 +72,7 @@ export async function GET(request: Request, context: Params) {
 
     await runtime.ensureProfile(completed.grant.profileId);
     await runtime.upsertConnection(connection);
+    await runtime.syncProfileSocialAccounts(completed.grant.profileId);
 
     const returnPath = completed.returnTo.startsWith("/") ? completed.returnTo : "/";
     const returnTarget = new URL(returnPath, url.origin);

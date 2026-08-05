@@ -326,7 +326,10 @@ export const reviewResponses = sqliteTable(
     body: text("body").notNull(),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
-  (table) => [index("review_responses_review_idx").on(table.reviewId)],
+  (table) => [
+    index("review_responses_review_idx").on(table.reviewId),
+    uniqueIndex("review_responses_one_per_review_idx").on(table.reviewId),
+  ],
 );
 
 export const trustEvents = sqliteTable(

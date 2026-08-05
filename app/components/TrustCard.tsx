@@ -101,7 +101,13 @@ export function TrustCard({
                 {chip.connectionCount != null
                   ? ` · ${chip.connectionCount.toLocaleString()} ${chip.connectionLabel ?? "connections"}`
                   : ""}
-                {chip.accountCreatedAt ? ` · account age ${chip.sourceLabel}` : ""}
+                {chip.accountCreatedAt
+                  ? ` · account since ${new Date(
+                      /^\d{4}-\d{2}-\d{2}$/.test(chip.accountCreatedAt)
+                        ? `${chip.accountCreatedAt}T00:00:00Z`
+                        : chip.accountCreatedAt,
+                    ).toLocaleDateString(undefined, { month: "short", year: "numeric" })}`
+                  : ""}
                 {chip.lastCheckedAt
                   ? ` · checked ${new Date(chip.lastCheckedAt).toLocaleDateString()}`
                   : ""}

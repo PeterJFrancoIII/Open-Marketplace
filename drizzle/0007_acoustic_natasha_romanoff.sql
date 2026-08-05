@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `review_responses_one_per_review_idx` ON `review_responses` (`review_id`);

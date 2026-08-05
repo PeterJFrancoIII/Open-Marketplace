@@ -58,7 +58,7 @@ function rowToRecord(row: typeof transactions.$inferSelect): TransactionRecord {
 export async function POST(request: Request, context: Params) {
   try {
     const { id } = await context.params;
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const limited = rateLimit({
       key: `tx:event:${actor.profileId}`,
       limit: 60,

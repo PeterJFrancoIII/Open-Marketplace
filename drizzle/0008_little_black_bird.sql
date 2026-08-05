@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `social_connections_provider_subject_idx` ON `social_connections` (`provider`,`provider_subject_hash`);

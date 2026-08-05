@@ -13,7 +13,13 @@ import {
 import { getDb } from "../../../db";
 import { listings, profiles, socialConnections } from "../../../db/schema";
 import { checkSocialAccounts } from "../../../lib/social-health";
-import { AuthError, assertListingOwner, parseActor, rateLimit } from "../../../lib/trust";
+import {
+  AuthError,
+  InvalidTrustTransitionError,
+  parseActor,
+  parseStrictListingWrite,
+  rateLimit,
+} from "../../../lib/trust";
 import type { SocialProof } from "../../../lib/types";
 
 function parseSocialAccounts(raw: string | null | undefined): SocialProof[] {
@@ -95,6 +101,9 @@ const restrictedTerms = [
 function registryError(error: unknown) {
   if (error instanceof AuthError) {
     return Response.json({ error: error.message }, { status: error.status });
+  }
+  if (error instanceof InvalidTrustTransitionError) {
+    return Response.json({ error: error.message }, { status: 422 });
   }
   const message = error instanceof Error ? error.message : "Unexpected registry error";
   const unavailable = message.includes("no such table") || message.includes("binding `DB`");
@@ -218,7 +227,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const limited = rateLimit({
       key: `listing:create:${actor.profileId}`,
       limit: 20,
@@ -228,48 +237,22 @@ export async function POST(request: Request) {
       return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
     }
 
-    const payload = (await request.json()) as Record<string, unknown>;
-    const title = typeof payload.title === "string" ? payload.title.trim() : "";
-    const description =
-      typeof payload.description === "string" ? payload.description.trim() : "";
-    const category = typeof payload.category === "string" ? payload.category.trim() : "";
-    const locationLabel =
-      typeof payload.locationLabel === "string" ? payload.locationLabel.trim() : "";
-    const sellerId = typeof payload.sellerId === "string" ? payload.sellerId.trim() : "";
-    const sellerName =
-      typeof payload.sellerName === "string" ? payload.sellerName.trim() : "";
-    const priceCents = Number(payload.priceCents);
-    const condition = String(payload.condition ?? "");
-    const format = String(payload.format ?? "");
-    const delivery = String(payload.delivery ?? "");
-    const socialProofs = Array.isArray(payload.socialProofs)
-      ? (payload.socialProofs.slice(0, 3) as SocialProof[])
-      : [];
-    const imageManifest = Array.isArray(payload.imageManifest)
-      ? payload.imageManifest.slice(0, 6)
-      : [];
-
-    assertListingOwner(actor, { sellerId: sellerId || actor.profileId });
-    if (sellerId && sellerId !== actor.profileId) {
-      return Response.json(
-        { error: "sellerId must match the authenticated profile" },
-        { status: 403 },
-      );
-    }
+    const payload = await request.json();
+    const write = parseStrictListingWrite(payload);
+    // Seller identity is always the server session — never caller-chosen.
     const ownedSellerId = actor.profileId;
+    const title = write.title;
+    const description = write.description;
+    const category = write.category;
+    const locationLabel = write.locationLabel;
+    const sellerName = write.sellerName;
+    const priceCents = write.priceCents;
+    const condition = write.condition;
+    const format = write.format;
+    const delivery = write.delivery;
+    const socialProofs = write.socialProofs.slice(0, 3) as SocialProof[];
+    const imageManifest = write.imageManifest;
 
-    if (!title || title.length > 90) {
-      return Response.json({ error: "A title of 1–90 characters is required." }, { status: 400 });
-    }
-    if (!description || description.length > 1400) {
-      return Response.json({ error: "A description of 1–1400 characters is required." }, { status: 400 });
-    }
-    if (!Number.isSafeInteger(priceCents) || priceCents < 0 || priceCents > 1_000_000_000) {
-      return Response.json({ error: "A valid price is required." }, { status: 400 });
-    }
-    if (!category || !locationLabel || !sellerName) {
-      return Response.json({ error: "Category, area, and seller identity are required." }, { status: 400 });
-    }
     if (!conditions.includes(condition as (typeof conditions)[number])) {
       return Response.json({ error: "Unsupported condition." }, { status: 400 });
     }
@@ -318,14 +301,14 @@ export async function POST(request: Request) {
         },
       });
 
-    const [listing] = await db
+    const [created] = await db
       .insert(listings)
       .values({
         id,
         title,
         description,
         priceCents,
-        currency: payload.currency === "USD" ? "USD" : "USD",
+        currency: write.currency === "USD" ? "USD" : "USD",
         condition,
         category,
         locationLabel,
@@ -336,14 +319,14 @@ export async function POST(request: Request) {
         sellerName,
         socialProofsJson: JSON.stringify(checkedSocialProofs),
         imageManifestJson: JSON.stringify(imageManifest),
-        endingAt: typeof payload.endingAt === "string" ? payload.endingAt : null,
+        endingAt: write.endingAt,
       })
       .returning();
 
     return Response.json(
       {
         listing: {
-          ...listing,
+          ...created,
           itemsSold: 0,
           sellerRating: null,
           sellerRatingCount: 0,

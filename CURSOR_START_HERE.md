@@ -4,32 +4,32 @@ Open this extracted folder as the project root in Cursor. Read this file,
 `README.md`, `SOCIAL_TRUST_FRAMEWORK.md`, `ARCHITECTURE.md`, and `POLICY.md`
 before changing code.
 
-## Current merge gate — BLOCKED
+## Current merge gate — REMEDIATION LANDED (awaiting Main re-review)
 
-- Verdict: `OPEN_MARKETPLACE_MAIN_REVIEW_FIX_REQUIRED`
+- Prior verdict: `OPEN_MARKETPLACE_MAIN_REVIEW_FIX_REQUIRED`
 - Pull request: [PR 1](https://github.com/PeterJFrancoIII/Open-Marketplace/pull/1)
-- Main-reviewed head: `e0e3653e6b9d42ad293fd3b759a3df732b9a6dec`
-- Rule: do **not** merge, deploy, wire production services, or begin WebRTC work until a new Main review returns PASS.
+- Prior Main-reviewed head: `e0e3653e6b9d42ad293fd3b759a3df732b9a6dec`
+- Rule: do **not** merge, deploy, wire production services, or begin WebRTC work until a **new** Main review returns PASS.
 - This GitHub branch is the source of truth. Ignore older ZIP files, patch files, and local handoff bundles.
 
-### Required remediation
+### Required remediation — implemented locally
 
-1. Replace caller-controlled `X-Profile-Id` / `X-Device-Id` identity with server-authenticated identity. Until then, disable protected mutations. Add negative authorization tests for transactions, reviews, disputes, appeals, OAuth ownership, moderation, and trust export.
-2. Apply strict runtime schemas to listing manifests and external credentials. Strip unknown fields; enforce field and total byte limits; reject data URLs, base64 payloads, blobs, and binary-shaped fields so D1 can never receive media bytes.
-3. Require independent buyer and seller attestations before a transaction can reach `completed` or `review_window`. One party must never manufacture a review-eligible transaction.
-4. Make transaction-derived `trust_projections` the only source for rating UI and native portable claims. Cryptographically sign and hash-chain runtime trust events; never publish `unsigned:...` events as trusted provenance.
-5. Enforce global uniqueness of provider + provider-subject identity, move Facebook secrets/tokens out of request URLs, and accept only same-origin relative `returnTo` paths.
-6. Validate at startup that configured registry private/public JWKs are one matching P-256 keypair. Fail closed when missing, malformed, or mismatched.
-7. Repair migration `0007` so an existing `0006` database with duplicate review responses is cleaned or quarantined without data loss before the unique index is created.
+1. **Server sessions:** `POST /api/auth/session` mints HMAC `om_session` cookies; `parseActor` rejects header-only `X-Profile-Id` / `X-Device-Id`. Marketplace bootstraps session with `credentials: "include"`.
+2. **Strict schemas:** `parseStrictListingWrite` / `parseStrictExternalCredential` strip unknown fields and reject data/blob/base64 media-shaped payloads.
+3. **Dual attestation:** `complete` requires both `buyerConfirmedAt` and `sellerConfirmedAt`.
+4. **Projections + signed events:** export reads `trust_projections`; runtime trust events use `buildSignedTrustEvent` (no `unsigned:` provenance).
+5. **Provider uniqueness / OAuth hygiene:** unique index on `(provider, provider_subject_hash)`; Facebook token exchange uses POST body + Bearer; `returnTo` is same-origin relative only.
+6. **Keypair fail-closed:** `requireMatchingRegistryKeypair` on export/verify/keys (and signed events).
+7. **Migration `0007`:** dedupes dirty `review_responses` before unique index; proven via `npm run test:migrations`.
 
 ### Evidence required before Main re-review
 
-- Install the prepared workflow at `.github/workflows/ci.yml`; do not leave it only under `docs/ci/`.
-- Run `npm ci`, `npm run lint`, `npm test`, `npm run build`, and `npm audit --omit=dev`.
-- Prove migrations `0000` → `0007` on an empty D1 database and `0001` → `0007` plus dirty `0006` → `0007` on populated fixtures.
-- Add regression tests for every remediation item above, including hostile payloads and unauthorized callers.
-- Resolve the production dependency advisories or document an explicit reviewed exception.
-- Split the oversized branch into staged, reviewable PRs before merging: trust foundation, transactions, reviews/projections, UI, OAuth, moderation, portable trust, and branding.
+- [x] Install `.github/workflows/ci.yml`
+- [x] Regression tests in `tests/merge-gate-remediation.test.ts`
+- [x] Migration proofs (`0000→0008`, upgrade `0001→0008`, dirty `0006→0007`)
+- [x] Dependency advisories documented in `docs/dependency-advisories.md`
+- [x] PR split plan in `docs/handoffs/PR-SPLIT-PLAN.md`
+- Run on the remediation commit: `npm ci`, `npm run lint`, `npm test`, `npm run build`, `npm audit --omit=dev`, `npm run test:migrations`
 - Request a fresh defect-first Main review. Only a PASS authorizes merge/deploy/wiring or new feature work.
 
 
@@ -89,10 +89,12 @@ before changing code.
 
 ## Important honesty boundaries
 
-- Authentication and authorization are not production-ready: caller-controlled identity headers make protected mutations impersonable until remediation item 1 is complete.
-- Existing trust exports and UI ratings are not production-grade provenance until transaction-derived projections and signed hash-chained events are wired end to end.
-
-- Account creation dates and friend/follower counts are currently self-reported.
+- Protected mutations now require a server-signed session; this is still a
+  device-bound starter identity, not full account recovery / multi-device auth.
+- Native portable claims must come from transaction-derived `trust_projections`
+  and signed events; unsigned historical rows are ignored on export.
+- Account creation dates and friend/follower counts remain self-reported unless
+  `metricsSource: "oauth"`.
 - Live-link checks are automated URL-health checks, not identity verification.
 - Facebook OAuth (PKCE + encrypted grants) is implemented; Instagram/TikTok
   adapters, production authorization, transaction settlement, messages, and

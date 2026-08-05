@@ -41,7 +41,7 @@ async function ensureProfile(id: string) {
 
 export async function GET(request: Request) {
   try {
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const limited = rateLimit({
       key: `disputes:list:${actor.profileId}`,
       limit: 60,
@@ -108,7 +108,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const limited = rateLimit({
       key: `disputes:open:${actor.profileId}`,
       limit: 20,

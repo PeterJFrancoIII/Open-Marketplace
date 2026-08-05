@@ -3,7 +3,6 @@ import { getDb } from "../../../../../db";
 import { profiles, reviews, trustProjections } from "../../../../../db/schema";
 import {
   AuthError,
-  parseActor,
   projectRoleReputation,
   rateLimit,
   type ReviewRecord,
@@ -31,7 +30,7 @@ function registryError(error: unknown) {
 export async function GET(request: Request, context: Params) {
   try {
     const { id: profileId } = await context.params;
-    parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    // Public trust facets — session not required (mutations remain session-gated).
     const limited = rateLimit({
       key: `trust:read:${profileId}`,
       limit: 120,

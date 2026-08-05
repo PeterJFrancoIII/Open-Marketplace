@@ -223,7 +223,7 @@ export function applyTransactionEvent(input: {
       };
     }
     case "mark_fulfilled": {
-      // Shipping path — each party may attest fulfillment, but not both sides via one call.
+      // Shipping path — status only. Completion still requires both-party attestations.
       if (role !== "buyer" && role !== "seller") {
         throw new InvalidTrustTransitionError("Only parties may mark fulfilled");
       }
@@ -232,11 +232,29 @@ export function applyTransactionEvent(input: {
       return { transaction: tx, eventType: "transaction.fulfilled", appendedStatus: "fulfilled" };
     }
     case "complete": {
-      // Explicit completion still requires prior fulfillment; cannot skip meetup/shipping.
+      // Merge-gate blocker 3: both parties must have independently attested.
       if (role !== "buyer" && role !== "seller") {
         throw new InvalidTrustTransitionError("Only parties may complete");
       }
-      assertTransactionTransition(tx.status, "completed");
+      if (!tx.buyerConfirmedAt || !tx.sellerConfirmedAt) {
+        throw new InvalidTrustTransitionError(
+          "Both buyer and seller attestations are required before completion",
+        );
+      }
+      if (tx.status !== "fulfilled" && tx.status !== "disputed" && tx.status !== "accepted") {
+        throw new InvalidTrustTransitionError(
+          "Completion requires accepted, fulfilled, or disputed status after dual attestation",
+        );
+      }
+      if (tx.status === "accepted") {
+        assertTransactionTransition("accepted", "fulfilled");
+        tx = { ...tx, status: "fulfilled" };
+      }
+      if (tx.status === "fulfilled") {
+        assertTransactionTransition("fulfilled", "completed");
+      } else if (tx.status === "disputed") {
+        assertTransactionTransition("disputed", "completed");
+      }
       const completedAt = nowIso(now);
       const deadline = new Date(now);
       deadline.setUTCDate(deadline.getUTCDate() + REVIEW_WINDOW_DAYS);
@@ -245,6 +263,8 @@ export function applyTransactionEvent(input: {
         status: "review_window",
         completedAt,
         reviewDeadlineAt: deadline.toISOString(),
+        meetupNonce: null,
+        meetupNonceExpiresAt: null,
         updatedAt: completedAt,
       };
       return { transaction: tx, eventType: "transaction.completed", appendedStatus: "review_window" };

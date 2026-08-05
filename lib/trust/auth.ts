@@ -1,38 +1,58 @@
 /**
- * Interim A0 request identity (device/profile header).
- * Passkeys / OIDC (assurance A1+) arrive in later PRs. Do not treat this as
- * strong authentication — it enforces ownership boundaries for the lifecycle API.
+ * Server-authenticated request identity via signed session (HMAC cookie).
+ * Caller-controlled X-Profile-Id / X-Device-Id alone is rejected for mutations.
  */
+
+import { AuthError } from "./errors.ts";
+import {
+  readSessionCookie,
+  requireSessionSecret,
+  verifySessionToken,
+} from "./session.ts";
 
 export type ActorRole = "buyer" | "seller" | "stranger" | "moderator";
 
 export type RequestActor = {
   profileId: string;
   isModerator: boolean;
+  authMethod: "session";
 };
 
-export class AuthError extends Error {
-  status: number;
-  constructor(message: string, status = 401) {
-    super(message);
-    this.name = "AuthError";
-    this.status = status;
-  }
-}
+export { AuthError };
 
-export function parseActor(request: Request, moderatorToken?: string | null): RequestActor {
-  const profileId =
-    request.headers.get("x-profile-id")?.trim() ||
-    request.headers.get("x-device-id")?.trim() ||
-    "";
-  if (!profileId || profileId.length < 8 || profileId.length > 120) {
-    throw new AuthError("Authenticated profile id required (X-Profile-Id).");
+/**
+ * Resolve the actor from a verified server session only.
+ * Header-only identity is intentionally rejected (merge-gate blocker 1).
+ */
+export async function parseActor(
+  request: Request,
+  moderatorToken?: string | null,
+  sessionSecret?: string | null,
+): Promise<RequestActor> {
+  const secret = requireSessionSecret(
+    sessionSecret ?? process.env.SESSION_SECRET ?? null,
+  );
+  const token = readSessionCookie(request);
+  if (!token) {
+    throw new AuthError(
+      "Server session required. Call POST /api/auth/session — X-Profile-Id alone is not accepted.",
+      401,
+    );
   }
+  const claims = await verifySessionToken(token, secret);
   const provided = request.headers.get("x-moderator-token")?.trim() ?? "";
   const isModerator = Boolean(
     moderatorToken && provided && provided === moderatorToken,
   );
-  return { profileId, isModerator };
+  return { profileId: claims.profileId, isModerator, authMethod: "session" };
+}
+
+/** Sync helper for unit tests that already have a verified profile id. */
+export function actorFromProfileId(
+  profileId: string,
+  isModerator = false,
+): RequestActor {
+  return { profileId, isModerator, authMethod: "session" };
 }
 
 export function roleOnTransaction(

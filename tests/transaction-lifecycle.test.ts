@@ -3,8 +3,10 @@ import test from "node:test";
 
 import {
   applyTransactionEvent,
+  actorFromProfileId,
   createProposedTransaction,
   InvalidTrustTransitionError,
+  mintSessionToken,
   parseActor,
   rateLimit,
   resetRateLimits,
@@ -16,8 +18,10 @@ import {
   resetIdempotency,
 } from "../lib/trust/index.ts";
 
+const SESSION_SECRET = "test-session-secret-32-chars-min!!";
+
 function actor(profileId: string, isModerator = false) {
-  return { profileId, isModerator };
+  return actorFromProfileId(profileId, isModerator);
 }
 
 test("authorization roles: buyer seller stranger moderator", () => {
@@ -28,10 +32,25 @@ test("authorization roles: buyer seller stranger moderator", () => {
   assert.equal(roleOnTransaction(actor("mod", true), tx), "moderator");
 });
 
-test("parseActor requires profile header", () => {
-  assert.throws(() => parseActor(new Request("http://x")), /profile id/i);
-  const a = parseActor(
-    new Request("http://x", { headers: { "x-profile-id": "device:abcdef12" } }),
+test("parseActor requires server session (rejects header-only)", async () => {
+  await assert.rejects(
+    () => parseActor(new Request("http://x"), null, SESSION_SECRET),
+    /session required/i,
+  );
+  await assert.rejects(
+    () =>
+      parseActor(
+        new Request("http://x", { headers: { "x-profile-id": "device:abcdef12" } }),
+        null,
+        SESSION_SECRET,
+      ),
+    /session required/i,
+  );
+  const token = await mintSessionToken("device:abcdef12", SESSION_SECRET);
+  const a = await parseActor(
+    new Request("http://x", { headers: { authorization: `Session ${token}` } }),
+    null,
+    SESSION_SECRET,
   );
   assert.equal(a.profileId, "device:abcdef12");
 });

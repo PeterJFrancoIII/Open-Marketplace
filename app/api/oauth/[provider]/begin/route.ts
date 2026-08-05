@@ -1,5 +1,7 @@
 import {
+  assertSameOriginRelativeReturnTo,
   AuthError,
+  InvalidTrustTransitionError,
   OAuthError,
   parseActor,
   rateLimit,
@@ -12,8 +14,17 @@ import {
 type Params = { params: Promise<{ provider: string }> };
 
 function errorResponse(error: unknown) {
-  if (error instanceof AuthError || error instanceof OAuthError) {
-    return Response.json({ error: error.message }, { status: error.status });
+  if (
+    error instanceof AuthError ||
+    error instanceof OAuthError ||
+    error instanceof InvalidTrustTransitionError
+  ) {
+    const status =
+      error instanceof InvalidTrustTransitionError ? 422 : error.status;
+    return Response.json(
+      { error: error.message },
+      { status: status ?? 422 },
+    );
   }
   const message = error instanceof Error ? error.message : "Unexpected OAuth error";
   const unavailable =
@@ -33,7 +44,7 @@ export async function POST(request: Request, context: Params) {
       return Response.json({ error: `Unsupported provider: ${raw}` }, { status: 400 });
     }
 
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const limited = rateLimit({
       key: `oauth:begin:${actor.profileId}:${raw}`,
       limit: 20,
@@ -49,9 +60,9 @@ export async function POST(request: Request, context: Params) {
     const url = new URL(request.url);
     const redirectUri = `${url.origin}/api/oauth/${raw}/callback`;
     const returnTo =
-      typeof body.returnTo === "string" && body.returnTo.startsWith("/")
-        ? body.returnTo
-        : "/";
+      body.returnTo == null || body.returnTo === ""
+        ? "/"
+        : assertSameOriginRelativeReturnTo(body.returnTo);
 
     const runtime = await buildRuntimeOAuthService();
     await runtime.ensureProfile(actor.profileId);

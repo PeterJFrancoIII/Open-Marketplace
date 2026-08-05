@@ -156,6 +156,11 @@ export const socialConnections = sqliteTable(
       table.provider,
       table.canonicalUrl,
     ),
+    // Global provider subject uniqueness (merge-gate blocker 5).
+    uniqueIndex("social_connections_provider_subject_idx").on(
+      table.provider,
+      table.providerSubjectHash,
+    ),
   ],
 );
 

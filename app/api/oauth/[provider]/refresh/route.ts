@@ -25,7 +25,7 @@ export async function POST(request: Request, context: Params) {
     if (!isSupportedOAuthProvider(raw)) {
       return Response.json({ error: `Unsupported provider: ${raw}` }, { status: 400 });
     }
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const limited = rateLimit({
       key: `oauth:refresh:${actor.profileId}:${raw}`,
       limit: 30,

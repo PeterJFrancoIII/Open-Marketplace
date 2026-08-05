@@ -1,4 +1,4 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { getDb } from "../../../../../db";
 import {
   profiles,
@@ -13,6 +13,7 @@ import {
   applyReveal,
   assertTransactionParticipant,
   AuthError,
+  buildSignedTrustEvent,
   createSealedReview,
   fingerprintPayload,
   InvalidTrustTransitionError,
@@ -213,7 +214,7 @@ async function persistRevealAndProjections(
 export async function GET(request: Request, context: Params) {
   try {
     const { id: transactionId } = await context.params;
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const db = await getDb();
     const [tx] = await db
       .select()
@@ -267,7 +268,7 @@ export async function GET(request: Request, context: Params) {
 export async function POST(request: Request, context: Params) {
   try {
     const { id: transactionId } = await context.params;
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const limited = rateLimit({
       key: `review:create:${actor.profileId}`,
       limit: 30,
@@ -359,17 +360,36 @@ export async function POST(request: Request, context: Params) {
       priorEventHash: null,
       occurredAt: sealed.createdAt,
     });
-    await db.insert(trustEvents).values({
-      id: crypto.randomUUID(),
+    const [prior] = await db
+      .select({ payloadHash: trustEvents.payloadHash })
+      .from(trustEvents)
+      .where(eq(trustEvents.subjectProfileId, sealed.subjectId))
+      .orderBy(desc(trustEvents.occurredAt))
+      .limit(1);
+    const envelope = await buildSignedTrustEvent({
+      eventId: crypto.randomUUID(),
       subjectProfileId: sealed.subjectId,
       actorProfileId: actor.profileId,
       eventType: "review.sealed",
       occurredAt: sealed.createdAt,
-      payloadHash,
-      priorEventHash: null,
-      registryId: process.env.NEXT_PUBLIC_REGISTRY_ID ?? "open-marketplace-local",
-      schemaVersion: 1,
-      signature: `unsigned:${payloadHash.slice(0, 16)}`,
+      payload: {
+        type: "review.sealed",
+        reviewId: sealed.id,
+        score: sealed.overallScore,
+      },
+      priorEventHash: prior?.payloadHash ?? null,
+    });
+    await db.insert(trustEvents).values({
+      id: envelope.eventId,
+      subjectProfileId: envelope.subjectProfileId,
+      actorProfileId: envelope.actorProfileId ?? null,
+      eventType: envelope.eventType,
+      occurredAt: envelope.occurredAt,
+      payloadHash: envelope.payloadHash,
+      priorEventHash: envelope.priorEventHash ?? null,
+      registryId: envelope.registryId,
+      schemaVersion: envelope.schemaVersion,
+      signature: envelope.signature,
     });
 
     const reveal = await persistRevealAndProjections(

@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     if (!subjectProfileId) {
       return Response.json({ error: "subjectProfileId is required" }, { status: 400 });
     }
-    parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
 
     const db = await getDb();
     const rows = await db
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const limited = rateLimit({
       key: `moderation:issue:${actor.profileId}`,
       limit: 40,

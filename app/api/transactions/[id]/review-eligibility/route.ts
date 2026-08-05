@@ -31,7 +31,7 @@ function registryError(error: unknown) {
 export async function GET(request: Request, context: Params) {
   try {
     const { id } = await context.params;
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const limited = rateLimit({
       key: `tx:elig:${actor.profileId}`,
       limit: 60,

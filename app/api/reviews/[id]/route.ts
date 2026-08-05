@@ -1,10 +1,10 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { reviewDimensions, reviews, trustEvents } from "../../../../db/schema";
 import {
   AuthError,
+  buildSignedTrustEvent,
   editSealedReview,
-  fingerprintPayload,
   InvalidTrustTransitionError,
   parseActor,
   rateLimit,
@@ -68,7 +68,7 @@ async function loadReview(id: string): Promise<ReviewRecord | null> {
 export async function GET(request: Request, context: Params) {
   try {
     const { id } = await context.params;
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const review = await loadReview(id);
     if (!review) {
       return Response.json({ error: "Review not found" }, { status: 404 });
@@ -88,7 +88,7 @@ export async function GET(request: Request, context: Params) {
 export async function PATCH(request: Request, context: Params) {
   try {
     const { id } = await context.params;
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const limited = rateLimit({
       key: `review:edit:${actor.profileId}`,
       limit: 40,
@@ -160,7 +160,7 @@ export async function PATCH(request: Request, context: Params) {
 export async function DELETE(request: Request, context: Params) {
   try {
     const { id } = await context.params;
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const existing = await loadReview(id);
     if (!existing) {
       return Response.json({ error: "Review not found" }, { status: 404 });
@@ -186,22 +186,32 @@ export async function DELETE(request: Request, context: Params) {
       })
       .where(eq(reviews.id, id));
 
-    const payloadHash = fingerprintPayload({
-      type: "review.tombstone",
-      reviewId: id,
-      reasonCode,
-    });
-    await db.insert(trustEvents).values({
-      id: crypto.randomUUID(),
+    const [prior] = await db
+      .select({ payloadHash: trustEvents.payloadHash })
+      .from(trustEvents)
+      .where(eq(trustEvents.subjectProfileId, existing.subjectId))
+      .orderBy(desc(trustEvents.occurredAt))
+      .limit(1);
+    const envelope = await buildSignedTrustEvent({
+      eventId: crypto.randomUUID(),
       subjectProfileId: existing.subjectId,
       actorProfileId: actor.profileId,
       eventType: "review.tombstone",
       occurredAt: tombstoned.updatedAt,
-      payloadHash,
-      priorEventHash: null,
-      registryId: process.env.NEXT_PUBLIC_REGISTRY_ID ?? "open-marketplace-local",
-      schemaVersion: 1,
-      signature: `unsigned:${payloadHash.slice(0, 16)}`,
+      payload: { type: "review.tombstone", reviewId: id, reasonCode },
+      priorEventHash: prior?.payloadHash ?? null,
+    });
+    await db.insert(trustEvents).values({
+      id: envelope.eventId,
+      subjectProfileId: envelope.subjectProfileId,
+      actorProfileId: envelope.actorProfileId ?? null,
+      eventType: envelope.eventType,
+      occurredAt: envelope.occurredAt,
+      payloadHash: envelope.payloadHash,
+      priorEventHash: envelope.priorEventHash ?? null,
+      registryId: envelope.registryId,
+      schemaVersion: envelope.schemaVersion,
+      signature: envelope.signature,
     });
 
     return Response.json({

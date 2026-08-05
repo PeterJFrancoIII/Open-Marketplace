@@ -8,7 +8,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  useSyncExternalStore,
 } from "react";
 import { getLocalMediaUrl, storeMedia } from "../lib/media-store";
 import type { Listing, SocialProof } from "../lib/types";
@@ -458,13 +457,22 @@ function relativeTime(iso: string): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-function getDeviceId(): string {
-  const key = "open-exchange-device-id";
-  const existing = window.localStorage.getItem(key);
-  if (existing) return existing;
-  const id = `device:${crypto.randomUUID()}`;
-  window.localStorage.setItem(key, id);
-  return id;
+async function ensureServerSession(): Promise<string> {
+  const response = await fetch("/api/auth/session", {
+    method: "POST",
+    credentials: "include",
+    headers: { accept: "application/json" },
+  });
+  const payload = (await response.json()) as {
+    profileId?: string;
+    error?: string;
+    message?: string;
+  };
+  if (!response.ok || !payload.profileId) {
+    throw new Error(payload.message || payload.error || "Could not establish session");
+  }
+  window.localStorage.setItem("open-exchange-profile-id", payload.profileId);
+  return payload.profileId;
 }
 
 function socialLabel(provider: SocialProof["provider"]): string {
@@ -537,11 +545,7 @@ export default function Marketplace() {
   const [requireProviderConnected, setRequireProviderConnected] = useState(false);
   const [minCompletedSales, setMinCompletedSales] = useState("");
   const [requireMediaLocal, setRequireMediaLocal] = useState(false);
-  const deviceId = useSyncExternalStore(
-    () => () => {},
-    () => getDeviceId(),
-    () => null,
-  );
+  const [sessionProfileId, setSessionProfileId] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<ModalName>(null);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -561,6 +565,26 @@ export default function Marketplace() {
   );
 
   const donationUrl = process.env.NEXT_PUBLIC_DONATION_URL ?? "";
+
+  useEffect(() => {
+    let cancelled = false;
+    void ensureServerSession()
+      .then((profileId) => {
+        if (!cancelled) setSessionProfileId(profileId);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setToast(
+            error instanceof Error
+              ? error.message
+              : "Server session unavailable — protected actions are disabled.",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const requestSocialHealth = useCallback(async (accounts: SocialProof[]) => {
     if (!accounts.length) return [];
@@ -874,12 +898,12 @@ export default function Marketplace() {
     }
     setToast("Starting provider OAuth…");
     try {
+      const profileId = sessionProfileId ?? (await ensureServerSession());
+      setSessionProfileId(profileId);
       const response = await fetch(`/api/oauth/${provider}/begin`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-profile-id": getDeviceId(),
-        },
+        credentials: "include",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ returnTo: "/" }),
       });
       const payload = (await response.json()) as {
@@ -894,7 +918,10 @@ export default function Marketplace() {
       // Local mock adapter: complete without leaving the app.
       if (payload.authorizationUrl.includes("oauth.mock.open-marketplace.local")) {
         const callback = new URL(`/api/oauth/${provider}/callback`, window.location.origin);
-        callback.searchParams.set("code", `mock:${getDeviceId().replace(/[^a-zA-Z0-9]/g, "").slice(-12)}`);
+        callback.searchParams.set(
+          "code",
+          `mock:${profileId.replace(/[^a-zA-Z0-9]/g, "").slice(-12)}`,
+        );
         const stateMatch = new URL(payload.authorizationUrl).searchParams.get("state");
         if (!stateMatch) {
           setToast("Mock OAuth state missing.");
@@ -915,7 +942,7 @@ export default function Marketplace() {
     try {
       const response = await fetch(`/api/oauth/${provider}/disconnect`, {
         method: "POST",
-        headers: { "x-profile-id": getDeviceId() },
+        credentials: "include",
       });
       const payload = (await response.json()) as { error?: string; message?: string };
       if (!response.ok) {
@@ -985,6 +1012,8 @@ export default function Marketplace() {
 
       const imageManifest = await storeMedia(selectedFiles);
 
+      const profileId = sessionProfileId ?? (await ensureServerSession());
+      setSessionProfileId(profileId);
       const payload = {
         title,
         description,
@@ -996,7 +1025,6 @@ export default function Marketplace() {
         distanceMiles: null,
         format: String(formData.get("format") ?? "Fixed price"),
         delivery: String(formData.get("delivery") ?? "Pickup"),
-        sellerId: getDeviceId(),
         sellerName: String(formData.get("sellerName") ?? "Community seller").trim(),
         socialProofs,
         imageManifest,
@@ -1008,14 +1036,13 @@ export default function Marketplace() {
 
       let listing: Listing;
       try {
-        const deviceId = getDeviceId();
         const response = await fetch("/api/listings", {
           method: "POST",
+          credentials: "include",
           headers: {
             "content-type": "application/json",
-            "x-profile-id": deviceId,
           },
-          body: JSON.stringify({ ...payload, sellerId: deviceId }),
+          body: JSON.stringify(payload),
         });
         const result = (await response.json()) as {
           listing?: RegistryRow;
@@ -1408,7 +1435,9 @@ export default function Marketplace() {
                     <TrustCard
                       model={trustModel}
                       variant="compact"
-                      isOwner={deviceId != null && listing.sellerId === deviceId}
+                      isOwner={
+                        sessionProfileId != null && listing.sellerId === sessionProfileId
+                      }
                       onFixSocial={() =>
                         setToast("Open the listing details to recheck or replace dead social links.")
                       }
@@ -1682,7 +1711,10 @@ export default function Marketplace() {
                         socialActionRequired: hasBrokenAccount(selectedListing),
                       })}
                       variant="full"
-                      isOwner={deviceId != null && selectedListing.sellerId === deviceId}
+                      isOwner={
+                        sessionProfileId != null &&
+                        selectedListing.sellerId === sessionProfileId
+                      }
                       onFixSocial={() => void recheckListingSocial(selectedListing)}
                     />
                     <button

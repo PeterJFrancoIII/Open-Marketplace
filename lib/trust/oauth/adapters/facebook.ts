@@ -47,14 +47,19 @@ export function createFacebookAdapter(config: FacebookAdapterConfig): SocialIden
     },
 
     async exchangeAuthorizationCode(input) {
-      const tokenUrl = new URL(`https://graph.facebook.com/${version}/oauth/access_token`);
-      tokenUrl.searchParams.set("client_id", config.appId);
-      tokenUrl.searchParams.set("client_secret", config.appSecret);
-      tokenUrl.searchParams.set("redirect_uri", input.redirectUri);
-      tokenUrl.searchParams.set("code", input.code);
-      tokenUrl.searchParams.set("code_verifier", input.codeVerifier);
-
-      const response = await fetchImpl(tokenUrl.toString(), { method: "GET" });
+      // POST body keeps client_secret and tokens out of request URLs/logs.
+      const tokenUrl = `https://graph.facebook.com/${version}/oauth/access_token`;
+      const response = await fetchImpl(tokenUrl, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: config.appId,
+          client_secret: config.appSecret,
+          redirect_uri: input.redirectUri,
+          code: input.code,
+          code_verifier: input.codeVerifier,
+        }),
+      });
       const payload = (await response.json()) as {
         access_token?: string;
         token_type?: string;
@@ -70,8 +75,9 @@ export function createFacebookAdapter(config: FacebookAdapterConfig): SocialIden
 
       const meUrl = new URL(`https://graph.facebook.com/${version}/me`);
       meUrl.searchParams.set("fields", "id,name,link");
-      meUrl.searchParams.set("access_token", payload.access_token);
-      const meResponse = await fetchImpl(meUrl.toString());
+      const meResponse = await fetchImpl(meUrl.toString(), {
+        headers: { authorization: `Bearer ${payload.access_token}` },
+      });
       const me = (await meResponse.json()) as {
         id?: string;
         name?: string;
@@ -100,8 +106,9 @@ export function createFacebookAdapter(config: FacebookAdapterConfig): SocialIden
       const meUrl = new URL(`https://graph.facebook.com/${version}/me`);
       // Request only fields that may exist; Graph omits unauthorized ones.
       meUrl.searchParams.set("fields", "id,name,link");
-      meUrl.searchParams.set("access_token", tokens.accessToken);
-      const response = await fetchImpl(meUrl.toString());
+      const response = await fetchImpl(meUrl.toString(), {
+        headers: { authorization: `Bearer ${tokens.accessToken}` },
+      });
       const me = (await response.json()) as {
         id?: string;
         name?: string;
@@ -127,9 +134,11 @@ export function createFacebookAdapter(config: FacebookAdapterConfig): SocialIden
     },
 
     async revoke(tokens: ProviderTokenBundle) {
-      const url = new URL(`https://graph.facebook.com/${version}/me/permissions`);
-      url.searchParams.set("access_token", tokens.accessToken);
-      await fetchImpl(url.toString(), { method: "DELETE" }).catch(() => undefined);
+      const url = `https://graph.facebook.com/${version}/me/permissions`;
+      await fetchImpl(url, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${tokens.accessToken}` },
+      }).catch(() => undefined);
     },
   };
 }

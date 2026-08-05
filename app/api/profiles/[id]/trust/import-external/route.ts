@@ -4,11 +4,12 @@ import { externalTrustClaims, profiles } from "../../../../../../db/schema";
 import {
   AuthError,
   importExternalCredential,
-  loadRegistrySignerFromEnv,
   parseActor,
+  parseStrictExternalCredential,
   PortableTrustError,
   publicExternalEvidenceView,
   rateLimit,
+  requireMatchingRegistryKeypair,
   verifyBoundedClaim,
   type OpenMarketplaceVerifiableCredential,
 } from "../../../../../../lib/trust";
@@ -26,7 +27,7 @@ function errorResponse(error: unknown) {
 export async function POST(request: Request, context: Params) {
   try {
     const { id: profileId } = await context.params;
-    const actor = parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     if (actor.profileId !== profileId && !actor.isModerator) {
       return Response.json(
         { error: "Only the profile owner or a moderator may import external claims" },
@@ -51,29 +52,35 @@ export async function POST(request: Request, context: Params) {
       return Response.json({ error: "credential is required" }, { status: 400 });
     }
 
+    const strict = parseStrictExternalCredential(body.credential);
+    const subject = strict.credentialSubject as Record<string, unknown>;
     // Force external label so foreign credentials cannot impersonate native ratings.
-    const credential: OpenMarketplaceVerifiableCredential = {
-      ...body.credential,
+    const credential = {
+      ...strict,
       credentialSubject: {
-        ...body.credential.credentialSubject,
+        ...subject,
         evidenceLabel: "external",
       },
-    };
+    } as OpenMarketplaceVerifiableCredential;
 
     let signatureVerified = false;
-    const signer = await loadRegistrySignerFromEnv({
-      REGISTRY_SIGNING_PRIVATE_JWK: process.env.REGISTRY_SIGNING_PRIVATE_JWK,
-      NEXT_PUBLIC_REGISTRY_SIGNING_PUBLIC_JWK:
-        process.env.NEXT_PUBLIC_REGISTRY_SIGNING_PUBLIC_JWK,
-      NEXT_PUBLIC_REGISTRY_ID: process.env.NEXT_PUBLIC_REGISTRY_ID,
-    });
-    if (signer.publicKey && credential.proof?.proofValue) {
-      const verified = await verifyBoundedClaim({
-        credential,
-        publicKey: signer.publicKey,
+    try {
+      const keys = await requireMatchingRegistryKeypair({
+        REGISTRY_SIGNING_PRIVATE_JWK: process.env.REGISTRY_SIGNING_PRIVATE_JWK,
+        NEXT_PUBLIC_REGISTRY_SIGNING_PUBLIC_JWK:
+          process.env.NEXT_PUBLIC_REGISTRY_SIGNING_PUBLIC_JWK,
+        NEXT_PUBLIC_REGISTRY_ID: process.env.NEXT_PUBLIC_REGISTRY_ID,
       });
-      // Foreign issuer keys are out of scope for PR 7; our public key match is best-effort.
-      signatureVerified = verified.ok;
+      if (credential.proof?.proofValue) {
+        const verified = await verifyBoundedClaim({
+          credential,
+          publicKey: keys.publicKey,
+        });
+        signatureVerified = verified.ok;
+      }
+    } catch {
+      // Import still allowed as unverified external evidence.
+      signatureVerified = false;
     }
 
     const evidence = importExternalCredential({
@@ -145,7 +152,7 @@ export async function POST(request: Request, context: Params) {
 export async function GET(request: Request, context: Params) {
   try {
     const { id: profileId } = await context.params;
-    parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
     const db = await getDb();
     const rows = await db
       .select()

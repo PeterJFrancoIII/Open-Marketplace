@@ -1,7 +1,7 @@
 import {
-  loadRegistrySignerFromEnv,
   PortableTrustError,
   rateLimit,
+  requireMatchingRegistryKeypair,
   verifyBoundedClaim,
   verifyTrustBundle,
   type OpenMarketplaceVerifiableCredential,
@@ -27,18 +27,12 @@ export async function POST(request: Request) {
       return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
     }
 
-    const signer = await loadRegistrySignerFromEnv({
+    const signer = await requireMatchingRegistryKeypair({
       REGISTRY_SIGNING_PRIVATE_JWK: process.env.REGISTRY_SIGNING_PRIVATE_JWK,
       NEXT_PUBLIC_REGISTRY_SIGNING_PUBLIC_JWK:
         process.env.NEXT_PUBLIC_REGISTRY_SIGNING_PUBLIC_JWK,
       NEXT_PUBLIC_REGISTRY_ID: process.env.NEXT_PUBLIC_REGISTRY_ID,
     });
-    if (!signer.publicKey) {
-      throw new PortableTrustError(
-        "NEXT_PUBLIC_REGISTRY_SIGNING_PUBLIC_JWK (or private JWK) is required to verify",
-        503,
-      );
-    }
 
     const body = (await request.json()) as {
       bundle?: TrustExportBundle;

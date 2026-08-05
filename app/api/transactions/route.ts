@@ -46,7 +46,7 @@ async function ensureProfile(id: string, displayName: string) {
 
 export async function GET(request: Request) {
   try {
-    const actor = parseActor(request, moderatorToken());
+    const actor = await parseActor(request, moderatorToken());
     const limited = rateLimit({
       key: `tx:list:${actor.profileId}`,
       limit: 60,
@@ -80,7 +80,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = parseActor(request, moderatorToken());
+    const actor = await parseActor(request, moderatorToken());
     const limited = rateLimit({
       key: `tx:create:${actor.profileId}`,
       limit: 20,

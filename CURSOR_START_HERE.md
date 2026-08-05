@@ -4,6 +4,35 @@ Open this extracted folder as the project root in Cursor. Read this file,
 `README.md`, `SOCIAL_TRUST_FRAMEWORK.md`, `ARCHITECTURE.md`, and `POLICY.md`
 before changing code.
 
+## Current merge gate — BLOCKED
+
+- Verdict: `OPEN_MARKETPLACE_MAIN_REVIEW_FIX_REQUIRED`
+- Pull request: [PR 1](https://github.com/PeterJFrancoIII/Open-Marketplace/pull/1)
+- Main-reviewed head: `e0e3653e6b9d42ad293fd3b759a3df732b9a6dec`
+- Rule: do **not** merge, deploy, wire production services, or begin WebRTC work until a new Main review returns PASS.
+- This GitHub branch is the source of truth. Ignore older ZIP files, patch files, and local handoff bundles.
+
+### Required remediation
+
+1. Replace caller-controlled `X-Profile-Id` / `X-Device-Id` identity with server-authenticated identity. Until then, disable protected mutations. Add negative authorization tests for transactions, reviews, disputes, appeals, OAuth ownership, moderation, and trust export.
+2. Apply strict runtime schemas to listing manifests and external credentials. Strip unknown fields; enforce field and total byte limits; reject data URLs, base64 payloads, blobs, and binary-shaped fields so D1 can never receive media bytes.
+3. Require independent buyer and seller attestations before a transaction can reach `completed` or `review_window`. One party must never manufacture a review-eligible transaction.
+4. Make transaction-derived `trust_projections` the only source for rating UI and native portable claims. Cryptographically sign and hash-chain runtime trust events; never publish `unsigned:...` events as trusted provenance.
+5. Enforce global uniqueness of provider + provider-subject identity, move Facebook secrets/tokens out of request URLs, and accept only same-origin relative `returnTo` paths.
+6. Validate at startup that configured registry private/public JWKs are one matching P-256 keypair. Fail closed when missing, malformed, or mismatched.
+7. Repair migration `0007` so an existing `0006` database with duplicate review responses is cleaned or quarantined without data loss before the unique index is created.
+
+### Evidence required before Main re-review
+
+- Install the prepared workflow at `.github/workflows/ci.yml`; do not leave it only under `docs/ci/`.
+- Run `npm ci`, `npm run lint`, `npm test`, `npm run build`, and `npm audit --omit=dev`.
+- Prove migrations `0000` → `0007` on an empty D1 database and `0001` → `0007` plus dirty `0006` → `0007` on populated fixtures.
+- Add regression tests for every remediation item above, including hostile payloads and unauthorized callers.
+- Resolve the production dependency advisories or document an explicit reviewed exception.
+- Split the oversized branch into staged, reviewable PRs before merging: trust foundation, transactions, reviews/projections, UI, OAuth, moderation, portable trust, and branding.
+- Request a fresh defect-first Main review. Only a PASS authorizes merge/deploy/wiring or new feature work.
+
+
 ## Project state
 
 - Product: **Open Marketplace**, a lightweight open-source local marketplace.
@@ -11,11 +40,10 @@ before changing code.
 - Framework: Next.js-compatible Vinext, React 19, TypeScript, Cloudflare Worker.
 - Registry: Cloudflare D1 via Drizzle migrations.
 - Media: image bytes remain in the seller's IndexedDB media vault.
-- Latest validated source commit: social-trust PR 1+2 on `codex/social-trust-framework`.
+- Current review branch: `codex/social-trust-framework`; the reviewed head above is blocked pending remediation.
 - Current deployment:
   `https://open-exchange-market.tempus-innov-6508.chatgpt.site`
-- Validation completed: ESLint, production build, artifact validation,
-  rendered-page tests, trust-domain tests, and transaction-lifecycle tests.
+- Last Main review: 46/46 tests passed and lint had no errors, but there is no installed CI workflow, migration `0007` is unsafe for dirty existing data, and production dependency advisories remain.
 
 ## Implemented functionality
 
@@ -24,7 +52,7 @@ before changing code.
 - Best match, newest, ending soon, price, and distance sorting.
 - Fixed-price and auction-shaped listings.
 - Listing composer with local-only image storage and SHA-256 manifests.
-- D1 metadata registry; no image bytes are accepted by `/api/listings`.
+- D1 metadata registry design; strict schema enforcement that guarantees no media bytes reach D1 is a current merge blocker.
 - Clickable Facebook, Instagram, and TikTok account links.
 - Visible social-account creation dates and friend/follower counts.
 - Live, allowlisted social-link health checks on load and publication.
@@ -60,6 +88,9 @@ before changing code.
     transaction and keep two-sided reviews sealed until simultaneous reveal.
 
 ## Important honesty boundaries
+
+- Authentication and authorization are not production-ready: caller-controlled identity headers make protected mutations impersonable until remediation item 1 is complete.
+- Existing trust exports and UI ratings are not production-grade provenance until transaction-derived projections and signed hash-chained events are wired end to end.
 
 - Account creation dates and friend/follower counts are currently self-reported.
 - Live-link checks are automated URL-health checks, not identity verification.
@@ -113,22 +144,12 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
 
 ## Recommended next milestones
 
-1. ~~Complete PR 1 in `SOCIAL_TRUST_FRAMEWORK.md`: normalized trust storage,
-   append-only events, deterministic projections, migration, and compatibility
-   reads.~~
-2. ~~Complete PR 2: authenticated transactions, two-party meetup completion,
-   review eligibility, idempotency, and rate limits.~~
-3. ~~Complete PR 3: 14-day double-blind reviews and Bayesian projections from
-   eligible reviews.~~
-4. ~~Complete PR 4: one accessible evidence-based trust card on every marketplace
-   surface.~~
-5. ~~Complete PR 5: official OAuth adapters, encrypted grants, and honest field
-   degradation; keep link health separate from identity verification.~~
-6. ~~Complete PR 6: disputes, appeals, rate limits, and transparent moderation.~~
-7. ~~Complete PR 7: signed portable trust claims and verifiable exports.~~
-8. Implement WebRTC data-channel media transfer and hash-check every received
-   blob.
-9. Configure the donation destination (`NEXT_PUBLIC_DONATION_URL`).
+1. Fix the seven Main-review blockers above, beginning with server-authenticated identity.
+2. Install CI and add regression tests for every blocker.
+3. Prove all fresh and upgrade migration paths, including duplicate-response data at `0006`.
+4. Split the current oversized PR into the staged review units listed above.
+5. Run the full evidence suite and request Main re-review.
+6. Only after PASS: merge the approved stages, configure the donation destination, and then plan WebRTC media transfer.
 
 ## Definition of done for each Cursor change
 
@@ -140,13 +161,15 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
 - Document new environment variables in `.env.example`.
 - Do not commit secrets, tokens, social cookies, passwords, or private exports.
 
-## Suggested first Cursor Agent prompt
+## Suggested Cursor Agent prompt
 
-> Read CURSOR_START_HERE.md, SOCIAL_TRUST_FRAMEWORK.md, README.md,
-> ARCHITECTURE.md, and POLICY.md. Inspect the current code before editing.
-> Implement only PR 1 from the Social Trust delivery plan. Preserve local-only
-> media, the allowlisted link checker, and current compatibility reads. Do not
-> create a universal trust score or any rating path without an authenticated
-> completed transaction. Explain the plan, make focused changes, generate and
-> inspect the migration, add tests, and finish by running lint and the full test
-> suite.
+> Work only on the merge-gate remediation for Open Marketplace PR 1 on
+> `codex/social-trust-framework`. Read `CURSOR_START_HERE.md`,
+> `SOCIAL_TRUST_FRAMEWORK.md`, `ARCHITECTURE.md`, and `POLICY.md` before
+> editing. Preserve local-only media, separate buyer/seller reputation, and the
+> rule that social popularity never ranks or grants permissions. Fix the seven
+> blockers in the listed order, starting with server-authenticated identity.
+> Add adversarial regression tests, install CI, and verify fresh plus dirty
+> upgrade migrations through `0007`. Do not start WebRTC or other features,
+> and do not merge, deploy, or wire production services. Finish with exact
+> commands, return codes, and the commit SHA for a new Main review.

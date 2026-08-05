@@ -24,7 +24,7 @@ before changing code.
 
 ### Evidence required before Main re-review
 
-- [x] Install `.github/workflows/ci.yml`
+- [ ] Install `.github/workflows/ci.yml` from `docs/ci/github-actions.ci.yml` (requires a GitHub token with the `workflow` scope; OAuth App push was refused)
 - [x] Regression tests in `tests/merge-gate-remediation.test.ts`
 - [x] Migration proofs (`0000→0008`, upgrade `0001→0008`, dirty `0006→0007`)
 - [x] Dependency advisories documented in `docs/dependency-advisories.md`

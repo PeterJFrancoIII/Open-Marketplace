@@ -11,3 +11,4 @@ export * from "./transactions.ts";
 export * from "./reviews.ts";
 export * from "./trust-card-model.ts";
 export * from "./oauth/index.ts";
+export * from "./safety.ts";

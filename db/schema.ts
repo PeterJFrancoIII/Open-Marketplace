@@ -376,6 +376,8 @@ export const disputes = sqliteTable(
     status: text("status").notNull().default("open"),
     reasonCode: text("reason_code").notNull(),
     summary: text("summary").notNull().default(""),
+    resolutionCode: text("resolution_code"),
+    publicOutcome: text("public_outcome"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
     resolvedAt: text("resolved_at"),
   },
@@ -393,6 +395,8 @@ export const moderationActions = sqliteTable(
     action: text("action").notNull(),
     ruleCode: text("rule_code").notNull(),
     publicReason: text("public_reason").notNull().default(""),
+    status: text("status").notNull().default("active"),
+    scopeJson: text("scope_json"),
     expiresAt: text("expires_at"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
@@ -416,4 +420,29 @@ export const appeals = sqliteTable(
     resolvedAt: text("resolved_at"),
   },
   (table) => [index("appeals_action_idx").on(table.moderationActionId)],
+);
+
+export const reviewReports = sqliteTable(
+  "review_reports",
+  {
+    id: text("id").primaryKey(),
+    reviewId: text("review_id")
+      .notNull()
+      .references(() => reviews.id, { onDelete: "cascade" }),
+    reporterId: text("reporter_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    reasonCode: text("reason_code").notNull(),
+    status: text("status").notNull().default("open"),
+    details: text("details").notNull().default(""),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    resolvedAt: text("resolved_at"),
+  },
+  (table) => [
+    index("review_reports_review_idx").on(table.reviewId),
+    uniqueIndex("review_reports_one_per_reporter_idx").on(
+      table.reviewId,
+      table.reporterId,
+    ),
+  ],
 );

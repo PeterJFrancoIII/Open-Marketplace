@@ -550,6 +550,11 @@ export default function Marketplace() {
   const [filePreviews, setFilePreviews] = useState<string[]>([]);
   const [localMedia, setLocalMedia] = useState<Record<string, string>>({});
   const [toast, setToast] = useState("");
+  const [transparency, setTransparency] = useState<{
+    disputes: { opened: number; resolved: number };
+    appeals: { opened: number; upheld: number; denied: number };
+    reviewReports: { opened: number; actioned: number };
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [socialDrafts, setSocialDrafts] = useState<SocialDraft[]>(
     emptySocialDrafts.map((account) => ({ ...account })),
@@ -653,6 +658,27 @@ export default function Marketplace() {
     const timer = window.setTimeout(() => setToast(""), 3200);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    if (modal !== "donate") return;
+    let cancelled = false;
+    void fetch("/api/transparency")
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return (await response.json()) as {
+          disputes: { opened: number; resolved: number };
+          appeals: { opened: number; upheld: number; denied: number };
+          reviewReports: { opened: number; actioned: number };
+        };
+      })
+      .then((payload) => {
+        if (!cancelled && payload) setTransparency(payload);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [modal]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1597,6 +1623,22 @@ export default function Marketplace() {
                   <button className="button button-primary" onClick={() => setToast("Add NEXT_PUBLIC_DONATION_URL before launch.")}>Configure donations</button>
                 )}
               </div>
+              {transparency && (
+                <div className="transparency-card" aria-label="Public moderation transparency">
+                  <strong>Transparency (aggregate only)</strong>
+                  <p>
+                    Disputes opened {transparency.disputes.opened} · resolved{" "}
+                    {transparency.disputes.resolved}. Appeals {transparency.appeals.opened} (
+                    {transparency.appeals.upheld} upheld / {transparency.appeals.denied} denied).
+                    Review reports {transparency.reviewReports.opened} (
+                    {transparency.reviewReports.actioned} actioned).
+                  </p>
+                  <p className="form-note">
+                    Complainant identities and private statements are never published. Adverse
+                    actions include an appeal path.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

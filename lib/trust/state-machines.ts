@@ -139,3 +139,74 @@ export function reviewRevealAt(
   if (now >= deadline) return deadline;
   return null;
 }
+
+export type DisputeStatus = "open" | "under_review" | "resolved" | "withdrawn";
+export type AppealStatus = "open" | "under_review" | "upheld" | "denied" | "withdrawn";
+export type ModerationActionStatus = "active" | "expired" | "overturned" | "superseded";
+export type ReviewReportStatus = "open" | "under_review" | "actioned" | "dismissed";
+
+const DISPUTE_TRANSITIONS: Record<DisputeStatus, DisputeStatus[]> = {
+  open: ["under_review", "resolved", "withdrawn"],
+  under_review: ["resolved", "withdrawn"],
+  resolved: [],
+  withdrawn: [],
+};
+
+const APPEAL_TRANSITIONS: Record<AppealStatus, AppealStatus[]> = {
+  open: ["under_review", "upheld", "denied", "withdrawn"],
+  under_review: ["upheld", "denied", "withdrawn"],
+  upheld: [],
+  denied: [],
+  withdrawn: [],
+};
+
+const MODERATION_STATUS_TRANSITIONS: Record<
+  ModerationActionStatus,
+  ModerationActionStatus[]
+> = {
+  active: ["expired", "overturned", "superseded"],
+  expired: [],
+  overturned: [],
+  superseded: [],
+};
+
+const REVIEW_REPORT_TRANSITIONS: Record<ReviewReportStatus, ReviewReportStatus[]> = {
+  open: ["under_review", "actioned", "dismissed"],
+  under_review: ["actioned", "dismissed"],
+  actioned: [],
+  dismissed: [],
+};
+
+export function assertDisputeTransition(from: DisputeStatus, to: DisputeStatus): void {
+  if (!(DISPUTE_TRANSITIONS[from] ?? []).includes(to)) {
+    throw new InvalidTrustTransitionError(`Invalid dispute transition ${from} → ${to}`);
+  }
+}
+
+export function assertAppealTransition(from: AppealStatus, to: AppealStatus): void {
+  if (!(APPEAL_TRANSITIONS[from] ?? []).includes(to)) {
+    throw new InvalidTrustTransitionError(`Invalid appeal transition ${from} → ${to}`);
+  }
+}
+
+export function assertModerationStatusTransition(
+  from: ModerationActionStatus,
+  to: ModerationActionStatus,
+): void {
+  if (!(MODERATION_STATUS_TRANSITIONS[from] ?? []).includes(to)) {
+    throw new InvalidTrustTransitionError(
+      `Invalid moderation status transition ${from} → ${to}`,
+    );
+  }
+}
+
+export function assertReviewReportTransition(
+  from: ReviewReportStatus,
+  to: ReviewReportStatus,
+): void {
+  if (!(REVIEW_REPORT_TRANSITIONS[from] ?? []).includes(to)) {
+    throw new InvalidTrustTransitionError(
+      `Invalid review-report transition ${from} → ${to}`,
+    );
+  }
+}

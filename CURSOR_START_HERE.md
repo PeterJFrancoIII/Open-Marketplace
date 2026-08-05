@@ -108,8 +108,8 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
    reads.~~
 2. ~~Complete PR 2: authenticated transactions, two-party meetup completion,
    review eligibility, idempotency, and rate limits.~~
-3. Complete PR 3: 14-day double-blind reviews and Bayesian projections from
-   eligible reviews.
+3. ~~Complete PR 3: 14-day double-blind reviews and Bayesian projections from
+   eligible reviews.~~
 4. Complete PR 4: one accessible evidence-based trust card on every marketplace
    surface.
 5. Complete PR 5: official OAuth adapters, encrypted grants, and honest field

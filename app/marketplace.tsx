@@ -971,8 +971,13 @@ export default function Marketplace() {
     <div className="app-shell">
       <header className="topbar">
         <a className="wordmark" href="#top" aria-label="Open Marketplace home">
-          <span className="wordmark-mark">↔</span>
-          <span className="wordmark-copy">open marketplace</span>
+          <img
+            className="wordmark-logo"
+            src="/open-marketplace-logo-256.png"
+            alt="Open Marketplace"
+            width={180}
+            height={135}
+          />
         </a>
 
         <label className="search-wrap">
@@ -1082,6 +1087,24 @@ export default function Marketplace() {
         </aside>
 
         <main className="main-content">
+          <section className="brand-hero" aria-label="Open Marketplace brand">
+            <img
+              className="brand-hero-logo"
+              src="/open-marketplace-logo-800.png"
+              alt="Open Marketplace — real people, real profiles, real trust"
+              width={800}
+              height={600}
+            />
+            <div className="brand-hero-copy">
+              <h1>Open Marketplace</h1>
+              <p className="trust-line">
+                <span>Real people.</span> <span>Real profiles.</span>{" "}
+                <span>Real trust.</span>
+              </p>
+              <p>Connect your world. Trade with confidence. Photos stay on sellers&apos; devices.</p>
+            </div>
+          </section>
+
           <section className="principle-banner" aria-label="How trust data works">
             <span className="principle-icon" aria-hidden="true">#</span>
             <div>

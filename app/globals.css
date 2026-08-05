@@ -1,15 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --ink: #151518;
-  --muted: #69696f;
-  --line: #deddd8;
+  --ink: #10243a;
+  --muted: #5a6b7c;
+  --line: #d7e0ea;
   --surface: #ffffff;
-  --canvas: #f5f4ef;
-  --brand: #5a4ff3;
-  --brand-dark: #4438d4;
-  --brand-soft: #ebe9ff;
-  --lime: #d9ff63;
+  --canvas: #f3f7fb;
+  --brand: #2f6bff;
+  --brand-dark: #1f4fd1;
+  --brand-soft: #e4edff;
+  --accent: #ff7a2f;
+  --accent-soft: #ffe8d9;
+  --lime: #2fc96b;
+  --lime-soft: #ddf8e8;
   --danger: #bb2b32;
 }
 
@@ -74,25 +77,72 @@ a {
 .wordmark {
   align-items: center;
   display: flex;
-  font-size: 18px;
-  font-weight: 800;
-  gap: 9px;
-  letter-spacing: -0.04em;
+  flex-shrink: 0;
   text-decoration: none;
-  white-space: nowrap;
 }
 
-.wordmark-mark {
+.wordmark-logo {
+  display: block;
+  height: 44px;
+  width: auto;
+  object-fit: contain;
+}
+
+.brand-hero {
   align-items: center;
-  background: var(--brand);
-  border-radius: 11px;
-  color: #fff;
-  display: inline-flex;
-  font-size: 20px;
-  height: 34px;
-  justify-content: center;
-  transform: rotate(-3deg);
-  width: 34px;
+  background:
+    radial-gradient(circle at 12% 20%, var(--brand-soft), transparent 42%),
+    radial-gradient(circle at 88% 10%, var(--lime-soft), transparent 40%),
+    radial-gradient(circle at 70% 90%, var(--accent-soft), transparent 45%),
+    var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(180px, 280px) 1fr;
+  margin-bottom: 1rem;
+  overflow: hidden;
+  padding: 1.1rem 1.25rem;
+}
+
+.brand-hero-logo {
+  display: block;
+  height: auto;
+  max-height: 220px;
+  object-fit: contain;
+  width: 100%;
+}
+
+.brand-hero-copy {
+  display: grid;
+  gap: 0.55rem;
+  align-content: center;
+}
+
+.brand-hero-copy h1 {
+  font-size: clamp(1.55rem, 3vw, 2.2rem);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.brand-hero-copy .trust-line {
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.brand-hero-copy .trust-line span:nth-child(1) { color: var(--brand); }
+.brand-hero-copy .trust-line span:nth-child(2) { color: var(--accent); }
+.brand-hero-copy .trust-line span:nth-child(3) { color: var(--lime); }
+
+.brand-hero-copy p {
+  color: var(--muted);
+  margin: 0;
+  max-width: 36rem;
 }
 
 .search-wrap {
@@ -1289,9 +1339,24 @@ a {
     padding: 11px 13px;
   }
 
-  .wordmark-copy,
+  .wordmark-logo {
+    height: 36px;
+  }
+
   .desktop-action {
     display: none;
+  }
+
+  .brand-hero {
+    grid-template-columns: 1fr;
+    padding: 1rem;
+    text-align: center;
+  }
+
+  .brand-hero-logo {
+    margin: 0 auto;
+    max-height: 180px;
+    max-width: 260px;
   }
 
   .mobile-label {

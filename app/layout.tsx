@@ -13,15 +13,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Open Marketplace — a marketplace owned by its community",
+  title: "Open Marketplace — real people, real profiles, real trust",
   description:
-    "A lightweight, open-source marketplace where listing media stays with sellers.",
+    "A lightweight, open-source marketplace where listing media stays with sellers. Connect your world. Trade with confidence.",
   other: {
     "codex-preview": "development",
   },
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: [{ url: "/favicon-32.png", type: "image/png" }, { url: "/favicon.svg" }],
+    shortcut: "/favicon-32.png",
+    apple: "/open-marketplace-logo-256.png",
   },
 };
 

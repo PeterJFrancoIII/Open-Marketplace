@@ -159,6 +159,63 @@ export const socialConnections = sqliteTable(
   ],
 );
 
+/** Short-lived PKCE state — code_verifier never leaves the server. */
+export const oauthSessions = sqliteTable(
+  "oauth_sessions",
+  {
+    state: text("state").primaryKey(),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    codeVerifier: text("code_verifier").notNull(),
+    redirectUri: text("redirect_uri").notNull(),
+    returnTo: text("return_to").notNull().default("/"),
+    nonce: text("nonce").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    expiresAt: text("expires_at").notNull(),
+  },
+  (table) => [
+    index("oauth_sessions_profile_idx").on(table.profileId),
+    index("oauth_sessions_expires_idx").on(table.expiresAt),
+  ],
+);
+
+/** Encrypted provider refresh/access grants — ciphertext only in D1. */
+export const providerGrants = sqliteTable(
+  "provider_grants",
+  {
+    id: text("id").primaryKey(),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    socialConnectionId: text("social_connection_id").references(
+      () => socialConnections.id,
+      { onDelete: "set null" },
+    ),
+    provider: text("provider").notNull(),
+    providerSubjectHash: text("provider_subject_hash").notNull(),
+    grantKid: text("grant_kid").notNull().default("v1"),
+    grantIv: text("grant_iv").notNull().default(""),
+    grantCiphertext: text("grant_ciphertext").notNull().default(""),
+    grantedScopesJson: text("granted_scopes_json").notNull().default("[]"),
+    status: text("status").notNull().default("active"),
+    expiresAt: text("expires_at"),
+    nextRefreshAt: text("next_refresh_at"),
+    refreshBackoffSeconds: integer("refresh_backoff_seconds").notNull().default(3600),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    revokedAt: text("revoked_at"),
+  },
+  (table) => [
+    index("provider_grants_profile_idx").on(table.profileId),
+    uniqueIndex("provider_grants_profile_provider_idx").on(
+      table.profileId,
+      table.provider,
+    ),
+  ],
+);
+
 export const transactions = sqliteTable(
   "transactions",
   {

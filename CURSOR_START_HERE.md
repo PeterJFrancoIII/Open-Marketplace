@@ -63,7 +63,8 @@ before changing code.
 
 - Account creation dates and friend/follower counts are currently self-reported.
 - Live-link checks are automated URL-health checks, not identity verification.
-- Public OAuth, production authorization, transaction settlement, messages, and
+- Facebook OAuth (PKCE + encrypted grants) is implemented; Instagram/TikTok
+  adapters, production authorization, transaction settlement, messages, and
   WebRTC cross-device media delivery are not complete.
 - A seller browser must be online for true seller-device media delivery unless
   an explicit encrypted pinning mode is added.
@@ -89,6 +90,9 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
 - `app/globals.css` — responsive visual system.
 - `app/api/listings/route.ts` — D1 listing reads/writes and publication rules.
 - `app/api/social-health/route.ts` — social-link checking endpoint.
+- `app/api/oauth/[provider]/{begin,callback,disconnect,refresh}/` — Facebook
+  PKCE OAuth + encrypted grants (PR 5).
+- `lib/trust/oauth/` — adapters, AES-GCM grant sealing, claim normalization.
 - `lib/social-health.ts` — allowlisted URL normalization, redirects, and health
   classification.
 - `lib/media-store.ts` — IndexedDB media vault and SHA-256 asset storage.
@@ -112,8 +116,8 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
    eligible reviews.~~
 4. ~~Complete PR 4: one accessible evidence-based trust card on every marketplace
    surface.~~
-5. Complete PR 5: official OAuth adapters, encrypted grants, and honest field
-   degradation; keep link health separate from identity verification.
+5. ~~Complete PR 5: official OAuth adapters, encrypted grants, and honest field
+   degradation; keep link health separate from identity verification.~~
 6. Complete PR 6: disputes, appeals, rate limits, and transparent moderation.
 7. Complete PR 7: signed portable trust claims and verifiable exports.
 8. Implement WebRTC data-channel media transfer and hash-check every received

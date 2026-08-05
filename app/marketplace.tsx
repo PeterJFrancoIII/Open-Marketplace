@@ -654,6 +654,34 @@ export default function Marketplace() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauth = params.get("oauth");
+    const oauthError = params.get("oauth_error");
+    const provider = params.get("provider") ?? "facebook";
+    const omitted = params.get("omitted");
+    let message = "";
+    if (oauth === "connected") {
+      const omitNote = omitted
+        ? ` Provider omitted: ${omitted.replace(/,/g, ", ")}.`
+        : "";
+      message = `${provider} connected. Metrics show provider source only when returned.${omitNote}`;
+      params.delete("oauth");
+      params.delete("provider");
+      params.delete("omitted");
+    } else if (oauthError) {
+      message = `OAuth: ${oauthError}`;
+      params.delete("oauth_error");
+    } else {
+      return;
+    }
+    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
+    window.history.replaceState({}, "", next);
+    // Defer toast so the effect only syncs the URL (external system) synchronously.
+    const timer = window.setTimeout(() => setToast(message), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const filteredListings = useMemo(() => {
     const query = search.trim().toLowerCase();
     const minimum = minPrice ? Number(minPrice) * 100 : null;
@@ -811,6 +839,67 @@ export default function Marketplace() {
           : account,
       ),
     );
+  }
+
+  async function connectProviderOAuth(provider: SocialDraft["provider"]) {
+    if (provider !== "facebook") {
+      setToast("Only Facebook OAuth is wired in PR 5. Instagram/TikTok adapters come next.");
+      return;
+    }
+    setToast("Starting provider OAuth…");
+    try {
+      const response = await fetch(`/api/oauth/${provider}/begin`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-profile-id": getDeviceId(),
+        },
+        body: JSON.stringify({ returnTo: "/" }),
+      });
+      const payload = (await response.json()) as {
+        authorizationUrl?: string;
+        error?: string;
+        message?: string;
+      };
+      if (!response.ok || !payload.authorizationUrl) {
+        setToast(payload.message || payload.error || "OAuth is not configured on this instance.");
+        return;
+      }
+      // Local mock adapter: complete without leaving the app.
+      if (payload.authorizationUrl.includes("oauth.mock.open-marketplace.local")) {
+        const callback = new URL(`/api/oauth/${provider}/callback`, window.location.origin);
+        callback.searchParams.set("code", `mock:${getDeviceId().replace(/[^a-zA-Z0-9]/g, "").slice(-12)}`);
+        const stateMatch = new URL(payload.authorizationUrl).searchParams.get("state");
+        if (!stateMatch) {
+          setToast("Mock OAuth state missing.");
+          return;
+        }
+        callback.searchParams.set("state", stateMatch);
+        window.location.assign(callback.toString());
+        return;
+      }
+      window.location.assign(payload.authorizationUrl);
+    } catch {
+      setToast("Could not start OAuth. Check provider credentials and encryption key.");
+    }
+  }
+
+  async function disconnectProviderOAuth(provider: SocialDraft["provider"]) {
+    if (provider !== "facebook") return;
+    try {
+      const response = await fetch(`/api/oauth/${provider}/disconnect`, {
+        method: "POST",
+        headers: { "x-profile-id": getDeviceId() },
+      });
+      const payload = (await response.json()) as { error?: string; message?: string };
+      if (!response.ok) {
+        setToast(payload.message || payload.error || "Disconnect failed.");
+        return;
+      }
+      setToast(`${provider} provider grant revoked. Link health is unchanged.`);
+    } catch {
+      setToast("Disconnect failed.");
+    }
   }
 
   async function validateSocialDrafts() {
@@ -1444,6 +1533,23 @@ export default function Marketplace() {
                           />
                         </label>
                         <div className="social-edit-action">
+                          {account.provider === "facebook" && (
+                            <>
+                              <button
+                                type="button"
+                                className="oauth-connect"
+                                onClick={() => void connectProviderOAuth(account.provider)}
+                              >
+                                Connect with Facebook
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void disconnectProviderOAuth(account.provider)}
+                              >
+                                Disconnect OAuth
+                              </button>
+                            </>
+                          )}
                           {account.url && (
                             <button type="button" onClick={() => removeSocialDraft(index)}>Remove</button>
                           )}

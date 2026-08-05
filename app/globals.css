@@ -1001,6 +1001,12 @@ a {
   min-height: 39px;
 }
 
+.social-edit-action button.oauth-connect {
+  background: var(--accent-blue, #1b4f8a);
+  color: #fff;
+  border-color: transparent;
+}
+
 .social-edit-action button,
 .recheck-button {
   background: none;

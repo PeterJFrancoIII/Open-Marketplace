@@ -33,45 +33,20 @@ export async function GET(request: Request, context: Params) {
       return redirectWithError(url.origin, "Missing OAuth code or state");
     }
 
-    // Mock local completion shortcut when ALLOW_MOCK_OAUTH=1 and code is mock:*
     const runtime = await buildRuntimeOAuthService();
-    // Recover returnTo from session via complete() path — take happens inside service.
-    // Preload existing connection for merge.
-    // We need profileId from session; complete() takes session first internally.
-    // Load connection after we know profile — complete returns connection.
+    const session = await runtime.peekSession(state);
+    const existing = session
+      ? await runtime.loadConnection(session.profileId, raw)
+      : null;
 
-    // Peek profile by temporarily using complete with null existing, then upsert.
-    // For existing connection merge, hydrate after session take... service takes session
-    // inside complete, so pass existingConnection only if we know profile.
-    // Workaround: complete without existing; if a connection already exists for
-    // profile+provider, load it first by parsing nothing — instead load after
-    // begin stored profile on session. We need take preview.
-
-    // Simpler: complete with null existingConnection; then if loadConnection finds
-    // another row for provider, we still upsert by returned connection id.
-    // Prefer merging: take session is inside service. Add optional preload via
-    // loading all connections after complete using grant.profileId.
-
-    // Load prior connection if the session profile is already known via grant store
-    // after complete; merge ids below.
+    // Atomically persists provider grant + social_connection (+ profile ensure).
     const completed = await runtime.service.complete({
       provider: raw,
       code,
       state,
-      existingConnection: null,
+      existingConnection: existing,
     });
 
-    const existing = await runtime.loadConnection(completed.grant.profileId, raw);
-    const connection = existing
-      ? {
-          ...completed.connection,
-          id: existing.id,
-          createdAt: existing.createdAt,
-        }
-      : completed.connection;
-
-    await runtime.ensureProfile(completed.grant.profileId);
-    await runtime.upsertConnection(connection);
     await runtime.syncProfileSocialAccounts(completed.grant.profileId);
 
     const returnPath = completed.returnTo.startsWith("/") ? completed.returnTo : "/";

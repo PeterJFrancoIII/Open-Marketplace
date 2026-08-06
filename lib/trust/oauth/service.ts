@@ -95,6 +95,11 @@ function toPublicGrant(grant: StoredProviderGrant): PublicGrantView {
   return view;
 }
 
+export type OAuthPersistAtomic = (input: {
+  grant: StoredProviderGrant;
+  connection: SocialConnection;
+}) => Promise<void>;
+
 export type OAuthService = {
   begin(input: {
     profileId: string;
@@ -139,6 +144,8 @@ export function createOAuthService(deps: {
   sessions: OAuthSessionStore;
   grants: ProviderGrantStore;
   encryptionKey: Uint8Array | string;
+  /** When set, grant+connection persist together (D1 batch). */
+  persistAtomic?: OAuthPersistAtomic;
 }): OAuthService {
   const key =
     typeof deps.encryptionKey === "string"
@@ -210,24 +217,6 @@ export function createOAuthService(deps: {
         session.profileId,
         input.provider,
       );
-      const grant: StoredProviderGrant = {
-        id: existing?.id ?? newId("grant"),
-        profileId: session.profileId,
-        socialConnectionId: existing?.socialConnectionId ?? null,
-        provider: input.provider,
-        providerSubjectHash: subjectHash,
-        grant: sealed,
-        grantedScopes: tokens.grantedScopes,
-        status: "active",
-        expiresAt: tokens.expiresAt ?? null,
-        nextRefreshAt: new Date(now.getTime() + 24 * 3600_000).toISOString(),
-        refreshBackoffSeconds: 3600,
-        createdAt: existing?.createdAt ?? stamp,
-        updatedAt: stamp,
-        revokedAt: null,
-      };
-      await deps.grants.upsert(grant);
-
       const baseConnection: SocialConnection =
         input.existingConnection ??
         ({
@@ -250,6 +239,29 @@ export function createOAuthService(deps: {
         now,
       );
 
+      const grant: StoredProviderGrant = {
+        id: existing?.id ?? newId("grant"),
+        profileId: session.profileId,
+        socialConnectionId: connection.id,
+        provider: input.provider,
+        providerSubjectHash: subjectHash,
+        grant: sealed,
+        grantedScopes: tokens.grantedScopes,
+        status: "active",
+        expiresAt: tokens.expiresAt ?? null,
+        nextRefreshAt: new Date(now.getTime() + 24 * 3600_000).toISOString(),
+        refreshBackoffSeconds: 3600,
+        createdAt: existing?.createdAt ?? stamp,
+        updatedAt: stamp,
+        revokedAt: null,
+      };
+
+      if (deps.persistAtomic) {
+        await deps.persistAtomic({ grant, connection });
+      } else {
+        await deps.grants.upsert(grant);
+      }
+
       const publicGrant = toPublicGrant(grant);
       const payload = {
         grant: publicGrant,
@@ -271,15 +283,20 @@ export function createOAuthService(deps: {
         const tokens = await openTokenBundle(stored.grant, key);
         const claims = await adapter.refreshPublicClaims(tokens);
         const stamp = now.toISOString();
+        const connection = applyProviderClaimsToConnection(input.connection, claims, now);
         const updatedGrant: StoredProviderGrant = {
           ...stored,
+          socialConnectionId: connection.id,
           updatedAt: stamp,
           nextRefreshAt: new Date(now.getTime() + 24 * 3600_000).toISOString(),
           refreshBackoffSeconds: 3600,
           status: "active",
         };
-        await deps.grants.upsert(updatedGrant);
-        const connection = applyProviderClaimsToConnection(input.connection, claims, now);
+        if (deps.persistAtomic) {
+          await deps.persistAtomic({ grant: updatedGrant, connection });
+        } else {
+          await deps.grants.upsert(updatedGrant);
+        }
         const payload = {
           grant: toPublicGrant(updatedGrant),
           connection,

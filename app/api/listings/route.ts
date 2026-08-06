@@ -11,12 +11,8 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { getDb } from "../../../db";
-import {
-  listings,
-  profiles,
-  socialConnections,
-  trustProjections,
-} from "../../../db/schema";
+import { listings, profiles, socialConnections } from "../../../db/schema";
+import { loadProvenProjection } from "../../../lib/trust/projection-provenance.ts";
 import { checkSocialAccounts } from "../../../lib/social-health";
 import {
   AuthError,
@@ -56,11 +52,12 @@ function enrichSocialProofsWithOAuth(
       .filter((c) => c.status === "oauth_verified")
       .map((c) => [c.provider, c] as const),
   );
-  if (!oauthByProvider.size) return proofs;
-
+  // Always strip client-spoofed oauth badges; re-apply only from oauth_verified rows.
   const next = proofs.map((proof) => {
     const oauth = oauthByProvider.get(proof.provider);
-    if (!oauth) return proof;
+    if (!oauth) {
+      return { ...proof, metricsSource: "self-reported" as const };
+    }
     oauthByProvider.delete(proof.provider);
     return {
       ...proof,
@@ -204,16 +201,13 @@ export async function GET(request: Request) {
       oauthBySeller.set(row.profileId, list);
     }
 
-    const projectionRows =
-      sellerIds.length > 0
-        ? await db
-            .select()
-            .from(trustProjections)
-            .where(inArray(trustProjections.profileId, sellerIds))
-        : [];
-    const projectionBySeller = new Map(
-      projectionRows.map((row) => [row.profileId, row]),
+    const provenEntries = await Promise.all(
+      sellerIds.map(async (sellerId) => {
+        const snapshot = await loadProvenProjection(sellerId);
+        return [sellerId, snapshot] as const;
+      }),
     );
+    const projectionBySeller = new Map(provenEntries);
 
     return Response.json({
       listings: rows.map(({ listing, profile }) => {
@@ -225,42 +219,16 @@ export async function GET(request: Request) {
           oauthBySeller.get(listing.sellerId) ?? [],
         );
         const projection = projectionBySeller.get(listing.sellerId);
-        let itemsSold = 0;
-        let sellerRating: number | null = null;
-        let sellerRatingCount = 0;
-        let buyerRating: number | null = null;
-        let buyerRatingCount = 0;
-        if (projection?.payloadJson) {
-          try {
-            const payload = JSON.parse(projection.payloadJson) as {
-              seller?: {
-                completedSales?: number;
-                displayMean?: number | null;
-                ratingCount?: number;
-              };
-              buyer?: {
-                displayMean?: number | null;
-                ratingCount?: number;
-              };
-            };
-            itemsSold = Number(payload.seller?.completedSales ?? 0);
-            sellerRating = payload.seller?.displayMean ?? null;
-            sellerRatingCount = Number(payload.seller?.ratingCount ?? 0);
-            buyerRating = payload.buyer?.displayMean ?? null;
-            buyerRatingCount = Number(payload.buyer?.ratingCount ?? 0);
-          } catch {
-            // Projections-only: leave zeros rather than legacy profile denorms.
-          }
-        }
         return {
           ...listing,
           sellerName: profile?.displayName ?? listing.sellerName,
           socialProofsJson: JSON.stringify(enriched),
-          itemsSold,
-          sellerRating,
-          sellerRatingCount,
-          buyerRating,
-          buyerRatingCount,
+          // Only provenance-backed projections may populate public ratings.
+          itemsSold: projection?.sellerCompletedSales ?? 0,
+          sellerRating: projection?.sellerDisplayMean ?? null,
+          sellerRatingCount: projection?.sellerRatingCount ?? 0,
+          buyerRating: projection?.buyerDisplayMean ?? null,
+          buyerRatingCount: projection?.buyerRatingCount ?? 0,
         };
       }),
     });

@@ -1,14 +1,8 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../db";
-import { profiles, reviews, trustProjections } from "../../../../../db/schema";
-import {
-  AuthError,
-  projectRoleReputation,
-  rateLimit,
-  type ReviewRecord,
-  type ReviewRole,
-} from "../../../../../lib/trust";
-import { PROJECTION_VERSION } from "../../../../../lib/trust/projections.ts";
+import { profiles } from "../../../../../db/schema";
+import { AuthError, rateLimit } from "../../../../../lib/trust";
+import { loadProvenProjection } from "../../../../../lib/trust/projection-provenance.ts";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -30,7 +24,6 @@ function registryError(error: unknown) {
 export async function GET(request: Request, context: Params) {
   try {
     const { id: profileId } = await context.params;
-    // Public trust facets — session not required (mutations remain session-gated).
     const limited = rateLimit({
       key: `trust:read:${profileId}`,
       limit: 120,
@@ -46,85 +39,47 @@ export async function GET(request: Request, context: Params) {
       return Response.json({ error: "Profile not found" }, { status: 404 });
     }
 
-    const [stored] = await db
-      .select()
-      .from(trustProjections)
-      .where(eq(trustProjections.profileId, profileId))
-      .limit(1);
-
-    if (stored) {
-      const payload = JSON.parse(stored.payloadJson) as Record<string, unknown>;
+    const proven = await loadProvenProjection(profileId);
+    if (!proven) {
       return Response.json({
         profileId,
         displayName: profile.displayName,
-        projectionVersion: stored.projectionVersion,
-        calculatedAt: stored.calculatedAt,
-        facets: payload,
+        projectionVersion: null,
+        calculatedAt: null,
+        facets: {
+          seller: null,
+          buyer: null,
+          experienceLabel: "New",
+        },
         disclosures: [
           "Seller and buyer reputation are separate.",
-          "Scores show count and window; never a universal trust score.",
-          "Only revealed, transaction-bound reviews affect aggregates.",
+          "No provenance-backed projection is published for this profile yet.",
+          "Native ratings require a signed trust-event lastEventId.",
         ],
       });
     }
 
-    // Live recompute from revealed reviews when no cached projection exists.
-    const rows = await db.select().from(reviews).where(eq(reviews.subjectId, profileId));
-    const mapped: ReviewRecord[] = rows.map((r) => ({
-      id: r.id,
-      transactionId: r.transactionId,
-      reviewerId: r.reviewerId,
-      subjectId: r.subjectId,
-      role: r.role as ReviewRole,
-      visibility: r.visibility as ReviewRecord["visibility"],
-      overallScore: r.overallScore,
-      body: r.body,
-      dimensions: [],
-      revealedAt: r.revealedAt,
-      removedReason: r.removedReason,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    }));
-    const sellerReviews = mapped.filter((r) => r.role === "buyer_reviews_seller");
-    const buyerReviews = mapped.filter((r) => r.role === "seller_reviews_buyer");
-    const sellerProj = projectRoleReputation({
-      profileId,
-      memberSince: profile.createdAt,
-      role: "seller",
-      reviews: sellerReviews,
-      completedCount: profile.itemsSold,
-    });
-    const buyerProj = projectRoleReputation({
-      profileId,
-      memberSince: profile.createdAt,
-      role: "buyer",
-      reviews: buyerReviews,
-      completedCount: buyerReviews.filter((r) => r.visibility === "revealed").length,
-    });
-
     return Response.json({
       profileId,
       displayName: profile.displayName,
-      projectionVersion: PROJECTION_VERSION,
-      calculatedAt: new Date().toISOString(),
+      projectionVersion: proven.projectionVersion,
+      calculatedAt: proven.calculatedAt,
+      lastEventId: proven.lastEventId,
       facets: {
-        seller: "seller" in sellerProj ? sellerProj.seller : null,
-        buyer: "buyer" in buyerProj ? buyerProj.buyer : null,
-        experienceLabel:
-          "experienceLabel" in sellerProj ? sellerProj.experienceLabel : "New",
-        // Legacy demo fields kept as fallback labels with counts — not a trust score.
-        legacy: {
-          itemsSold: profile.itemsSold,
-          sellerRating: profile.sellerRating,
-          sellerRatingCount: profile.sellerRatingCount,
-          buyerRating: profile.buyerRating,
-          buyerRatingCount: profile.buyerRatingCount,
+        seller: {
+          completedSales: proven.sellerCompletedSales,
+          displayMean: proven.sellerDisplayMean,
+          ratingCount: proven.sellerRatingCount,
+        },
+        buyer: {
+          displayMean: proven.buyerDisplayMean,
+          ratingCount: proven.buyerRatingCount,
         },
       },
       disclosures: [
         "Seller and buyer reputation are separate.",
         "Scores show count and window; never a universal trust score.",
-        "Only revealed, transaction-bound reviews affect aggregates.",
+        "Only revealed, transaction-bound reviews with signed events affect aggregates.",
       ],
     });
   } catch (error) {

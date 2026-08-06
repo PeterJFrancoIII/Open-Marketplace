@@ -11,9 +11,17 @@ until Main review PASS on the merge-gate tip.
   dual attestation, signed events/projections, OAuth uniqueness, keypair
   fail-closed, migrations, CI, adversarial tests).
 
-## Post-PASS carve order
+## Carve status (merge-gate requirement)
 
-After Main returns PASS on the merge-gate tip, close or supersede PR 1 and open
+Main blocked the tip for an incomplete staged-PR split (plan/issues only).
+`scripts/create-staged-prs.sh` now carves cumulative ownership paths into
+`codex/stage/*` draft PRs stacked on `main`. Run it against the remediation tip
+so reviewers can inspect stage ownership before PASS. Do **not** merge those
+drafts (or PR 1) until Main returns PASS.
+
+## Post-PASS stack order
+
+After Main returns PASS on the merge-gate tip, close or supersede PR 1 and land
 stacked draft PRs in this order (each PR bases on the previous stage):
 
 | Stage | Branch | Ownership |

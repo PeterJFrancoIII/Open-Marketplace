@@ -180,7 +180,7 @@ test("blocker2: external credential strips nested unknowns and rejects byte arra
           value: { pixels: Array.from({ length: 40 }, (_, i) => i) },
         },
       }),
-    /numeric byte array/i,
+    /scalar|numeric byte array|objects\/arrays forbidden/i,
   );
 
   assert.throws(
@@ -202,7 +202,7 @@ test("blocker2: external credential strips nested unknowns and rejects byte arra
     type: ["VerifiableCredential"],
     issuer: "did:example:1",
     credentialSubject: {
-      id: "p1",
+      id: "urn:open-marketplace:profile:p1",
       claimType: "sellerAggregateRating",
       value: 4.5,
       ignored: "strip-me",
@@ -211,8 +211,44 @@ test("blocker2: external credential strips nested unknowns and rejects byte arra
   });
   const subject = strict.credentialSubject as Record<string, unknown>;
   assert.equal(subject.claimType, "sellerAggregateRating");
+  assert.equal(subject.evidenceLabel, "external");
   assert.equal("ignored" in subject, false);
   assert.equal("evilTop" in strict, false);
+
+  assert.throws(
+    () =>
+      parseStrictExternalCredential({
+        type: ["VerifiableCredential"],
+        issuer: "did:example:1",
+        credentialSubject: {
+          id: "p1",
+          claimType: "notARealClaim",
+          value: 1,
+        },
+      }),
+    /Unsupported claimType/i,
+  );
+});
+
+test("blocker2b: client cannot self-assert oauth metricsSource", () => {
+  const ok = parseStrictListingWrite({
+    title: "Bike",
+    description: "Nice",
+    priceCents: 100,
+    condition: "Good",
+    category: "Sporting goods",
+    locationLabel: "Town",
+    sellerName: "Sam",
+    socialProofs: [
+      {
+        provider: "facebook",
+        url: "https://facebook.com/x",
+        metricsSource: "oauth",
+      },
+    ],
+    imageManifest: [],
+  });
+  assert.equal(ok.socialProofs[0].metricsSource, "self-reported");
 });
 
 test("blocker3: complete requires independent buyer+seller attestations", () => {

@@ -4,32 +4,31 @@ Open this extracted folder as the project root in Cursor. Read this file,
 `README.md`, `SOCIAL_TRUST_FRAMEWORK.md`, `ARCHITECTURE.md`, and `POLICY.md`
 before changing code.
 
-## Current merge gate — second remediation pass (awaiting Main re-review)
+## Current merge gate — third remediation pass (awaiting Main re-review)
 
 - Prior verdict: `OPEN_MARKETPLACE_MAIN_REVIEW_FIX_REQUIRED`
 - Pull request: [PR 1](https://github.com/PeterJFrancoIII/Open-Marketplace/pull/1)
-- Prior blocked heads: `e0e3653…`, `076765e…`
+- Prior blocked heads: `e0e3653…`, `076765e…`, `cb8e6b0…`
 - Rule: do **not** merge, deploy, wire production services, or begin WebRTC work until a **new** Main review returns PASS.
 - This GitHub branch is the source of truth. Ignore older ZIP files, patch files, and local handoff bundles.
 
-### Round-2 defect fixes
+### Round-3 tip blockers (on `cb8e6b0`) — fixed in this tip
 
-1. **Strict schemas:** reject numeric byte arrays; allow-list social/credential nested fields; strip unknowns; accept browser `{hash,name,size,type}` aliases.
-2. **Bundle verify:** `verifyTrustBundle` validates every event signature + hash chain; review edit/reveal emit signed events; `lastEventId` is a trust-event id.
-3. **Migrations:** `0007`/`0008` quarantine duplicates chronologically before unique indexes; dirty `0007→0008` proven.
-4. **Manifest contract:** marketplace posts `toRegistryMediaManifest(...)`; local vault unchanged.
-5. **Trust display:** listing API serves projection aggregates only; UI no longer fabricates social metrics.
-6. **CI + split:** `.github/workflows/ci.yml` installed; staged carve plan + tracking issues in `docs/handoffs/PR-SPLIT-PLAN.md`.
+1. **Credential payload constraints:** `value` is scalar-only; `claimType` enum-validated; nested objects rejected; evidence forced external.
+2. **Spoofable OAuth status:** client `metricsSource` always forced to `self-reported`; listing enrich demotes unless `oauth_verified` connection exists.
+3. **Projection provenance:** public listings/trust/export use projections only when `lastEventId` points at a signed trust event.
+4. **Atomic OAuth persistence:** D1 `db.batch` writes profile + grant + social_connection together on complete/refresh.
+5. **Staged PR split:** `scripts/create-staged-prs.sh` carves cumulative ownership paths into `codex/stage/*` draft PRs.
 
 ### Evidence required before Main re-review
 
 - [x] Install `.github/workflows/ci.yml`
-- [x] Adversarial regression tests (schemas, invalid event signatures, dual attestation, keypair)
+- [x] Adversarial regression tests
 - [x] Migration proofs including dirty `0007→0008`
 - [x] Dependency advisories in `docs/dependency-advisories.md`
-- [x] Staged PR split plan + tracking issues
-- Run on the new tip: `npm ci`, `npm run lint`, `npm test`, `npm run build`, `npm audit --omit=dev`, `npm run test:migrations`
-- Request a fresh defect-first Main review of the **new** SHA (not `076765e`). Only a PASS authorizes merge/deploy/wiring or new feature work.
+- [x] Staged PR carve executed (`codex/stage/*` + draft PRs)
+- Run on the **new** tip: `npm ci`, `npm run lint`, `npm test`, `npm run build`, `npm audit --omit=dev`, `npm run test:migrations`
+- Request a fresh defect-first Main review of the **new** SHA (not `cb8e6b0`). Only a PASS authorizes merge/deploy/wiring or new feature work.
 
 
 ## Project state

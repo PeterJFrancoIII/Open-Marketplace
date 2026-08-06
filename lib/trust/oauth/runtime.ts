@@ -11,6 +11,7 @@ import { facebookAdapterFromEnv } from "./adapters/facebook.ts";
 import { createMockSocialAdapter } from "./adapters/mock.ts";
 import {
   createOAuthService,
+  type OAuthPersistAtomic,
   type OAuthService,
   type OAuthSessionStore,
   type ProviderGrantStore,
@@ -209,6 +210,8 @@ export async function buildRuntimeOAuthService(): Promise<{
     profileId: string,
     provider: SocialProvider,
   ) => Promise<SocialConnection | null>;
+  /** Non-destructive session peek for connection id reuse before complete(). */
+  peekSession: (state: string) => Promise<OAuthSession | null>;
   /** Keep profiles.social_accounts_json aligned with oauth_verified connections. */
   syncProfileSocialAccounts: (profileId: string) => Promise<void>;
 }> {
@@ -227,10 +230,139 @@ export async function buildRuntimeOAuthService(): Promise<{
 
   const sessions = await createD1OAuthSessionStore();
   const grants = await createD1ProviderGrantStore();
-  const service = createOAuthService({ adapters, sessions, grants, encryptionKey });
+
+  const persistAtomic: OAuthPersistAtomic = async ({ grant, connection }) => {
+    const db = await getDb();
+    const updatedAt = new Date().toISOString();
+    // Atomic grant + connection write — never leave an active grant without its row.
+    await db.batch([
+      db
+        .insert(profiles)
+        .values({
+          id: grant.profileId,
+          displayName: `Seller ${grant.profileId.slice(0, 8)}`,
+          updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: profiles.id,
+          set: { updatedAt },
+        }),
+      db
+        .insert(providerGrants)
+        .values({
+          id: grant.id,
+          profileId: grant.profileId,
+          socialConnectionId: connection.id,
+          provider: grant.provider,
+          providerSubjectHash: grant.providerSubjectHash,
+          grantKid: grant.grant.kid,
+          grantIv: grant.grant.iv,
+          grantCiphertext: grant.grant.ciphertext,
+          grantedScopesJson: JSON.stringify(grant.grantedScopes),
+          status: grant.status,
+          expiresAt: grant.expiresAt,
+          nextRefreshAt: grant.nextRefreshAt,
+          refreshBackoffSeconds: grant.refreshBackoffSeconds,
+          createdAt: grant.createdAt,
+          updatedAt: grant.updatedAt,
+          revokedAt: grant.revokedAt,
+        })
+        .onConflictDoUpdate({
+          target: [providerGrants.profileId, providerGrants.provider],
+          set: {
+            id: grant.id,
+            socialConnectionId: connection.id,
+            providerSubjectHash: grant.providerSubjectHash,
+            grantKid: grant.grant.kid,
+            grantIv: grant.grant.iv,
+            grantCiphertext: grant.grant.ciphertext,
+            grantedScopesJson: JSON.stringify(grant.grantedScopes),
+            status: grant.status,
+            expiresAt: grant.expiresAt,
+            nextRefreshAt: grant.nextRefreshAt,
+            refreshBackoffSeconds: grant.refreshBackoffSeconds,
+            updatedAt: grant.updatedAt,
+            revokedAt: grant.revokedAt,
+          },
+        }),
+      db
+        .insert(socialConnections)
+        .values({
+          id: connection.id,
+          profileId: connection.profileId,
+          provider: connection.provider,
+          providerSubjectHash: connection.providerSubjectHash,
+          canonicalUrl: connection.canonicalUrl,
+          handle: connection.handle,
+          status: connection.status,
+          accountCreatedAt: connection.accountCreatedAt,
+          accountCreatedAtSource: connection.accountCreatedAtSource,
+          connectionCount: connection.connectionCount,
+          connectionLabel: connection.connectionLabel,
+          connectionCountSource: connection.connectionCountSource,
+          verifiedAt: connection.verifiedAt,
+          lastCheckedAt: connection.lastCheckedAt,
+          lastSuccessfulRefreshAt: connection.lastSuccessfulRefreshAt,
+          consecutiveDefinitiveFailures: connection.consecutiveDefinitiveFailures,
+          nextCheckAt: connection.nextCheckAt,
+          scopesJson: connection.scopesJson,
+          createdAt: connection.createdAt,
+          updatedAt: connection.updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: socialConnections.id,
+          set: {
+            providerSubjectHash: connection.providerSubjectHash,
+            canonicalUrl: connection.canonicalUrl,
+            handle: connection.handle,
+            status: connection.status,
+            accountCreatedAt: connection.accountCreatedAt,
+            accountCreatedAtSource: connection.accountCreatedAtSource,
+            connectionCount: connection.connectionCount,
+            connectionLabel: connection.connectionLabel,
+            connectionCountSource: connection.connectionCountSource,
+            verifiedAt: connection.verifiedAt,
+            lastCheckedAt: connection.lastCheckedAt,
+            lastSuccessfulRefreshAt: connection.lastSuccessfulRefreshAt,
+            consecutiveDefinitiveFailures: connection.consecutiveDefinitiveFailures,
+            nextCheckAt: connection.nextCheckAt,
+            scopesJson: connection.scopesJson,
+            updatedAt: connection.updatedAt,
+          },
+        }),
+    ]);
+  };
+
+  const service = createOAuthService({
+    adapters,
+    sessions,
+    grants,
+    encryptionKey,
+    persistAtomic,
+  });
 
   return {
     service,
+    async peekSession(state) {
+      const db = await getDb();
+      const [row] = await db
+        .select()
+        .from(oauthSessions)
+        .where(eq(oauthSessions.state, state))
+        .limit(1);
+      if (!row) return null;
+      return {
+        state: row.state,
+        profileId: row.profileId,
+        provider: row.provider as SocialProvider,
+        codeVerifier: row.codeVerifier,
+        redirectUri: row.redirectUri,
+        returnTo: row.returnTo,
+        nonce: row.nonce,
+        createdAt: row.createdAt,
+        expiresAt: row.expiresAt,
+      };
+    },
     async ensureProfile(profileId) {
       const db = await getDb();
       const updatedAt = new Date().toISOString();

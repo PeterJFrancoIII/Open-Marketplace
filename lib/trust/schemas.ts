@@ -26,18 +26,22 @@ const SOCIAL_PROOF_KEYS = new Set([
 
 const CREDENTIAL_SUBJECT_KEYS = new Set([
   "id",
-  "profileId",
   "claimType",
   "value",
   "unit",
   "evidenceLabel",
   "registryId",
+  "algorithmVersion",
+  "sampleSize",
+  "notes",
+]);
+
+const BOUNDED_CLAIM_TYPES = new Set([
+  "sellerCompletedTransactions",
+  "sellerAggregateRating",
+  "buyerAggregateRating",
+  "providerConnectionControlled",
   "memberSince",
-  "ratingCount",
-  "completedSales",
-  "completedPurchases",
-  "provider",
-  "connectedAt",
 ]);
 
 const PROOF_KEYS = new Set([
@@ -213,9 +217,8 @@ function parseSocialProof(item: unknown, index: number): Record<string, unknown>
   if (out.connectionLabel != null) {
     out.connectionLabel = pickString(out, "connectionLabel", 40);
   }
-  if (out.metricsSource != null) {
-    out.metricsSource = pickString(out, "metricsSource", 40);
-  }
+  // Client may never self-assert provider OAuth — only the OAuth callback may set this.
+  out.metricsSource = "self-reported";
   if (out.health != null) out.health = pickString(out, "health", 40);
   if (out.lastCheckedAt != null) {
     out.lastCheckedAt = pickString(out, "lastCheckedAt", 40);
@@ -237,17 +240,58 @@ function pickAllowedObject(
   for (const key of allowed) {
     if (row[key] === undefined) continue;
     const child = row[key];
-    if (child && typeof child === "object" && !Array.isArray(child)) {
-      // Nested objects only allowed for `value` with scalar/json-safe leaves.
-      if (key === "value") {
-        rejectBinaryShaped(child, `${label}.value`);
-        out[key] = JSON.parse(JSON.stringify(child));
-      }
-      continue;
+    if (child && typeof child === "object") {
+      throw new InvalidTrustTransitionError(
+        `${label}.${key} must be a scalar (objects/arrays forbidden)`,
+      );
     }
     out[key] = child;
   }
   return out;
+}
+
+function normalizeCredentialSubject(raw: unknown): Record<string, unknown> {
+  const subject = pickAllowedObject(raw, CREDENTIAL_SUBJECT_KEYS, "credentialSubject");
+  const claimType = pickString(subject, "claimType", 80, true)!;
+  if (!BOUNDED_CLAIM_TYPES.has(claimType)) {
+    throw new InvalidTrustTransitionError(`Unsupported claimType: ${claimType}`);
+  }
+  subject.claimType = claimType;
+  subject.evidenceLabel = "external";
+
+  const value = subject.value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || Math.abs(value) > 1e12) {
+      throw new InvalidTrustTransitionError("credentialSubject.value number out of range");
+    }
+  } else if (typeof value === "string") {
+    if (value.length > 240) {
+      throw new InvalidTrustTransitionError("credentialSubject.value exceeds 240 characters");
+    }
+  } else {
+    throw new InvalidTrustTransitionError(
+      "credentialSubject.value must be a string or number",
+    );
+  }
+
+  if (subject.sampleSize != null) {
+    const n = Number(subject.sampleSize);
+    if (!Number.isInteger(n) || n < 0 || n > 1_000_000_000) {
+      throw new InvalidTrustTransitionError("sampleSize must be a non-negative integer");
+    }
+    subject.sampleSize = n;
+  }
+  if (subject.unit != null) subject.unit = pickString(subject, "unit", 40);
+  if (subject.registryId != null) {
+    subject.registryId = pickString(subject, "registryId", 120);
+  }
+  if (subject.algorithmVersion != null) {
+    subject.algorithmVersion = pickString(subject, "algorithmVersion", 40);
+  }
+  if (subject.notes != null) subject.notes = pickString(subject, "notes", 240);
+  if (subject.id != null) subject.id = pickString(subject, "id", 240, true);
+
+  return subject;
 }
 
 /** Strict listing write schema — unknown fields stripped; media bytes rejected. */
@@ -344,7 +388,7 @@ export function parseStrictExternalCredential(input: unknown): Record<string, un
   for (const key of allowedTop) {
     if (raw[key] === undefined) continue;
     if (key === "credentialSubject") {
-      out[key] = pickAllowedObject(raw[key], CREDENTIAL_SUBJECT_KEYS, "credentialSubject");
+      out[key] = normalizeCredentialSubject(raw[key]);
       continue;
     }
     if (key === "proof") {
@@ -354,9 +398,18 @@ export function parseStrictExternalCredential(input: unknown): Record<string, un
     if (key === "credentialStatus" && raw[key] && typeof raw[key] === "object") {
       const status = assertPlainObject(raw[key], "credentialStatus");
       rejectBinaryShaped(status, "credentialStatus");
+      const statusValue =
+        typeof status.status === "string" ? status.status.slice(0, 40) : "valid";
+      if (!["valid", "revoked", "expired"].includes(statusValue)) {
+        throw new InvalidTrustTransitionError("credentialStatus.status is invalid");
+      }
       out[key] = {
-        id: typeof status.id === "string" ? status.id.slice(0, 240) : undefined,
-        type: typeof status.type === "string" ? status.type.slice(0, 80) : undefined,
+        type:
+          typeof status.type === "string"
+            ? status.type.slice(0, 80)
+            : "OpenMarketplaceCredentialStatus2026",
+        statusPurpose: "revocation",
+        status: statusValue,
       };
       continue;
     }

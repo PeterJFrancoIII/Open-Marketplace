@@ -41,12 +41,13 @@ export async function POST(request: Request, context: Params) {
       return Response.json({ error: "No social connection for provider" }, { status: 404 });
     }
 
+    // refresh() atomically persists grant + connection when D1 persistAtomic is wired.
     const result = await runtime.service.refresh({
       profileId: actor.profileId,
       provider: raw,
       connection: existing,
     });
-    await runtime.upsertConnection(result.connection);
+    await runtime.syncProfileSocialAccounts(actor.profileId);
 
     return Response.json({
       provider: raw,

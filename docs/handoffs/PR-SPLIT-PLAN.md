@@ -50,3 +50,17 @@ Helper script (run only after PASS, with human review): `scripts/create-staged-p
 - https://github.com/PeterJFrancoIII/Open-Marketplace/issues/7 — stage/06-moderation
 - https://github.com/PeterJFrancoIII/Open-Marketplace/issues/8 — stage/07-portable-trust
 - https://github.com/PeterJFrancoIII/Open-Marketplace/issues/9 — stage/08-branding-marketplace
+
+## Draft stage PRs (carved)
+
+| Stage | Draft PR |
+|------|----------|
+| 01-trust-foundation | https://github.com/PeterJFrancoIII/Open-Marketplace/pull/10 |
+| 02-transactions | https://github.com/PeterJFrancoIII/Open-Marketplace/pull/11 |
+| 03-reviews-projections | https://github.com/PeterJFrancoIII/Open-Marketplace/pull/12 |
+| 04-trustcard-ui | https://github.com/PeterJFrancoIII/Open-Marketplace/pull/13 |
+| 05-oauth | https://github.com/PeterJFrancoIII/Open-Marketplace/pull/14 |
+| 06-moderation | https://github.com/PeterJFrancoIII/Open-Marketplace/pull/15 |
+| 07-portable-trust | https://github.com/PeterJFrancoIII/Open-Marketplace/pull/16 |
+| 08-branding-marketplace | https://github.com/PeterJFrancoIII/Open-Marketplace/pull/17 |
+

@@ -13,7 +13,8 @@ import {
   type ReviewRecord,
   type ReviewRole,
 } from "../../../../lib/trust";
-import { appendSignedTrustEvent } from "../../../../lib/trust/persist-event.ts";
+import { commitWithSignedTrustEvent } from "../../../../lib/trust/persist-event.ts";
+import { rebuildAndPersistProjections } from "../../../../lib/trust/rebuild-projections.ts";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -114,18 +115,35 @@ export async function PATCH(request: Request, context: Params) {
         : undefined,
     });
 
-    const db = await getDb();
-    await db
-      .update(reviews)
-      .set({
-        overallScore: edited.overallScore,
-        body: edited.body,
-        updatedAt: edited.updatedAt,
-      })
-      .where(eq(reviews.id, id));
+    // Sign before any durable mutation; batch review update + trust event.
+    await commitWithSignedTrustEvent({
+      subjectProfileId: existing.subjectId,
+      actorProfileId: actor.profileId,
+      eventType: "review.edited",
+      occurredAt: edited.updatedAt,
+      payload: {
+        type: "review.edited",
+        reviewId: id,
+        score: edited.overallScore,
+      },
+      run: async ({ db, eventInsert }) => {
+        await db.batch([
+          db
+            .update(reviews)
+            .set({
+              overallScore: edited.overallScore,
+              body: edited.body,
+              updatedAt: edited.updatedAt,
+            })
+            .where(eq(reviews.id, id)),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          eventInsert as any,
+        ]);
+      },
+    });
 
     if (payload.dimensions) {
-      // Replace dimensions for sealed edit.
+      const db = await getDb();
       const old = await db
         .select()
         .from(reviewDimensions)
@@ -145,17 +163,12 @@ export async function PATCH(request: Request, context: Params) {
       }
     }
 
-    await appendSignedTrustEvent({
-      subjectProfileId: existing.subjectId,
-      actorProfileId: actor.profileId,
-      eventType: "review.edited",
-      occurredAt: edited.updatedAt,
-      payload: {
-        type: "review.edited",
-        reviewId: id,
-        score: edited.overallScore,
-      },
-    });
+    if (existing.visibility === "revealed") {
+      await rebuildAndPersistProjections([existing.subjectId], {
+        actorProfileId: actor.profileId,
+        occurredAt: edited.updatedAt,
+      });
+    }
 
     return Response.json({
       review: toPublicReviewView({
@@ -187,23 +200,34 @@ export async function DELETE(request: Request, context: Params) {
       actor,
       reasonCode,
     });
-    const db = await getDb();
-    await db
-      .update(reviews)
-      .set({
-        visibility: "removed",
-        body: "",
-        removedReason: tombstoned.removedReason,
-        updatedAt: tombstoned.updatedAt,
-      })
-      .where(eq(reviews.id, id));
 
-    await appendSignedTrustEvent({
+    await commitWithSignedTrustEvent({
       subjectProfileId: existing.subjectId,
       actorProfileId: actor.profileId,
       eventType: "review.tombstone",
       occurredAt: tombstoned.updatedAt,
       payload: { type: "review.tombstone", reviewId: id, reasonCode },
+      run: async ({ db, eventInsert }) => {
+        await db.batch([
+          db
+            .update(reviews)
+            .set({
+              visibility: "removed",
+              body: "",
+              removedReason: tombstoned.removedReason,
+              updatedAt: tombstoned.updatedAt,
+            })
+            .where(eq(reviews.id, id)),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          eventInsert as any,
+        ]);
+      },
+    });
+
+    // Tombstone must drop the review from public aggregates.
+    await rebuildAndPersistProjections([existing.subjectId], {
+      actorProfileId: actor.profileId,
+      occurredAt: tombstoned.updatedAt,
     });
 
     return Response.json({

@@ -1,12 +1,10 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../db";
 import {
-  profiles,
   reviewDimensions,
   reviews,
   transactionEvents,
   transactions,
-  trustProjections,
 } from "../../../../../db/schema";
 import {
   applyReveal,
@@ -16,7 +14,6 @@ import {
   fingerprintPayload,
   InvalidTrustTransitionError,
   parseActor,
-  projectRoleReputation,
   rateLimit,
   resolveReveal,
   toPublicReviewView,
@@ -25,8 +22,8 @@ import {
   type ReviewRole,
   type TransactionStatus,
 } from "../../../../../lib/trust";
-import { appendSignedTrustEvent } from "../../../../../lib/trust/persist-event.ts";
-import { PROJECTION_VERSION } from "../../../../../lib/trust/projections.ts";
+import { commitWithSignedTrustEvent } from "../../../../../lib/trust/persist-event.ts";
+import { rebuildAndPersistProjections } from "../../../../../lib/trust/rebuild-projections.ts";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -71,53 +68,6 @@ function rowToReview(
   };
 }
 
-async function completedCountsForProfiles(profileIds: string[]) {
-  const db = await getDb();
-  const counts = new Map<string, { sold: number; bought: number; memberSince: string }>();
-  if (!profileIds.length) return counts;
-
-  const soldFromTx = new Map<string, number>();
-  const boughtFromTx = new Map<string, number>();
-  const profileRows = await db
-    .select()
-    .from(profiles)
-    .where(inArray(profiles.id, profileIds));
-
-  const completedTx = await db
-    .select()
-    .from(transactions)
-    .where(
-      and(
-        or(
-          inArray(transactions.buyerId, profileIds),
-          inArray(transactions.sellerId, profileIds),
-        ),
-        or(
-          eq(transactions.status, "completed"),
-          eq(transactions.status, "review_window"),
-        ),
-      ),
-    );
-
-  for (const tx of completedTx) {
-    soldFromTx.set(tx.sellerId, (soldFromTx.get(tx.sellerId) ?? 0) + 1);
-    boughtFromTx.set(tx.buyerId, (boughtFromTx.get(tx.buyerId) ?? 0) + 1);
-  }
-
-  for (const profileId of profileIds) {
-    const profile = profileRows.find((p) => p.id === profileId);
-    const soldTx = soldFromTx.get(profileId) ?? 0;
-    counts.set(profileId, {
-      // Prefer durable profile counter; never use review-count as sales volume.
-      sold: Math.max(profile?.itemsSold ?? 0, soldTx),
-      bought: boughtFromTx.get(profileId) ?? 0,
-      memberSince: profile?.createdAt ?? new Date().toISOString(),
-    });
-  }
-
-  return counts;
-}
-
 async function persistRevealAndProjections(
   transactionId: string,
   completedAt: string | null,
@@ -131,21 +81,15 @@ async function persistRevealAndProjections(
     completedAt,
     reviewDeadlineAt,
   });
-  if (!decision.revealIds.length) return { revealed: [] as string[], reason: null as string | null };
+  if (!decision.revealIds.length) {
+    return { revealed: [] as string[], reason: null as string | null };
+  }
 
   const stamped = applyReveal(records, decision.revealIds);
   const now = new Date().toISOString();
-  const lastRevealEventBySubject = new Map<string, string>();
   for (const review of stamped.filter((r) => decision.revealIds.includes(r.id))) {
-    await db
-      .update(reviews)
-      .set({
-        visibility: "revealed",
-        revealedAt: review.revealedAt,
-        updatedAt: now,
-      })
-      .where(eq(reviews.id, review.id));
-    const envelope = await appendSignedTrustEvent({
+    // Sign first; batch review reveal + trust event so key failures leave no half-state.
+    await commitWithSignedTrustEvent({
       subjectProfileId: review.subjectId,
       actorProfileId: review.reviewerId,
       eventType: "review.revealed",
@@ -157,81 +101,25 @@ async function persistRevealAndProjections(
         score: review.overallScore,
         reason: decision.reason,
       },
+      run: async ({ db: batchDb, eventInsert }) => {
+        await batchDb.batch([
+          batchDb
+            .update(reviews)
+            .set({
+              visibility: "revealed",
+              revealedAt: review.revealedAt,
+              updatedAt: now,
+            })
+            .where(eq(reviews.id, review.id)),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          eventInsert as any,
+        ]);
+      },
     });
-    lastRevealEventBySubject.set(review.subjectId, envelope.eventId);
   }
 
   const subjects = [...new Set(stamped.map((r) => r.subjectId))];
-  const completed = await completedCountsForProfiles(subjects);
-
-  for (const subjectId of subjects) {
-    const subjectReviews = await db
-      .select()
-      .from(reviews)
-      .where(eq(reviews.subjectId, subjectId));
-    const mapped = subjectReviews.map((r) => rowToReview(r));
-    const sellerReviews = mapped.filter((r) => r.role === "buyer_reviews_seller");
-    const buyerReviews = mapped.filter((r) => r.role === "seller_reviews_buyer");
-    const stats = completed.get(subjectId) ?? {
-      sold: 0,
-      bought: 0,
-      memberSince: now,
-    };
-    const sellerProj = projectRoleReputation({
-      profileId: subjectId,
-      memberSince: stats.memberSince,
-      role: "seller",
-      reviews: sellerReviews,
-      completedCount: stats.sold,
-    });
-    const buyerProj = projectRoleReputation({
-      profileId: subjectId,
-      memberSince: stats.memberSince,
-      role: "buyer",
-      reviews: buyerReviews,
-      completedCount: stats.bought,
-    });
-    const payload = {
-      projectionVersion: PROJECTION_VERSION,
-      seller: "seller" in sellerProj ? sellerProj.seller : null,
-      buyer: "buyer" in buyerProj ? buyerProj.buyer : null,
-      experienceLabel:
-        "experienceLabel" in sellerProj
-          ? sellerProj.experienceLabel
-          : "experienceLabel" in buyerProj
-            ? buyerProj.experienceLabel
-            : "New",
-    };
-    let lastEventId = lastRevealEventBySubject.get(subjectId);
-    if (!lastEventId) {
-      lastEventId = (
-        await appendSignedTrustEvent({
-          subjectProfileId: subjectId,
-          eventType: "projection.rebuilt",
-          occurredAt: now,
-          payload: { type: "projection.rebuilt", projectionVersion: PROJECTION_VERSION },
-        })
-      ).eventId;
-    }
-    await db
-      .insert(trustProjections)
-      .values({
-        profileId: subjectId,
-        projectionVersion: PROJECTION_VERSION,
-        calculatedAt: now,
-        lastEventId,
-        payloadJson: JSON.stringify(payload),
-      })
-      .onConflictDoUpdate({
-        target: trustProjections.profileId,
-        set: {
-          projectionVersion: PROJECTION_VERSION,
-          calculatedAt: now,
-          lastEventId,
-          payloadJson: JSON.stringify(payload),
-        },
-      });
-  }
+  await rebuildAndPersistProjections(subjects, { occurredAt: now });
 
   return { revealed: decision.revealIds, reason: decision.reason };
 }
@@ -344,48 +232,13 @@ export async function POST(request: Request, context: Params) {
       existingRoles: existing.map((r) => r.role as ReviewRole),
     });
 
-    await db.insert(reviews).values({
-      id: sealed.id,
-      transactionId: sealed.transactionId,
-      reviewerId: sealed.reviewerId,
-      subjectId: sealed.subjectId,
-      role: sealed.role,
-      visibility: sealed.visibility,
-      overallScore: sealed.overallScore,
-      body: sealed.body,
-      revealedAt: null,
-      removedReason: null,
-      createdAt: sealed.createdAt,
-      updatedAt: sealed.updatedAt,
-    });
-
-    for (const dim of sealed.dimensions) {
-      await db.insert(reviewDimensions).values({
-        id: crypto.randomUUID(),
-        reviewId: sealed.id,
-        dimension: dim.dimension,
-        score: dim.score ?? null,
-        boolValue: dim.boolValue == null ? null : dim.boolValue ? 1 : 0,
-        tag: dim.tag ?? null,
-      });
-    }
-
     const payloadHash = fingerprintPayload({
       type: "review.sealed",
       reviewId: sealed.id,
       score: sealed.overallScore,
     });
-    await db.insert(transactionEvents).values({
-      id: crypto.randomUUID(),
-      transactionId,
-      actorProfileId: actor.profileId,
-      eventType: "review.sealed",
-      reason: "",
-      payloadHash,
-      priorEventHash: null,
-      occurredAt: sealed.createdAt,
-    });
-    await appendSignedTrustEvent({
+
+    await commitWithSignedTrustEvent({
       subjectProfileId: sealed.subjectId,
       actorProfileId: actor.profileId,
       eventType: "review.sealed",
@@ -394,6 +247,46 @@ export async function POST(request: Request, context: Params) {
         type: "review.sealed",
         reviewId: sealed.id,
         score: sealed.overallScore,
+      },
+      run: async ({ db: batchDb, eventInsert }) => {
+        await batchDb.batch([
+          batchDb.insert(reviews).values({
+            id: sealed.id,
+            transactionId: sealed.transactionId,
+            reviewerId: sealed.reviewerId,
+            subjectId: sealed.subjectId,
+            role: sealed.role,
+            visibility: sealed.visibility,
+            overallScore: sealed.overallScore,
+            body: sealed.body,
+            revealedAt: null,
+            removedReason: null,
+            createdAt: sealed.createdAt,
+            updatedAt: sealed.updatedAt,
+          }),
+          ...sealed.dimensions.map((dim) =>
+            batchDb.insert(reviewDimensions).values({
+              id: crypto.randomUUID(),
+              reviewId: sealed.id,
+              dimension: dim.dimension,
+              score: dim.score ?? null,
+              boolValue: dim.boolValue == null ? null : dim.boolValue ? 1 : 0,
+              tag: dim.tag ?? null,
+            }),
+          ),
+          batchDb.insert(transactionEvents).values({
+            id: crypto.randomUUID(),
+            transactionId,
+            actorProfileId: actor.profileId,
+            eventType: "review.sealed",
+            reason: "",
+            payloadHash,
+            priorEventHash: null,
+            occurredAt: sealed.createdAt,
+          }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          eventInsert as any,
+        ]);
       },
     });
 

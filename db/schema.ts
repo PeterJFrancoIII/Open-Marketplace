@@ -348,13 +348,18 @@ export const trustEvents = sqliteTable(
     eventType: text("event_type").notNull(),
     occurredAt: text("occurred_at").notNull(),
     payloadHash: text("payload_hash").notNull(),
-    priorEventHash: text("prior_event_hash"),
+    /** Empty string = genesis; never NULL (UNIQUE forbids concurrent forks). */
+    priorEventHash: text("prior_event_hash").notNull().default(""),
     registryId: text("registry_id").notNull(),
     schemaVersion: integer("schema_version").notNull().default(1),
     signature: text("signature").notNull(),
   },
   (table) => [
     index("trust_events_subject_idx").on(table.subjectProfileId, table.occurredAt),
+    uniqueIndex("trust_events_subject_prior_uidx").on(
+      table.subjectProfileId,
+      table.priorEventHash,
+    ),
   ],
 );
 

@@ -12,6 +12,7 @@ import {
   type TransactionEventInput,
   type TransactionRecord,
 } from "../../../../../lib/trust";
+import { rebuildAndPersistProjections } from "../../../../../lib/trust/rebuild-projections.ts";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -122,6 +123,21 @@ export async function POST(request: Request, context: Params) {
       priorEventHash: priorEvents[0]?.payloadHash ?? null,
       occurredAt: result.transaction.updatedAt,
     });
+
+    // Completions without reviews still advance sales counts via projection rebuild.
+    const enteredReviewable =
+      (result.transaction.status === "completed" ||
+        result.transaction.status === "review_window") &&
+      row.status !== result.transaction.status;
+    if (enteredReviewable) {
+      await rebuildAndPersistProjections(
+        [result.transaction.buyerId, result.transaction.sellerId],
+        {
+          actorProfileId: actor.profileId,
+          occurredAt: result.transaction.updatedAt,
+        },
+      );
+    }
 
     // Never echo the raw nonce to strangers; parties already know it from issue response.
     return Response.json({

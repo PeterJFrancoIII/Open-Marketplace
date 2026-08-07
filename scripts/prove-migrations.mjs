@@ -96,22 +96,24 @@ console.log("Migration files:", migrationFiles().join(", "));
 
 {
   const db = new DatabaseSync(":memory:");
-  const applied = applyRange(db, 0, 8);
+  const applied = applyRange(db, 0, 9);
   assert.deepEqual(
     applied,
-    ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008"],
+    ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009"],
   );
   assertUniqueIndex(db, "review_responses_one_per_review_idx");
   assertUniqueIndex(db, "social_connections_provider_subject_idx");
-  console.log("PASS empty 0000→0008");
+  assertUniqueIndex(db, "trust_events_subject_prior_uidx");
+  console.log("PASS empty 0000→0009");
 }
 
 {
   const db = new DatabaseSync(":memory:");
   applyRange(db, 0, 0);
-  applyRange(db, 1, 8);
+  applyRange(db, 1, 9);
   assertUniqueIndex(db, "review_responses_one_per_review_idx");
-  console.log("PASS upgrade 0001→0008 (from 0000 fixture)");
+  assertUniqueIndex(db, "trust_events_subject_prior_uidx");
+  console.log("PASS upgrade 0001→0009 (from 0000 fixture)");
 }
 
 {
@@ -177,6 +179,36 @@ console.log("Migration files:", migrationFiles().join(", "));
   assert.equal(quarantined[0].id, "sc-late");
   assertUniqueIndex(db, "social_connections_provider_subject_idx");
   console.log("PASS dirty 0007→0008 provider-subject quarantine");
+}
+
+{
+  const db = new DatabaseSync(":memory:");
+  applyRange(db, 0, 9);
+  db.exec("PRAGMA foreign_keys = ON;");
+  const now = "2026-08-05T00:00:00.000Z";
+  db.exec(`
+    INSERT INTO profiles (id, display_name, created_at, updated_at)
+    VALUES ('p1', 'Seller', '${now}', '${now}');
+    INSERT INTO trust_events (
+      id, subject_profile_id, event_type, occurred_at, payload_hash,
+      prior_event_hash, registry_id, schema_version, signature
+    ) VALUES (
+      'e1', 'p1', 'projection.rebuilt', '${now}', 'hash-a',
+      '', 'reg', 1, 'sig'
+    );
+  `);
+  assert.throws(() => {
+    db.exec(`
+      INSERT INTO trust_events (
+        id, subject_profile_id, event_type, occurred_at, payload_hash,
+        prior_event_hash, registry_id, schema_version, signature
+      ) VALUES (
+        'e2', 'p1', 'projection.rebuilt', '${now}', 'hash-b',
+        '', 'reg', 1, 'sig'
+      );
+    `);
+  }, /UNIQUE/i);
+  console.log("PASS 0009 prior-hash unique forbids chain forks");
 }
 
 console.log("All migration proofs passed.");

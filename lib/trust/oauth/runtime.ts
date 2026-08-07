@@ -234,7 +234,8 @@ export async function buildRuntimeOAuthService(): Promise<{
   const persistAtomic: OAuthPersistAtomic = async ({ grant, connection }) => {
     const db = await getDb();
     const updatedAt = new Date().toISOString();
-    // Atomic grant + connection write — never leave an active grant without its row.
+    // D1 batch is sequential with FK checks: profile → connection → grant
+    // (grant.social_connection_id references social_connections.id).
     await db.batch([
       db
         .insert(profiles)
@@ -246,44 +247,6 @@ export async function buildRuntimeOAuthService(): Promise<{
         .onConflictDoUpdate({
           target: profiles.id,
           set: { updatedAt },
-        }),
-      db
-        .insert(providerGrants)
-        .values({
-          id: grant.id,
-          profileId: grant.profileId,
-          socialConnectionId: connection.id,
-          provider: grant.provider,
-          providerSubjectHash: grant.providerSubjectHash,
-          grantKid: grant.grant.kid,
-          grantIv: grant.grant.iv,
-          grantCiphertext: grant.grant.ciphertext,
-          grantedScopesJson: JSON.stringify(grant.grantedScopes),
-          status: grant.status,
-          expiresAt: grant.expiresAt,
-          nextRefreshAt: grant.nextRefreshAt,
-          refreshBackoffSeconds: grant.refreshBackoffSeconds,
-          createdAt: grant.createdAt,
-          updatedAt: grant.updatedAt,
-          revokedAt: grant.revokedAt,
-        })
-        .onConflictDoUpdate({
-          target: [providerGrants.profileId, providerGrants.provider],
-          set: {
-            id: grant.id,
-            socialConnectionId: connection.id,
-            providerSubjectHash: grant.providerSubjectHash,
-            grantKid: grant.grant.kid,
-            grantIv: grant.grant.iv,
-            grantCiphertext: grant.grant.ciphertext,
-            grantedScopesJson: JSON.stringify(grant.grantedScopes),
-            status: grant.status,
-            expiresAt: grant.expiresAt,
-            nextRefreshAt: grant.nextRefreshAt,
-            refreshBackoffSeconds: grant.refreshBackoffSeconds,
-            updatedAt: grant.updatedAt,
-            revokedAt: grant.revokedAt,
-          },
         }),
       db
         .insert(socialConnections)
@@ -328,6 +291,44 @@ export async function buildRuntimeOAuthService(): Promise<{
             nextCheckAt: connection.nextCheckAt,
             scopesJson: connection.scopesJson,
             updatedAt: connection.updatedAt,
+          },
+        }),
+      db
+        .insert(providerGrants)
+        .values({
+          id: grant.id,
+          profileId: grant.profileId,
+          socialConnectionId: connection.id,
+          provider: grant.provider,
+          providerSubjectHash: grant.providerSubjectHash,
+          grantKid: grant.grant.kid,
+          grantIv: grant.grant.iv,
+          grantCiphertext: grant.grant.ciphertext,
+          grantedScopesJson: JSON.stringify(grant.grantedScopes),
+          status: grant.status,
+          expiresAt: grant.expiresAt,
+          nextRefreshAt: grant.nextRefreshAt,
+          refreshBackoffSeconds: grant.refreshBackoffSeconds,
+          createdAt: grant.createdAt,
+          updatedAt: grant.updatedAt,
+          revokedAt: grant.revokedAt,
+        })
+        .onConflictDoUpdate({
+          target: [providerGrants.profileId, providerGrants.provider],
+          set: {
+            id: grant.id,
+            socialConnectionId: connection.id,
+            providerSubjectHash: grant.providerSubjectHash,
+            grantKid: grant.grant.kid,
+            grantIv: grant.grant.iv,
+            grantCiphertext: grant.grant.ciphertext,
+            grantedScopesJson: JSON.stringify(grant.grantedScopes),
+            status: grant.status,
+            expiresAt: grant.expiresAt,
+            nextRefreshAt: grant.nextRefreshAt,
+            refreshBackoffSeconds: grant.refreshBackoffSeconds,
+            updatedAt: grant.updatedAt,
+            revokedAt: grant.revokedAt,
           },
         }),
     ]);

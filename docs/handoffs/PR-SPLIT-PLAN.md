@@ -13,11 +13,10 @@ until Main review PASS on the merge-gate tip.
 
 ## Carve status (merge-gate requirement)
 
-Main blocked the tip for an incomplete staged-PR split (plan/issues only).
-`scripts/create-staged-prs.sh` now carves cumulative ownership paths into
-`codex/stage/*` draft PRs stacked on `main`. Run it against the remediation tip
-so reviewers can inspect stage ownership before PASS. Do **not** merge those
-drafts (or PR 1) until Main returns PASS.
+Main required buildable stages with green CI and an exact final-tree match.
+`scripts/create-staged-prs.sh` now: (1) includes build/CI scaffold from stage 1,
+(2) carves cumulative ownership, (3) sets stage 08 tip == SOURCE tip exactly.
+Re-run after each merge-gate tip. Do **not** merge drafts (or PR 1) until PASS.
 
 ## Post-PASS stack order
 

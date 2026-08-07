@@ -4,32 +4,26 @@ Open this extracted folder as the project root in Cursor. Read this file,
 `README.md`, `SOCIAL_TRUST_FRAMEWORK.md`, `ARCHITECTURE.md`, and `POLICY.md`
 before changing code.
 
-## Current merge gate — third remediation pass (awaiting Main re-review)
+## Current merge gate — fourth remediation pass (awaiting Main re-review)
 
 - Prior verdict: `OPEN_MARKETPLACE_MAIN_REVIEW_FIX_REQUIRED`
 - Pull request: [PR 1](https://github.com/PeterJFrancoIII/Open-Marketplace/pull/1)
-- Prior blocked heads: `e0e3653…`, `076765e…`, `cb8e6b0…`
+- Prior blocked heads: `e0e3653…`, `076765e…`, `cb8e6b0…`, `25655f6…`
 - Rule: do **not** merge, deploy, wire production services, or begin WebRTC work until a **new** Main review returns PASS.
-- This GitHub branch is the source of truth. Ignore older ZIP files, patch files, and local handoff bundles.
 
-### Round-3 tip blockers (on `cb8e6b0`) — fixed in this tip
+### Round-4 tip blockers (on `25655f6`) — fixed in this tip
 
-1. **Credential payload constraints:** `value` is scalar-only; `claimType` enum-validated; nested objects rejected; evidence forced external.
-2. **Spoofable OAuth status:** client `metricsSource` always forced to `self-reported`; listing enrich demotes unless `oauth_verified` connection exists.
-3. **Projection provenance:** public listings/trust/export use projections only when `lastEventId` points at a signed trust event.
-4. **Atomic OAuth persistence:** D1 `db.batch` writes profile + grant + social_connection together on complete/refresh.
-5. **Staged PR split:** `scripts/create-staged-prs.sh` carves cumulative ownership paths into `codex/stage/*` draft PRs.
+1. **OAuth FK order:** D1 batch is profile → `social_connections` → `provider_grants`.
+2. **Projection provenance:** verify ECDSA signature; require `projection.rebuilt`; bind `payloadJson` via `payloadHash`; rebuild on tombstone/edit/completion; sales = tx count only.
+3. **Atomic trust mutations:** sign-then-batch review+event; unique `(subject, prior)` with retry forbids chain forks.
+4. **Staged PR split:** scaffold+CI from stage 1; stage 8 tip tree equals SOURCE exactly; regenerate with green CI on every stage head.
 
 ### Evidence required before Main re-review
 
-- [x] Install `.github/workflows/ci.yml`
-- [x] Adversarial regression tests
-- [x] Migration proofs including dirty `0007→0008`
-- [x] Dependency advisories in `docs/dependency-advisories.md`
-- [x] Staged PR carve executed (`codex/stage/*` + draft PRs)
+- [x] D1-backed adversarial tests (`tests/d1-adversarial.test.ts`)
+- [x] Migration `0009` prior-hash unique + proofs
 - Run on the **new** tip: `npm ci`, `npm run lint`, `npm test`, `npm run build`, `npm audit --omit=dev`, `npm run test:migrations`
-- Request a fresh defect-first Main review of the **new** SHA (not `cb8e6b0`). Only a PASS authorizes merge/deploy/wiring or new feature work.
-
+- Request a fresh defect-first Main review of the **new** SHA (not `25655f6`). Only a PASS authorizes merge/deploy/wiring or new feature work.
 
 ## Project state
 

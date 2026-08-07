@@ -9,7 +9,7 @@ SOURCE="${SOURCE_BRANCH:-codex/social-trust-framework}"
 REMOTE="${REMOTE_NAME:-origin}"
 
 # Scaffold required for production build + CI on every stage head.
-SCAFFOLD=".github package.json package-lock.json tsconfig.json next.config.ts vite.config.ts postcss.config.mjs eslint.config.mjs .env.example .openai app/layout.tsx app/page.tsx app/globals.css app/marketplace.tsx app/components lib/media-store.ts lib/types.ts lib/social-health.ts docs/dependency-advisories.md docs/handoffs scripts/sites-env.sh scripts/build-verified.sh scripts/install-ci.sh scripts/validate-artifact.sh scripts/create-staged-prs.sh public tests/rendered-html.test.mjs CURSOR_START_HERE.md README.md"
+SCAFFOLD=".github package.json package-lock.json tsconfig.json next.config.ts vite.config.ts postcss.config.mjs eslint.config.mjs .env.example .openai app/layout.tsx app/page.tsx app/globals.css app/marketplace.tsx app/components lib/media-store.ts lib/types.ts lib/social-health.ts db drizzle docs/dependency-advisories.md docs/handoffs scripts/sites-env.sh scripts/build-verified.sh scripts/install-ci.sh scripts/validate-artifact.sh scripts/prove-migrations.mjs scripts/create-staged-prs.sh public tests/rendered-html.test.mjs CURSOR_START_HERE.md README.md"
 
 # Full trust domain early so barrel/index and portable imports resolve.
 TRUST_LIB="lib/trust"

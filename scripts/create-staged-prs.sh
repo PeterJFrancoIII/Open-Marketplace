@@ -15,11 +15,12 @@ SCAFFOLD=".github package.json package-lock.json tsconfig.json next.config.ts vi
 STAGE1="$SCAFFOLD lib/trust/types.ts lib/trust/state-machines.ts lib/trust/projections.ts lib/trust/events.ts lib/trust/compatibility.ts lib/trust/fixtures.ts lib/trust/index.stage1.ts tests/trust-domain.test.ts"
 # Transaction routes atomically rebuild projections, so event/projection modules
 # and reviews domain must be present from stage 02 for a production build.
-STAGE2="$STAGE1 lib/trust/index.ts lib/trust/transactions.ts lib/trust/auth.ts lib/trust/session.ts lib/trust/errors.ts lib/trust/rate-limit.ts lib/trust/idempotency.ts lib/trust/schemas.ts lib/trust/prior-hash.ts lib/trust/reviews.ts lib/trust/persist-event.ts lib/trust/signed-events.ts lib/trust/projection-provenance.ts lib/trust/rebuild-projections.ts lib/trust/portable app/api/auth app/api/transactions tests/transaction-lifecycle.test.ts tests/d1-adversarial.test.ts"
+STAGE2="$STAGE1 lib/trust/index.ts lib/trust/transactions.ts lib/trust/auth.ts lib/trust/session.ts lib/trust/errors.ts lib/trust/rate-limit.ts lib/trust/idempotency.ts lib/trust/schemas.ts lib/trust/prior-hash.ts lib/trust/reviews.ts lib/trust/persist-event.ts lib/trust/signed-events.ts lib/trust/projection-provenance.ts lib/trust/rebuild-projections.ts lib/trust/portable app/api/auth app/api/transactions tests/transaction-lifecycle.test.ts"
 # Review report route imports safety helpers — ship safety.ts with reviews APIs.
 STAGE3="$STAGE2 lib/trust/safety.ts app/api/reviews tests/double-blind-reviews.test.ts tests/merge-gate-remediation.test.ts"
 STAGE4="$STAGE3 tests/trust-card.test.ts"
-STAGE5="$STAGE4 lib/trust/oauth app/api/oauth tests/oauth-adapters.test.ts"
+# d1-adversarial asserts OAuth batch ordering — keep with oauth stage.
+STAGE5="$STAGE4 lib/trust/oauth app/api/oauth tests/oauth-adapters.test.ts tests/d1-adversarial.test.ts"
 STAGE6="$STAGE5 app/api/disputes app/api/appeals app/api/moderation app/api/transparency tests/safety-moderation.test.ts"
 STAGE7="$STAGE6 app/api/profiles app/api/trust tests/portable-trust.test.ts"
 # Stage 8: ancestral commit whose tree equals SOURCE (not a tip reset).

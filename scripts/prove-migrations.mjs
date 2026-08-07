@@ -197,6 +197,10 @@ console.log("Migration files:", migrationFiles().join(", "));
       '', 'reg', 1, 'sig'
     );
   `);
+  const cols = db.prepare("PRAGMA table_info(trust_events)").all();
+  const priorCol = cols.find((c) => c.name === "prior_event_hash");
+  assert.equal(priorCol.notnull, 1, "prior_event_hash must be NOT NULL");
+  assert.match(String(priorCol.dflt_value ?? ""), /''/, "prior_event_hash default ''");
   assert.throws(() => {
     db.exec(`
       INSERT INTO trust_events (
@@ -208,7 +212,45 @@ console.log("Migration files:", migrationFiles().join(", "));
       );
     `);
   }, /UNIQUE/i);
-  console.log("PASS 0009 prior-hash unique forbids chain forks");
+  assert.throws(() => {
+    db.exec(`
+      INSERT INTO trust_events (
+        id, subject_profile_id, event_type, occurred_at, payload_hash,
+        prior_event_hash, registry_id, schema_version, signature
+      ) VALUES (
+        'e3', 'p1', 'projection.rebuilt', '${now}', 'hash-c',
+        NULL, 'reg', 1, 'sig'
+      );
+    `);
+  }, /NOT NULL|constraint/i);
+  console.log("PASS 0009 prior unique + NOT NULL forbids NULL genesis forks");
+}
+
+{
+  const db = new DatabaseSync(":memory:");
+  applyRange(db, 0, 8);
+  db.exec("PRAGMA foreign_keys = ON;");
+  const now = "2026-08-05T00:00:00.000Z";
+  const later = "2026-08-05T01:00:00.000Z";
+  db.exec(`
+    INSERT INTO profiles (id, display_name, created_at, updated_at)
+    VALUES ('p1', 'Seller', '${now}', '${now}');
+    INSERT INTO trust_events (
+      id, subject_profile_id, event_type, occurred_at, payload_hash,
+      prior_event_hash, registry_id, schema_version, signature
+    ) VALUES
+      ('e-early', 'p1', 'projection.rebuilt', '${now}', 'hash-a', NULL, 'reg', 1, 'sig'),
+      ('e-late', 'p1', 'projection.rebuilt', '${later}', 'hash-b', NULL, 'reg', 1, 'sig');
+  `);
+  applyRange(db, 9, 9);
+  const live = db.prepare("SELECT id FROM trust_events ORDER BY id").all();
+  assert.equal(live.length, 1, "0009 must leave one live genesis event");
+  assert.equal(live[0].id, "e-early");
+  const quarantined = db.prepare("SELECT id FROM trust_events_quarantine").all();
+  assert.equal(quarantined.length, 1);
+  assert.equal(quarantined[0].id, "e-late");
+  assertUniqueIndex(db, "trust_events_subject_prior_uidx");
+  console.log("PASS dirty 0008→0009 genesis-fork quarantine");
 }
 
 console.log("All migration proofs passed.");

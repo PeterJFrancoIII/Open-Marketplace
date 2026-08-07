@@ -7,23 +7,28 @@ import {
   transactions,
 } from "../../../../../db/schema";
 import {
-  applyReveal,
   assertTransactionParticipant,
   AuthError,
-  createSealedReview,
   fingerprintPayload,
   InvalidTrustTransitionError,
   parseActor,
   rateLimit,
+  type TransactionStatus,
+} from "../../../../../lib/trust";
+import {
+  applyReveal,
+  createSealedReview,
   resolveReveal,
   toPublicReviewView,
   type ReviewDimensionInput,
   type ReviewRecord,
   type ReviewRole,
-  type TransactionStatus,
-} from "../../../../../lib/trust";
-import { commitWithSignedTrustEvent } from "../../../../../lib/trust/persist-event.ts";
-import { rebuildAndPersistProjections } from "../../../../../lib/trust/rebuild-projections.ts";
+} from "../../../../../lib/trust/reviews.ts";
+import { commitAtomicTrustBatch, commitWithSignedTrustEvent } from "../../../../../lib/trust/persist-event.ts";
+import {
+  buildProjectionPayloadForProfile,
+  projectionUpsertQuery,
+} from "../../../../../lib/trust/rebuild-projections.ts";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -87,39 +92,85 @@ async function persistRevealAndProjections(
 
   const stamped = applyReveal(records, decision.revealIds);
   const now = new Date().toISOString();
-  for (const review of stamped.filter((r) => decision.revealIds.includes(r.id))) {
-    // Sign first; batch review reveal + trust event so key failures leave no half-state.
-    await commitWithSignedTrustEvent({
-      subjectProfileId: review.subjectId,
-      actorProfileId: review.reviewerId,
-      eventType: "review.revealed",
-      occurredAt: now,
-      payload: {
-        type: "review.revealed",
-        reviewId: review.id,
-        transactionId,
-        score: review.overallScore,
-        reason: decision.reason,
-      },
-      run: async ({ db: batchDb, eventInsert }) => {
-        await batchDb.batch([
-          batchDb
-            .update(reviews)
-            .set({
-              visibility: "revealed",
-              revealedAt: review.revealedAt,
-              updatedAt: now,
-            })
-            .where(eq(reviews.id, review.id)),
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          eventInsert as any,
-        ]);
-      },
+  const toReveal = stamped.filter((r) => decision.revealIds.includes(r.id));
+  const subjects = [...new Set(toReveal.map((r) => r.subjectId))];
+
+  const payloads = new Map<string, { payload: unknown; payloadJson: string }>();
+  for (const subjectId of subjects) {
+    const subjectRows = await db
+      .select()
+      .from(reviews)
+      .where(eq(reviews.subjectId, subjectId));
+    const merged = subjectRows.map((row) => {
+      const next = stamped.find((s) => s.id === row.id);
+      return next ?? rowToReview(row);
     });
+    payloads.set(
+      subjectId,
+      await buildProjectionPayloadForProfile(subjectId, {
+        db,
+        reviewsOverride: merged,
+      }),
+    );
   }
 
-  const subjects = [...new Set(stamped.map((r) => r.subjectId))];
-  await rebuildAndPersistProjections(subjects, { occurredAt: now });
+  // One atomic unit: all reveals + tip projection.rebuilt events + projection rows.
+  await commitAtomicTrustBatch({
+    subjectEvents: subjects.map((subjectId) => ({
+      subjectProfileId: subjectId,
+      events: [
+        ...toReveal
+          .filter((r) => r.subjectId === subjectId)
+          .map((review) => ({
+            actorProfileId: review.reviewerId,
+            eventType: "review.revealed",
+            occurredAt: now,
+            payload: {
+              type: "review.revealed",
+              reviewId: review.id,
+              transactionId,
+              score: review.overallScore,
+              reason: decision.reason,
+            },
+          })),
+        {
+          eventType: "projection.rebuilt",
+          occurredAt: now,
+          payload: payloads.get(subjectId)!.payload,
+        },
+      ],
+    })),
+    run: async ({ db: batchDb, envelopesBySubject, eventInserts }) => {
+      const reviewUpdates = toReveal.map((review) =>
+        batchDb
+          .update(reviews)
+          .set({
+            visibility: "revealed",
+            revealedAt: review.revealedAt,
+            updatedAt: now,
+          })
+          .where(eq(reviews.id, review.id)),
+      );
+      const projectionWrites = subjects.map((subjectId) => {
+        const envelopes = envelopesBySubject.get(subjectId)!;
+        const tip = envelopes[envelopes.length - 1]!;
+        return projectionUpsertQuery(batchDb, {
+          profileId: subjectId,
+          lastEventId: tip.eventId,
+          payloadJson: payloads.get(subjectId)!.payloadJson,
+          calculatedAt: now,
+        });
+      });
+      await batchDb.batch([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(reviewUpdates as any[]),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(eventInserts as any[]),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(projectionWrites as any[]),
+      ]);
+    },
+  });
 
   return { revealed: decision.revealIds, reason: decision.reason };
 }

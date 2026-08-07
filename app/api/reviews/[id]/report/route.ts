@@ -6,8 +6,10 @@ import {
   InvalidTrustTransitionError,
   parseActor,
   rateLimit,
-  reportReview,
 } from "../../../../../lib/trust";
+import {
+  reportReview,
+} from "../../../../../lib/trust/safety.ts";
 
 type Params = { params: Promise<{ id: string }> };
 

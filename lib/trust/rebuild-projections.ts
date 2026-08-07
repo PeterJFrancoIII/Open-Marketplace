@@ -1,12 +1,12 @@
 import { and, eq, inArray, or } from "drizzle-orm";
-import { getDb } from "../../db/index.ts";
+import { getDb, type AppDb } from "../../db/index.ts";
 import {
   profiles,
   reviews,
   transactions,
   trustProjections,
 } from "../../db/schema.ts";
-import { commitWithSignedTrustEvent } from "./persist-event.ts";
+import { commitAtomicTrustBatch } from "./persist-event.ts";
 import { PROJECTION_VERSION } from "./projections.ts";
 import { projectRoleReputation, type ReviewRecord, type ReviewRole } from "./reviews.ts";
 
@@ -83,14 +83,15 @@ export type ProjectionPayload = {
 
 export async function buildProjectionPayloadForProfile(
   profileId: string,
-): Promise<{ payload: ProjectionPayload; memberSince: string }> {
-  const db = await getDb();
+  opts?: { db?: AppDb; reviewsOverride?: ReviewRecord[] },
+): Promise<{ payload: ProjectionPayload; payloadJson: string }> {
+  const db = opts?.db ?? (await getDb());
   const now = new Date().toISOString();
-  const subjectReviews = await db
-    .select()
-    .from(reviews)
-    .where(eq(reviews.subjectId, profileId));
-  const mapped = subjectReviews.map(rowToReview);
+  const mapped =
+    opts?.reviewsOverride ??
+    (await db.select().from(reviews).where(eq(reviews.subjectId, profileId))).map(
+      rowToReview,
+    );
   const sellerReviews = mapped.filter((r) => r.role === "buyer_reviews_seller");
   const buyerReviews = mapped.filter((r) => r.role === "seller_reviews_buyer");
   const completed = await completedCountsForProfiles([profileId]);
@@ -113,71 +114,102 @@ export async function buildProjectionPayloadForProfile(
     reviews: buyerReviews,
     completedCount: stats.bought,
   });
-  return {
-    memberSince: stats.memberSince,
-    payload: {
-      projectionVersion: PROJECTION_VERSION,
-      seller: "seller" in sellerProj ? sellerProj.seller : null,
-      buyer: "buyer" in buyerProj ? buyerProj.buyer : null,
-      experienceLabel:
-        "experienceLabel" in sellerProj
-          ? sellerProj.experienceLabel
-          : "experienceLabel" in buyerProj
-            ? buyerProj.experienceLabel
-            : "New",
-    },
+  const payload: ProjectionPayload = {
+    projectionVersion: PROJECTION_VERSION,
+    seller: "seller" in sellerProj ? sellerProj.seller : null,
+    buyer: "buyer" in buyerProj ? buyerProj.buyer : null,
+    experienceLabel:
+      "experienceLabel" in sellerProj
+        ? sellerProj.experienceLabel
+        : "experienceLabel" in buyerProj
+          ? buyerProj.experienceLabel
+          : "New",
   };
+  return { payload, payloadJson: JSON.stringify(payload) };
+}
+
+export function projectionUpsertQuery(
+  db: AppDb,
+  input: {
+    profileId: string;
+    lastEventId: string;
+    payloadJson: string;
+    calculatedAt: string;
+  },
+) {
+  return db
+    .insert(trustProjections)
+    .values({
+      profileId: input.profileId,
+      projectionVersion: PROJECTION_VERSION,
+      calculatedAt: input.calculatedAt,
+      lastEventId: input.lastEventId,
+      payloadJson: input.payloadJson,
+    })
+    .onConflictDoUpdate({
+      target: trustProjections.profileId,
+      set: {
+        projectionVersion: PROJECTION_VERSION,
+        calculatedAt: input.calculatedAt,
+        lastEventId: input.lastEventId,
+        payloadJson: input.payloadJson,
+      },
+    });
 }
 
 /**
  * Rebuild trust_projections for profiles, binding each row to a signed
- * projection.rebuilt event whose payloadHash covers the projection payload.
+ * projection.rebuilt tip event whose payloadHash covers the projection payload.
  */
 export async function rebuildAndPersistProjections(
   profileIds: string[],
   opts?: { actorProfileId?: string; occurredAt?: string },
 ): Promise<Map<string, string>> {
   const uniqueIds = [...new Set(profileIds.filter(Boolean))];
-  const lastEventIds = new Map<string, string>();
   const occurredAt = opts?.occurredAt ?? new Date().toISOString();
+  if (!uniqueIds.length) return new Map();
 
+  const payloads = new Map<string, { payload: ProjectionPayload; payloadJson: string }>();
   for (const profileId of uniqueIds) {
-    const { payload } = await buildProjectionPayloadForProfile(profileId);
-    const payloadJson = JSON.stringify(payload);
-    const { envelope } = await commitWithSignedTrustEvent({
-      subjectProfileId: profileId,
-      actorProfileId: opts?.actorProfileId,
-      eventType: "projection.rebuilt",
-      occurredAt,
-      // Signed payload IS the projection body — provenance binds via payloadHash.
-      payload,
-      run: async ({ db, envelope, eventInsert }) => {
-        await db.batch([
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          eventInsert as any,
-          db
-            .insert(trustProjections)
-            .values({
-              profileId,
-              projectionVersion: PROJECTION_VERSION,
-              calculatedAt: occurredAt,
-              lastEventId: envelope.eventId,
-              payloadJson,
-            })
-            .onConflictDoUpdate({
-              target: trustProjections.profileId,
-              set: {
-                projectionVersion: PROJECTION_VERSION,
-                calculatedAt: occurredAt,
-                lastEventId: envelope.eventId,
-                payloadJson,
-              },
-            }),
-        ]);
-      },
-    });
-    lastEventIds.set(profileId, envelope.eventId);
+    payloads.set(profileId, await buildProjectionPayloadForProfile(profileId));
   }
 
+  const { envelopesBySubject } = await commitAtomicTrustBatch({
+    subjectEvents: uniqueIds.map((profileId) => ({
+      subjectProfileId: profileId,
+      events: [
+        {
+          actorProfileId: opts?.actorProfileId,
+          eventType: "projection.rebuilt",
+          occurredAt,
+          payload: payloads.get(profileId)!.payload,
+        },
+      ],
+    })),
+    run: async ({ db, envelopesBySubject, eventInserts }) => {
+      const projectionWrites = uniqueIds.map((profileId) => {
+        const envelopes = envelopesBySubject.get(profileId)!;
+        const tip = envelopes[envelopes.length - 1]!;
+        return projectionUpsertQuery(db, {
+          profileId,
+          lastEventId: tip.eventId,
+          payloadJson: payloads.get(profileId)!.payloadJson,
+          calculatedAt: occurredAt,
+        });
+      });
+      await db.batch([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(eventInserts as any[]),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(projectionWrites as any[]),
+      ]);
+    },
+  });
+
+  const lastEventIds = new Map<string, string>();
+  for (const profileId of uniqueIds) {
+    const envelopes = envelopesBySubject.get(profileId)!;
+    lastEventIds.set(profileId, envelopes[envelopes.length - 1]!.eventId);
+  }
   return lastEventIds;
 }

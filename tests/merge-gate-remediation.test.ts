@@ -6,17 +6,19 @@ import {
   assertSameOriginRelativeReturnTo,
   AuthError,
   actorFromProfileId,
-  buildSignedTrustEvent,
   createProposedTransaction,
-  generateRegistryKeyPair,
   InvalidTrustTransitionError,
   mintSessionToken,
   parseActor,
   parseStrictExternalCredential,
   parseStrictListingWrite,
-  requireMatchingRegistryKeypair,
   requireSessionSecret,
 } from "../lib/trust/index.ts";
+import { buildSignedTrustEvent } from "../lib/trust/signed-events.ts";
+import {
+  generateRegistryKeyPair,
+  requireMatchingRegistryKeypair,
+} from "../lib/trust/portable/index.ts";
 
 const SESSION_SECRET = "test-session-secret-32-chars-min!!";
 

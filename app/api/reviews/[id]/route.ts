@@ -3,18 +3,24 @@ import { getDb } from "../../../../db";
 import { reviewDimensions, reviews } from "../../../../db/schema";
 import {
   AuthError,
-  editSealedReview,
   InvalidTrustTransitionError,
   parseActor,
   rateLimit,
+} from "../../../../lib/trust";
+import {
+  editSealedReview,
   tombstoneReview,
   toPublicReviewView,
   type ReviewDimensionInput,
   type ReviewRecord,
   type ReviewRole,
-} from "../../../../lib/trust";
-import { commitWithSignedTrustEvent } from "../../../../lib/trust/persist-event.ts";
-import { rebuildAndPersistProjections } from "../../../../lib/trust/rebuild-projections.ts";
+} from "../../../../lib/trust/reviews.ts";
+import { commitAtomicTrustBatch, commitWithSignedTrustEvent } from "../../../../lib/trust/persist-event.ts";
+import {
+  buildProjectionPayloadForProfile,
+  projectionUpsertQuery,
+  rebuildAndPersistProjections,
+} from "../../../../lib/trust/rebuild-projections.ts";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -164,6 +170,7 @@ export async function PATCH(request: Request, context: Params) {
     }
 
     if (existing.visibility === "revealed") {
+      // Edit of a revealed review must atomically refresh the tip projection.
       await rebuildAndPersistProjections([existing.subjectId], {
         actorProfileId: actor.profileId,
         occurredAt: edited.updatedAt,
@@ -190,10 +197,13 @@ export async function DELETE(request: Request, context: Params) {
     if (!existing) {
       return Response.json({ error: "Review not found" }, { status: 404 });
     }
-    const payload = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const requestBody = (await request.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const reasonCode =
-      typeof payload.reasonCode === "string"
-        ? payload.reasonCode
+      typeof requestBody.reasonCode === "string"
+        ? requestBody.reasonCode
         : "policy_violation";
     const tombstoned = tombstoneReview({
       review: existing,
@@ -201,15 +211,59 @@ export async function DELETE(request: Request, context: Params) {
       reasonCode,
     });
 
-    await commitWithSignedTrustEvent({
-      subjectProfileId: existing.subjectId,
-      actorProfileId: actor.profileId,
-      eventType: "review.tombstone",
-      occurredAt: tombstoned.updatedAt,
-      payload: { type: "review.tombstone", reviewId: id, reasonCode },
-      run: async ({ db, eventInsert }) => {
-        await db.batch([
-          db
+    const db = await getDb();
+    const others = await db
+      .select()
+      .from(reviews)
+      .where(eq(reviews.subjectId, existing.subjectId));
+    const reviewsOverride = [
+      { ...tombstoned, visibility: "removed" as const, body: "", dimensions: [] },
+      ...others
+        .filter((r) => r.id !== id)
+        .map((row) => ({
+          id: row.id,
+          transactionId: row.transactionId,
+          reviewerId: row.reviewerId,
+          subjectId: row.subjectId,
+          role: row.role as ReviewRole,
+          visibility: row.visibility as ReviewRecord["visibility"],
+          overallScore: row.overallScore,
+          body: row.body,
+          dimensions: [] as ReviewDimensionInput[],
+          revealedAt: row.revealedAt,
+          removedReason: row.removedReason,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        })),
+    ];
+    const projection = await buildProjectionPayloadForProfile(existing.subjectId, {
+      reviewsOverride,
+    });
+
+    await commitAtomicTrustBatch({
+      subjectEvents: [
+        {
+          subjectProfileId: existing.subjectId,
+          events: [
+            {
+              actorProfileId: actor.profileId,
+              eventType: "review.tombstone",
+              occurredAt: tombstoned.updatedAt,
+              payload: { type: "review.tombstone", reviewId: id, reasonCode },
+            },
+            {
+              actorProfileId: actor.profileId,
+              eventType: "projection.rebuilt",
+              occurredAt: tombstoned.updatedAt,
+              payload: projection.payload,
+            },
+          ],
+        },
+      ],
+      run: async ({ db: batchDb, envelopesBySubject, eventInserts }) => {
+        const tip = envelopesBySubject.get(existing.subjectId)!.at(-1)!;
+        await batchDb.batch([
+          batchDb
             .update(reviews)
             .set({
               visibility: "removed",
@@ -219,15 +273,15 @@ export async function DELETE(request: Request, context: Params) {
             })
             .where(eq(reviews.id, id)),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          eventInsert as any,
+          ...(eventInserts as any[]),
+          projectionUpsertQuery(batchDb, {
+            profileId: existing.subjectId,
+            lastEventId: tip.eventId,
+            payloadJson: projection.payloadJson,
+            calculatedAt: tombstoned.updatedAt,
+          }),
         ]);
       },
-    });
-
-    // Tombstone must drop the review from public aggregates.
-    await rebuildAndPersistProjections([existing.subjectId], {
-      actorProfileId: actor.profileId,
-      occurredAt: tombstoned.updatedAt,
     });
 
     return Response.json({

@@ -13,7 +13,7 @@ import {
   publicProofFromConnection,
   randomEncryptionKeyHex,
   sealTokenBundle,
-} from "../lib/trust/index.ts";
+} from "../lib/trust/oauth/index.ts";
 
 const key = randomEncryptionKeyHex();
 

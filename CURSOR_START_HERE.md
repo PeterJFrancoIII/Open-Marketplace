@@ -4,26 +4,26 @@ Open this extracted folder as the project root in Cursor. Read this file,
 `README.md`, `SOCIAL_TRUST_FRAMEWORK.md`, `ARCHITECTURE.md`, and `POLICY.md`
 before changing code.
 
-## Current merge gate — fourth remediation pass (awaiting Main re-review)
+## Current merge gate — fifth remediation pass (awaiting Main re-review)
 
 - Prior verdict: `OPEN_MARKETPLACE_MAIN_REVIEW_FIX_REQUIRED`
 - Pull request: [PR 1](https://github.com/PeterJFrancoIII/Open-Marketplace/pull/1)
-- Prior blocked heads: `e0e3653…`, `076765e…`, `cb8e6b0…`, `25655f6…`
+- Prior blocked heads include `64ef86a…`
 - Rule: do **not** merge, deploy, wire production services, or begin WebRTC work until a **new** Main review returns PASS.
 
-### Round-4 tip blockers (on `25655f6`) — fixed in this tip
+### Round-5 tip blockers (on `64ef86a`) — fixed in this tip
 
-1. **OAuth FK order:** D1 batch is profile → `social_connections` → `provider_grants`.
-2. **Projection provenance:** verify ECDSA signature; require `projection.rebuilt`; bind `payloadJson` via `payloadHash`; rebuild on tombstone/edit/completion; sales = tx count only.
-3. **Atomic trust mutations:** sign-then-batch review+event; unique `(subject, prior)` with retry forbids chain forks.
-4. **Staged PR split:** scaffold+CI from stage 1; stage 8 tip tree equals SOURCE exactly; regenerate with green CI on every stage head.
+1. **Atomic trust mutations:** reveal/tombstone/completion batch review state + signed events + tip projection together; provenance requires chain tip.
+2. **Migration 0009:** quarantine forks, rebuild prior→event-id links, recreate column as `NOT NULL DEFAULT ''`.
+3. **Envelope linkage:** `priorEventHash` stores prior event id (not payload hash); bundle verify walks linkage, not timestamps.
+4. **Ancestral staged stack:** lean stage 01; stage 08 commits on stage 07 with SOURCE-identical tree.
+5. **CI audit allowlist:** `scripts/audit-allowlist.mjs` enforces exact packages documented in `docs/dependency-advisories.md`.
 
 ### Evidence required before Main re-review
 
-- [x] D1-backed adversarial tests (`tests/d1-adversarial.test.ts`)
-- [x] Migration `0009` prior-hash unique + proofs
-- Run on the **new** tip: `npm ci`, `npm run lint`, `npm test`, `npm run build`, `npm audit --omit=dev`, `npm run test:migrations`
-- Request a fresh defect-first Main review of the **new** SHA (not `25655f6`). Only a PASS authorizes merge/deploy/wiring or new feature work.
+- Run on the **new** tip: `npm ci`, `npm run lint`, `npm test`, `npm run build`, `node scripts/audit-allowlist.mjs`, `npm run test:migrations`
+- Green CI on tip and every `codex/stage/*` head
+- Request a fresh defect-first Main review of the **new** SHA (not `64ef86a`). Only a PASS authorizes merge/deploy/wiring or new feature work.
 
 ## Project state
 

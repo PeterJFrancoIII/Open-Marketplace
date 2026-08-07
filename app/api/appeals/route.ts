@@ -4,12 +4,14 @@ import { appeals, moderationActions, profiles } from "../../../db/schema";
 import {
   AuthError,
   InvalidTrustTransitionError,
-  openAppeal,
   parseActor,
   rateLimit,
   type AppealStatus,
   type ModerationActionStatus,
 } from "../../../lib/trust";
+import {
+  openAppeal,
+} from "../../../lib/trust/safety.ts";
 
 function errorResponse(error: unknown) {
   if (error instanceof AuthError) {

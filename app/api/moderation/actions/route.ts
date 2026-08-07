@@ -4,12 +4,14 @@ import { moderationActions, profiles } from "../../../../db/schema";
 import {
   AuthError,
   InvalidTrustTransitionError,
-  issueModerationAction,
   parseActor,
   rateLimit,
-  toPublicModerationView,
   type ModerationActionStatus,
 } from "../../../../lib/trust";
+import {
+  issueModerationAction,
+  toPublicModerationView,
+} from "../../../../lib/trust/safety.ts";
 
 function errorResponse(error: unknown) {
   if (error instanceof AuthError) {

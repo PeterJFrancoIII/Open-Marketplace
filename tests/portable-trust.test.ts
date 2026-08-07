@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createMemoryTrustEventStore } from "../lib/trust/events.ts";
 import {
   assertExportSafe,
   buildSignedTrustBundle,
   canonicalize,
-  createMemoryTrustEventStore,
   generateRegistryKeyPair,
   importExternalCredential,
   issueBoundedClaim,
@@ -15,7 +15,7 @@ import {
   verifyBoundedClaim,
   verifyTrustBundle,
   verifyTrustEventEnvelope,
-} from "../lib/trust/index.ts";
+} from "../lib/trust/portable/index.ts";
 
 test("canonicalize is deterministic across key order", async () => {
   const a = canonicalize({ b: 1, a: { d: 2, c: 3 } });

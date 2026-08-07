@@ -1,6 +1,6 @@
+import { OAuthError } from "../../../../../lib/trust/oauth/types.ts";
 import {
   AuthError,
-  OAuthError,
   parseActor,
   rateLimit,
 } from "../../../../../lib/trust";

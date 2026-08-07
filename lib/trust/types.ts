@@ -68,6 +68,7 @@ export type TrustEventEnvelope = {
   eventType: string;
   occurredAt: string;
   payloadHash: string;
+  /** Prior event id for envelope linkage (empty/undefined = genesis). Not a payload hash. */
   priorEventHash?: string;
   registryId: string;
   schemaVersion: number;

@@ -1,6 +1,4 @@
 import type { TrustEventEnvelope } from "./types.ts";
-import { canonicalize, sha256Hex } from "./portable/canonicalize.ts";
-import { signCanonical, type RegistryKeyPair } from "./portable/keys.ts";
 
 export type TrustEventStore = {
   append(event: Omit<TrustEventEnvelope, "payloadHash" | "priorEventHash" | "signature"> & {
@@ -8,6 +6,11 @@ export type TrustEventStore = {
     priorEventHash?: string;
   }): Promise<TrustEventEnvelope> | TrustEventEnvelope;
   listForSubject(subjectProfileId: string): TrustEventEnvelope[];
+};
+
+type MemorySigner = {
+  privateKey: CryptoKey;
+  keyId?: string;
 };
 
 /** Legacy non-crypto digest kept for unsigned local fixtures. */
@@ -26,7 +29,7 @@ function legacyHashPayload(payload: unknown): string {
 /** In-memory append-only store for domain tests and local fixtures. */
 export function createMemoryTrustEventStore(
   registryId = "open-marketplace-local",
-  signer?: Pick<RegistryKeyPair, "privateKey" | "keyId">,
+  signer?: MemorySigner,
 ): TrustEventStore {
   const events: TrustEventEnvelope[] = [];
 
@@ -35,10 +38,12 @@ export function createMemoryTrustEventStore(
       const prior =
         input.priorEventHash ??
         events.filter((e) => e.subjectProfileId === input.subjectProfileId).at(-1)
-          ?.payloadHash;
+          ?.eventId;
 
       if (signer) {
         return (async () => {
+          const { canonicalize, sha256Hex } = await import("./portable/canonicalize.ts");
+          const { signCanonical } = await import("./portable/keys.ts");
           const payloadHash = await sha256Hex(canonicalize(input.payload));
           const body = {
             eventId: input.eventId,

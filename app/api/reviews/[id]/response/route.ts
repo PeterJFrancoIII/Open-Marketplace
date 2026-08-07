@@ -2,14 +2,16 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../../db";
 import { reviewDimensions, reviewResponses, reviews } from "../../../../../db/schema";
 import {
-  addPublicResponse,
   AuthError,
   InvalidTrustTransitionError,
   parseActor,
   rateLimit,
+} from "../../../../../lib/trust";
+import {
+  addPublicResponse,
   type ReviewRecord,
   type ReviewRole,
-} from "../../../../../lib/trust";
+} from "../../../../../lib/trust/reviews.ts";
 
 type Params = { params: Promise<{ id: string }> };
 

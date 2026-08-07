@@ -8,6 +8,7 @@ import {
   parseJwkEnv,
   PortableTrustError,
 } from "./portable/keys.ts";
+import { isChainTipEvent } from "./persist-event.ts";
 import type { TrustEventEnvelope } from "./types.ts";
 
 export type TrustedProjectionSnapshot = {
@@ -30,9 +31,8 @@ async function loadRegistryPublicKey(): Promise<CryptoKey> {
 }
 
 /**
- * Load a projection only when lastEventId is a verified projection.rebuilt
- * event whose payloadHash binds to payloadJson. Never trust unsigned or
- * unbound projection rows.
+ * Load a projection only when lastEventId is the verified chain tip
+ * projection.rebuilt event whose payloadHash binds to payloadJson.
  */
 export async function loadProvenProjection(
   profileId: string,
@@ -44,6 +44,9 @@ export async function loadProvenProjection(
     .where(eq(trustProjections.profileId, profileId))
     .limit(1);
   if (!projection?.lastEventId || !projection.payloadJson) return null;
+
+  const tipOk = await isChainTipEvent(db, profileId, projection.lastEventId);
+  if (!tipOk) return null;
 
   const [event] = await db
     .select()
@@ -125,7 +128,7 @@ export async function requireProvenProjection(
   const snapshot = await loadProvenProjection(profileId);
   if (!snapshot) {
     throw new PortableTrustError(
-      "No provenance-backed trust projection (verified projection.rebuilt required)",
+      "No provenance-backed trust projection (verified tip projection.rebuilt required)",
       409,
     );
   }

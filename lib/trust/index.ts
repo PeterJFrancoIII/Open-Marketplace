@@ -1,8 +1,8 @@
+/** Core trust barrel — late domains import from their own modules. */
 export * from "./types.ts";
 export * from "./state-machines.ts";
 export * from "./projections.ts";
 export * from "./events.ts";
-export * from "./signed-events.ts";
 export * from "./compatibility.ts";
 export * from "./fixtures.ts";
 export * from "./errors.ts";
@@ -12,8 +12,3 @@ export * from "./schemas.ts";
 export * from "./rate-limit.ts";
 export * from "./idempotency.ts";
 export * from "./transactions.ts";
-export * from "./reviews.ts";
-export * from "./trust-card-model.ts";
-export * from "./oauth/index.ts";
-export * from "./safety.ts";
-export * from "./portable/index.ts";

@@ -3,16 +3,18 @@ import { getDb } from "../../../../../../db";
 import { externalTrustClaims, profiles } from "../../../../../../db/schema";
 import {
   AuthError,
-  importExternalCredential,
   parseActor,
   parseStrictExternalCredential,
+  rateLimit,
+} from "../../../../../../lib/trust";
+import {
+  importExternalCredential,
   PortableTrustError,
   publicExternalEvidenceView,
-  rateLimit,
   requireMatchingRegistryKeypair,
   verifyBoundedClaim,
   type OpenMarketplaceVerifiableCredential,
-} from "../../../../../../lib/trust";
+} from "../../../../../../lib/trust/portable/index.ts";
 
 type Params = { params: Promise<{ id: string }> };
 

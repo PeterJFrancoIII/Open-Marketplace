@@ -1,12 +1,12 @@
+import { rateLimit } from "../../../../lib/trust";
 import {
   PortableTrustError,
-  rateLimit,
   requireMatchingRegistryKeypair,
   verifyBoundedClaim,
   verifyTrustBundle,
   type OpenMarketplaceVerifiableCredential,
   type TrustExportBundle,
-} from "../../../../lib/trust";
+} from "../../../../lib/trust/portable/index.ts";
 
 function errorResponse(error: unknown) {
   if (error instanceof PortableTrustError) {

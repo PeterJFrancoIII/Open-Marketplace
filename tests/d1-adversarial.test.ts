@@ -138,7 +138,40 @@ test("projection provenance binds payloadJson hash to verified signature", async
   assert.equal(await verifyCanonical(keys.publicKey, body, badSig), false);
 });
 
-test("prior-hash unique index rejects concurrent chain forks", () => {
+test("identical projection payloads can chain via prior event id", async () => {
+  const keys = await generateRegistryKeyPair();
+  process.env.REGISTRY_SIGNING_PRIVATE_JWK = JSON.stringify(keys.privateJwk);
+  process.env.NEXT_PUBLIC_REGISTRY_SIGNING_PUBLIC_JWK = JSON.stringify(keys.publicJwk);
+  process.env.NEXT_PUBLIC_REGISTRY_ID = "open-marketplace-test";
+
+  const payload = {
+    projectionVersion: "v1",
+    seller: { completedSales: 2, displayMean: null, ratingCount: 0 },
+    buyer: null,
+    experienceLabel: "New",
+  };
+  const first = await buildSignedTrustEvent({
+    eventId: "evt-a",
+    subjectProfileId: "profile-1",
+    eventType: "projection.rebuilt",
+    occurredAt: "2026-08-07T00:00:00.000Z",
+    payload,
+    priorEventHash: null,
+  });
+  const second = await buildSignedTrustEvent({
+    eventId: "evt-b",
+    subjectProfileId: "profile-1",
+    eventType: "projection.rebuilt",
+    occurredAt: "2026-08-07T00:00:00.000Z",
+    payload,
+    priorEventHash: first.eventId,
+  });
+  assert.equal(first.payloadHash, second.payloadHash);
+  assert.equal(second.priorEventHash, first.eventId);
+  assert.notEqual(first.eventId, second.eventId);
+});
+
+test("prior-event-id unique index rejects concurrent chain forks", () => {
   const db = new DatabaseSync(":memory:");
   applyAllMigrations(db);
   db.exec("PRAGMA foreign_keys = ON;");

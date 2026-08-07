@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  addPublicResponse,
-  applyReveal,
   applyTransactionEvent,
   createProposedTransaction,
+} from "../lib/trust/transactions.ts";
+import {
+  addPublicResponse,
+  applyReveal,
   createSealedReview,
   editSealedReview,
   filterRepeatCounterparties,
@@ -14,7 +16,7 @@ import {
   toPublicReviewView,
   tombstoneReview,
   type ReviewRecord,
-} from "../lib/trust/index.ts";
+} from "../lib/trust/reviews.ts";
 
 function actor(profileId: string, isModerator = false) {
   return { profileId, isModerator };

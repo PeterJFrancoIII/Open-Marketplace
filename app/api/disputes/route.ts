@@ -5,15 +5,17 @@ import {
   AuthError,
   applyTransactionEvent,
   InvalidTrustTransitionError,
-  openDispute,
   parseActor,
   rateLimit,
   roleOnTransaction,
-  type DisputeStatus,
-  type PublicReasonCategory,
   type TransactionRecord,
   type TransactionStatus,
+  type DisputeStatus,
 } from "../../../lib/trust";
+import {
+  openDispute,
+  type PublicReasonCategory,
+} from "../../../lib/trust/safety.ts";
 
 function errorResponse(error: unknown) {
   if (error instanceof AuthError) {

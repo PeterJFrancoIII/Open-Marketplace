@@ -6,9 +6,11 @@ import {
   InvalidTrustTransitionError,
   parseActor,
   rateLimit,
-  transitionDispute,
   type DisputeStatus,
 } from "../../../../lib/trust";
+import {
+  transitionDispute,
+} from "../../../../lib/trust/safety.ts";
 
 type Params = { params: Promise<{ id: string }> };
 

@@ -1,4 +1,4 @@
-import { OAuthError } from "../../../../../lib/trust";
+import { OAuthError } from "../../../../../lib/trust/oauth/types.ts";
 import {
   buildRuntimeOAuthService,
   isSupportedOAuthProvider,

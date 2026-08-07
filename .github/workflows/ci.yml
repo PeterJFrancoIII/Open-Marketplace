@@ -22,10 +22,5 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Production dependency audit
-        run: |
-          if npm audit --omit=dev; then
-            exit 0
-          fi
-          test -f docs/dependency-advisories.md
-          echo "Audit reported findings; reviewed exception is recorded in docs/dependency-advisories.md"
+        run: node scripts/audit-allowlist.mjs
       - run: npm run test:migrations

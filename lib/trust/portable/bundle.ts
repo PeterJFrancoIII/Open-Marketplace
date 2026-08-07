@@ -171,13 +171,37 @@ export async function verifyTrustBundle(input: {
   }
 
   let eventsValid = true;
-  let priorHash: string | undefined;
-  const sortedEvents = [...input.bundle.events].sort((a, b) =>
-    a.occurredAt === b.occurredAt
-      ? a.eventId.localeCompare(b.eventId)
-      : a.occurredAt.localeCompare(b.occurredAt),
+  // Walk envelope linkage (priorEventHash = prior event id), never timestamp sort.
+  const byId = new Map(input.bundle.events.map((e) => [e.eventId, e]));
+  const roots = input.bundle.events.filter(
+    (e) => !e.priorEventHash || e.priorEventHash === "",
   );
-  for (const event of sortedEvents) {
+  const ordered: typeof input.bundle.events = [];
+  const seen = new Set<string>();
+  const queue = [...roots].sort((a, b) => a.eventId.localeCompare(b.eventId));
+  while (queue.length) {
+    const event = queue.shift()!;
+    if (seen.has(event.eventId)) {
+      eventsValid = false;
+      reasons.push(`event ${event.eventId} appears twice in chain walk`);
+      continue;
+    }
+    seen.add(event.eventId);
+    ordered.push(event);
+    const children = input.bundle.events
+      .filter((e) => e.priorEventHash === event.eventId)
+      .sort((a, b) => a.eventId.localeCompare(b.eventId));
+    if (children.length > 1) {
+      eventsValid = false;
+      reasons.push(`event ${event.eventId} has multiple successors`);
+    }
+    queue.push(...children);
+  }
+  if (ordered.length !== input.bundle.events.length) {
+    eventsValid = false;
+    reasons.push("event chain is incomplete or forked relative to priorEventHash links");
+  }
+  for (const event of ordered) {
     if (!event.signature || event.signature.startsWith("unsigned:")) {
       eventsValid = false;
       reasons.push(`event ${event.eventId} is unsigned`);
@@ -191,15 +215,12 @@ export async function verifyTrustBundle(input: {
       eventsValid = false;
       reasons.push(`event ${event.eventId} signature invalid`);
     }
-    if (priorHash && event.priorEventHash && event.priorEventHash !== priorHash) {
-      eventsValid = false;
-      reasons.push(`event ${event.eventId} breaks hash chain`);
+    if (event.priorEventHash) {
+      if (!byId.has(event.priorEventHash)) {
+        eventsValid = false;
+        reasons.push(`event ${event.eventId} priorEventHash missing from bundle`);
+      }
     }
-    if (priorHash && !event.priorEventHash) {
-      eventsValid = false;
-      reasons.push(`event ${event.eventId} missing priorEventHash`);
-    }
-    priorHash = event.payloadHash;
   }
 
   const nativeFailed = credentials.some(

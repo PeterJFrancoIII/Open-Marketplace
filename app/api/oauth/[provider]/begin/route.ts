@@ -1,8 +1,8 @@
+import { OAuthError } from "../../../../../lib/trust/oauth/types.ts";
 import {
   assertSameOriginRelativeReturnTo,
   AuthError,
   InvalidTrustTransitionError,
-  OAuthError,
   parseActor,
   rateLimit,
 } from "../../../../../lib/trust";

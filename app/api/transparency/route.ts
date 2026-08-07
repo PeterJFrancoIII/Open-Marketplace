@@ -1,13 +1,15 @@
 import { getDb } from "../../../db";
 import { appeals, disputes, moderationActions, reviewReports } from "../../../db/schema";
 import {
-  buildTransparencyReport,
   rateLimit,
   type AppealStatus,
+} from "../../../lib/trust";
+import {
+  buildTransparencyReport,
   type DisputeRecord,
   type ModerationActionRecord,
   type ReviewReportRecord,
-} from "../../../lib/trust";
+} from "../../../lib/trust/safety.ts";
 
 export async function GET(request: Request) {
   try {

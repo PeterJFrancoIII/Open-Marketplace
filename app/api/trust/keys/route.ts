@@ -1,7 +1,7 @@
 import {
   PortableTrustError,
   requireMatchingRegistryKeypair,
-} from "../../../../lib/trust";
+} from "../../../../lib/trust/portable/index.ts";
 
 /** Publish the registry verification JWK only — never the private key. */
 export async function GET() {

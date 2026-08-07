@@ -145,7 +145,7 @@ test("append-only trust events chain by payload hash", async () => {
       registryId: "test",
     }),
   );
-  assert.equal(second.priorEventHash, first.payloadHash);
+  assert.equal(second.priorEventHash, first.eventId);
   assert.equal(store.listForSubject("p1").length, 2);
 });
 

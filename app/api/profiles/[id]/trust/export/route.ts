@@ -3,13 +3,15 @@ import { getDb } from "../../../../../../db";
 import { profiles, socialConnections, trustEvents } from "../../../../../../db/schema";
 import {
   AuthError,
-  buildSignedTrustBundle,
   parseActor,
-  PortableTrustError,
   rateLimit,
-  requireMatchingRegistryKeypair,
   type TrustEventEnvelope,
 } from "../../../../../../lib/trust";
+import {
+  buildSignedTrustBundle,
+  PortableTrustError,
+  requireMatchingRegistryKeypair,
+} from "../../../../../../lib/trust/portable/index.ts";
 import { requireProvenProjection } from "../../../../../../lib/trust/projection-provenance.ts";
 
 type Params = { params: Promise<{ id: string }> };

@@ -3,13 +3,15 @@ import { getDb } from "../../../../../db";
 import { appeals, moderationActions } from "../../../../../db/schema";
 import {
   AuthError,
-  decideAppeal,
   InvalidTrustTransitionError,
   parseActor,
   rateLimit,
   type AppealStatus,
   type ModerationActionStatus,
 } from "../../../../../lib/trust";
+import {
+  decideAppeal,
+} from "../../../../../lib/trust/safety.ts";
 
 type Params = { params: Promise<{ id: string }> };
 

@@ -5,10 +5,12 @@ import {
   AuthError,
   assertAppealTransition,
   assertDisputeTransition,
+  InvalidTrustTransitionError,
+} from "../lib/trust/index.ts";
+import {
   buildTransparencyReport,
   decideAppeal,
   expireModerationAction,
-  InvalidTrustTransitionError,
   issueModerationAction,
   openAppeal,
   openDispute,
@@ -16,7 +18,7 @@ import {
   toPublicModerationView,
   transitionDispute,
   transitionReviewReport,
-} from "../lib/trust/index.ts";
+} from "../lib/trust/safety.ts";
 
 function actor(profileId: string, isModerator = false) {
   return { profileId, isModerator };

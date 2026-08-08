@@ -1,9 +1,11 @@
 import type { TrustEventEnvelope } from "./types.ts";
+import { TRUST_ENVELOPE_SCHEMA_CURRENT } from "./types.ts";
+import { priorForEnvelope } from "./prior-hash.ts";
 import { canonicalize, sha256Hex } from "./portable/canonicalize.ts";
 import { requireMatchingRegistryKeypair } from "./portable/keypair-guard.ts";
 import { signCanonical } from "./portable/keys.ts";
 
-/** Create a cryptographically signed, hash-chained trust event (never unsigned:). */
+/** Create a cryptographically signed, id-linked trust event (schema v2). */
 export async function buildSignedTrustEvent(input: {
   eventId: string;
   subjectProfileId: string;
@@ -11,7 +13,9 @@ export async function buildSignedTrustEvent(input: {
   eventType: string;
   occurredAt: string;
   payload: unknown;
+  /** Prior event id; null/undefined/'' = genesis. */
   priorEventHash?: string | null;
+  priorEventId?: string | null;
   schemaVersion?: number;
 }): Promise<TrustEventEnvelope> {
   const keys = await requireMatchingRegistryKeypair({
@@ -21,6 +25,11 @@ export async function buildSignedTrustEvent(input: {
     NEXT_PUBLIC_REGISTRY_ID: process.env.NEXT_PUBLIC_REGISTRY_ID,
   });
   const payloadHash = await sha256Hex(canonicalize(input.payload));
+  const schemaVersion = input.schemaVersion ?? TRUST_ENVELOPE_SCHEMA_CURRENT;
+  const priorEventId = priorForEnvelope(
+    input.priorEventId ?? input.priorEventHash,
+  );
+
   const body = {
     eventId: input.eventId,
     subjectProfileId: input.subjectProfileId,
@@ -28,10 +37,11 @@ export async function buildSignedTrustEvent(input: {
     eventType: input.eventType,
     occurredAt: input.occurredAt,
     payloadHash,
-    priorEventHash: input.priorEventHash ?? undefined,
+    priorEventId,
     registryId: keys.registryId,
-    schemaVersion: input.schemaVersion ?? 1,
+    schemaVersion,
   };
+
   const signature = await signCanonical(keys.privateKey, body);
   if (signature.startsWith("unsigned:")) {
     throw new Error("Refusing to publish unsigned trust event");

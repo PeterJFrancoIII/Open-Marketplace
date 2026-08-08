@@ -61,6 +61,11 @@ export type SocialConnection = {
   updatedAt: string;
 };
 
+/** v1: priorEventHash = prior payload hash. v2+: priorEventId = prior event id. */
+export const TRUST_ENVELOPE_SCHEMA_V1 = 1;
+export const TRUST_ENVELOPE_SCHEMA_V2 = 2;
+export const TRUST_ENVELOPE_SCHEMA_CURRENT = TRUST_ENVELOPE_SCHEMA_V2;
+
 export type TrustEventEnvelope = {
   eventId: string;
   subjectProfileId: string;
@@ -68,8 +73,16 @@ export type TrustEventEnvelope = {
   eventType: string;
   occurredAt: string;
   payloadHash: string;
-  /** Prior event id for envelope linkage (empty/undefined = genesis). Not a payload hash. */
+  /**
+   * Legacy v1 signed prior link: prior event payload hash.
+   * Omitted/undefined for genesis. Never rewritten by SQL migrations.
+   */
   priorEventHash?: string;
+  /**
+   * v2+ signed prior link: prior event id.
+   * Omitted/undefined for genesis (same sentinel the signer uses).
+   */
+  priorEventId?: string;
   registryId: string;
   schemaVersion: number;
   signature: string;

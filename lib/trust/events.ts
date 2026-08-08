@@ -1,9 +1,15 @@
 import type { TrustEventEnvelope } from "./types.ts";
+import {
+  TRUST_ENVELOPE_SCHEMA_CURRENT,
+  TRUST_ENVELOPE_SCHEMA_V2,
+} from "./types.ts";
+import { priorForEnvelope } from "./prior-hash.ts";
 
 export type TrustEventStore = {
-  append(event: Omit<TrustEventEnvelope, "payloadHash" | "priorEventHash" | "signature"> & {
+  append(event: Omit<TrustEventEnvelope, "payloadHash" | "priorEventHash" | "priorEventId" | "signature"> & {
     payload: unknown;
     priorEventHash?: string;
+    priorEventId?: string;
   }): Promise<TrustEventEnvelope> | TrustEventEnvelope;
   listForSubject(subjectProfileId: string): TrustEventEnvelope[];
 };
@@ -36,26 +42,41 @@ export function createMemoryTrustEventStore(
   return {
     append(input) {
       const prior =
-        input.priorEventHash ??
+        priorForEnvelope(input.priorEventId) ??
+        priorForEnvelope(input.priorEventHash) ??
         events.filter((e) => e.subjectProfileId === input.subjectProfileId).at(-1)
           ?.eventId;
+      const schemaVersion = input.schemaVersion ?? TRUST_ENVELOPE_SCHEMA_CURRENT;
 
       if (signer) {
         return (async () => {
           const { canonicalize, sha256Hex } = await import("./portable/canonicalize.ts");
           const { signCanonical } = await import("./portable/keys.ts");
           const payloadHash = await sha256Hex(canonicalize(input.payload));
-          const body = {
-            eventId: input.eventId,
-            subjectProfileId: input.subjectProfileId,
-            actorProfileId: input.actorProfileId,
-            eventType: input.eventType,
-            occurredAt: input.occurredAt,
-            payloadHash,
-            priorEventHash: prior,
-            registryId: input.registryId ?? registryId,
-            schemaVersion: input.schemaVersion,
-          };
+          const body =
+            schemaVersion >= TRUST_ENVELOPE_SCHEMA_V2
+              ? {
+                  eventId: input.eventId,
+                  subjectProfileId: input.subjectProfileId,
+                  actorProfileId: input.actorProfileId,
+                  eventType: input.eventType,
+                  occurredAt: input.occurredAt,
+                  payloadHash,
+                  priorEventId: prior,
+                  registryId: input.registryId ?? registryId,
+                  schemaVersion,
+                }
+              : {
+                  eventId: input.eventId,
+                  subjectProfileId: input.subjectProfileId,
+                  actorProfileId: input.actorProfileId,
+                  eventType: input.eventType,
+                  occurredAt: input.occurredAt,
+                  payloadHash,
+                  priorEventHash: prior,
+                  registryId: input.registryId ?? registryId,
+                  schemaVersion,
+                };
           const signature = await signCanonical(signer.privateKey, body);
           const envelope: TrustEventEnvelope = { ...body, signature };
           events.push(envelope);
@@ -64,18 +85,32 @@ export function createMemoryTrustEventStore(
       }
 
       const payloadHash = legacyHashPayload(input.payload);
-      const envelope: TrustEventEnvelope = {
-        eventId: input.eventId,
-        subjectProfileId: input.subjectProfileId,
-        actorProfileId: input.actorProfileId,
-        eventType: input.eventType,
-        occurredAt: input.occurredAt,
-        payloadHash,
-        priorEventHash: prior,
-        registryId: input.registryId ?? registryId,
-        schemaVersion: input.schemaVersion,
-        signature: `unsigned:${payloadHash.slice(0, 16)}`,
-      };
+      const envelope: TrustEventEnvelope =
+        schemaVersion >= TRUST_ENVELOPE_SCHEMA_V2
+          ? {
+              eventId: input.eventId,
+              subjectProfileId: input.subjectProfileId,
+              actorProfileId: input.actorProfileId,
+              eventType: input.eventType,
+              occurredAt: input.occurredAt,
+              payloadHash,
+              priorEventId: prior,
+              registryId: input.registryId ?? registryId,
+              schemaVersion,
+              signature: `unsigned:${payloadHash.slice(0, 16)}`,
+            }
+          : {
+              eventId: input.eventId,
+              subjectProfileId: input.subjectProfileId,
+              actorProfileId: input.actorProfileId,
+              eventType: input.eventType,
+              occurredAt: input.occurredAt,
+              payloadHash,
+              priorEventHash: prior,
+              registryId: input.registryId ?? registryId,
+              schemaVersion,
+              signature: `unsigned:${payloadHash.slice(0, 16)}`,
+            };
       events.push(envelope);
       return envelope;
     },

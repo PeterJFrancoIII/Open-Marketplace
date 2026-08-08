@@ -15,11 +15,10 @@ import {
   type ReviewRecord,
   type ReviewRole,
 } from "../../../../lib/trust/reviews.ts";
-import { commitAtomicTrustBatch, commitWithSignedTrustEvent } from "../../../../lib/trust/persist-event.ts";
+import { commitAtomicTrustBatch } from "../../../../lib/trust/persist-event.ts";
 import {
   buildProjectionPayloadForProfile,
   projectionUpsertQuery,
-  rebuildAndPersistProjections,
 } from "../../../../lib/trust/rebuild-projections.ts";
 
 type Params = { params: Promise<{ id: string }> };
@@ -121,20 +120,88 @@ export async function PATCH(request: Request, context: Params) {
         : undefined,
     });
 
-    // Sign before any durable mutation; batch review update + trust event.
-    await commitWithSignedTrustEvent({
-      subjectProfileId: existing.subjectId,
-      actorProfileId: actor.profileId,
-      eventType: "review.edited",
-      occurredAt: edited.updatedAt,
-      payload: {
-        type: "review.edited",
-        reviewId: id,
-        score: edited.overallScore,
-      },
-      run: async ({ db, eventInsert }) => {
-        await db.batch([
-          db
+    const db = await getDb();
+    const others = await db
+      .select()
+      .from(reviews)
+      .where(eq(reviews.subjectId, existing.subjectId));
+    const reviewsOverride = [
+      edited,
+      ...others
+        .filter((r) => r.id !== id)
+        .map((row) => ({
+          id: row.id,
+          transactionId: row.transactionId,
+          reviewerId: row.reviewerId,
+          subjectId: row.subjectId,
+          role: row.role as ReviewRole,
+          visibility: row.visibility as ReviewRecord["visibility"],
+          overallScore: row.overallScore,
+          body: row.body,
+          dimensions: [] as ReviewDimensionInput[],
+          revealedAt: row.revealedAt,
+          removedReason: row.removedReason,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        })),
+    ];
+    const projection = await buildProjectionPayloadForProfile(existing.subjectId, {
+      reviewsOverride,
+    });
+
+    // Atomic unit: edit + tip projection.rebuilt + projection upsert (+ dims).
+    await commitAtomicTrustBatch({
+      subjectEvents: [
+        {
+          subjectProfileId: existing.subjectId,
+          events: [
+            {
+              actorProfileId: actor.profileId,
+              eventType: "review.edited",
+              occurredAt: edited.updatedAt,
+              payload: {
+                type: "review.edited",
+                reviewId: id,
+                score: edited.overallScore,
+              },
+            },
+            {
+              actorProfileId: actor.profileId,
+              eventType: "projection.rebuilt",
+              occurredAt: edited.updatedAt,
+              payload: projection.payload,
+            },
+          ],
+        },
+      ],
+      run: async ({ db: batchDb, envelopesBySubject, eventInserts }) => {
+        const tip = envelopesBySubject.get(existing.subjectId)!.at(-1)!;
+        const dimDeletes =
+          payload.dimensions && Array.isArray(payload.dimensions)
+            ? (
+                await batchDb
+                  .select()
+                  .from(reviewDimensions)
+                  .where(eq(reviewDimensions.reviewId, id))
+              ).map((row) =>
+                batchDb.delete(reviewDimensions).where(eq(reviewDimensions.id, row.id)),
+              )
+            : [];
+        const dimInserts =
+          payload.dimensions && Array.isArray(payload.dimensions)
+            ? edited.dimensions.map((dim) =>
+                batchDb.insert(reviewDimensions).values({
+                  id: crypto.randomUUID(),
+                  reviewId: id,
+                  dimension: dim.dimension,
+                  score: dim.score ?? null,
+                  boolValue: dim.boolValue == null ? null : dim.boolValue ? 1 : 0,
+                  tag: dim.tag ?? null,
+                }),
+              )
+            : [];
+        await batchDb.batch([
+          batchDb
             .update(reviews)
             .set({
               overallScore: edited.overallScore,
@@ -142,40 +209,19 @@ export async function PATCH(request: Request, context: Params) {
               updatedAt: edited.updatedAt,
             })
             .where(eq(reviews.id, id)),
+          ...dimDeletes,
+          ...dimInserts,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          eventInsert as any,
+          ...(eventInserts as any[]),
+          projectionUpsertQuery(batchDb, {
+            profileId: existing.subjectId,
+            lastEventId: tip.eventId,
+            payloadJson: projection.payloadJson,
+            calculatedAt: edited.updatedAt,
+          }),
         ]);
       },
     });
-
-    if (payload.dimensions) {
-      const db = await getDb();
-      const old = await db
-        .select()
-        .from(reviewDimensions)
-        .where(eq(reviewDimensions.reviewId, id));
-      for (const row of old) {
-        await db.delete(reviewDimensions).where(eq(reviewDimensions.id, row.id));
-      }
-      for (const dim of edited.dimensions) {
-        await db.insert(reviewDimensions).values({
-          id: crypto.randomUUID(),
-          reviewId: id,
-          dimension: dim.dimension,
-          score: dim.score ?? null,
-          boolValue: dim.boolValue == null ? null : dim.boolValue ? 1 : 0,
-          tag: dim.tag ?? null,
-        });
-      }
-    }
-
-    if (existing.visibility === "revealed") {
-      // Edit of a revealed review must atomically refresh the tip projection.
-      await rebuildAndPersistProjections([existing.subjectId], {
-        actorProfileId: actor.profileId,
-        occurredAt: edited.updatedAt,
-      });
-    }
 
     return Response.json({
       review: toPublicReviewView({

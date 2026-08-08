@@ -1,11 +1,15 @@
 import { and, eq } from "drizzle-orm";
 import { getDb, type AppDb } from "../../db/index.ts";
 import { trustEvents } from "../../db/schema.ts";
-import { normalizePriorEventHash } from "./prior-hash.ts";
+import { normalizePriorEventId } from "./prior-hash.ts";
 import { buildSignedTrustEvent } from "./signed-events.ts";
 import type { TrustEventEnvelope } from "./types.ts";
 
-export { normalizePriorEventHash } from "./prior-hash.ts";
+export {
+  normalizePriorEventHash,
+  normalizePriorEventId,
+  priorForEnvelope,
+} from "./prior-hash.ts";
 
 const MAX_APPEND_ATTEMPTS = 8;
 
@@ -19,6 +23,9 @@ function isUniqueConflict(error: unknown): boolean {
 }
 
 export function trustEventInsertValues(envelope: TrustEventEnvelope) {
+  const priorEventId = normalizePriorEventId(
+    envelope.priorEventId ?? envelope.priorEventHash,
+  );
   return {
     id: envelope.eventId,
     subjectProfileId: envelope.subjectProfileId,
@@ -26,8 +33,12 @@ export function trustEventInsertValues(envelope: TrustEventEnvelope) {
     eventType: envelope.eventType,
     occurredAt: envelope.occurredAt,
     payloadHash: envelope.payloadHash,
-    // prior_event_hash stores the prior event id (envelope linkage), not payload hash.
-    priorEventHash: normalizePriorEventHash(envelope.priorEventHash),
+    // Preserve signed v1 prior_event_hash; v2 events leave it empty (link via prior_event_id).
+    priorEventHash:
+      envelope.schemaVersion >= 2
+        ? ""
+        : normalizePriorEventId(envelope.priorEventHash),
+    priorEventId,
     registryId: envelope.registryId,
     schemaVersion: envelope.schemaVersion,
     signature: envelope.signature,
@@ -42,21 +53,21 @@ export async function loadChainTipEventId(
   const subjectRows = await db
     .select({
       id: trustEvents.id,
-      priorEventHash: trustEvents.priorEventHash,
+      priorEventId: trustEvents.priorEventId,
     })
     .from(trustEvents)
     .where(eq(trustEvents.subjectProfileId, subjectProfileId));
   if (!subjectRows.length) return "";
   const referenced = new Set(
     subjectRows
-      .map((r) => r.priorEventHash)
+      .map((r) => r.priorEventId)
       .filter((p): p is string => Boolean(p && p.length > 0)),
   );
   const tips = subjectRows.filter((r) => !referenced.has(r.id));
   if (tips.length > 1) {
     throw new Error(`Forked trust event chain for subject ${subjectProfileId}`);
   }
-  return normalizePriorEventHash(tips[0]?.id);
+  return normalizePriorEventId(tips[0]?.id);
 }
 
 /** Sign a chain-linked trust event against the current tip (no DB write). */
@@ -73,7 +84,7 @@ export async function prepareSignedTrustEvent(input: {
   const db = input.db ?? (await getDb());
   const priorEventId =
     input.priorEventId !== undefined
-      ? normalizePriorEventHash(input.priorEventId)
+      ? normalizePriorEventId(input.priorEventId)
       : await loadChainTipEventId(db, input.subjectProfileId);
   return buildSignedTrustEvent({
     eventId: crypto.randomUUID(),
@@ -82,7 +93,7 @@ export async function prepareSignedTrustEvent(input: {
     eventType: input.eventType,
     occurredAt: input.occurredAt ?? new Date().toISOString(),
     payload: input.payload,
-    priorEventHash: priorEventId || null,
+    priorEventId: priorEventId || null,
   });
 }
 
@@ -262,7 +273,7 @@ export async function assertNoSuccessor(
     .where(
       and(
         eq(trustEvents.subjectProfileId, subjectProfileId),
-        eq(trustEvents.priorEventHash, eventId),
+        eq(trustEvents.priorEventId, eventId),
       ),
     )
     .limit(1);

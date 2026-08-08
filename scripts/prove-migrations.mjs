@@ -191,24 +191,26 @@ console.log("Migration files:", migrationFiles().join(", "));
     VALUES ('p1', 'Seller', '${now}', '${now}');
     INSERT INTO trust_events (
       id, subject_profile_id, event_type, occurred_at, payload_hash,
-      prior_event_hash, registry_id, schema_version, signature
+      prior_event_hash, prior_event_id, registry_id, schema_version, signature
     ) VALUES (
       'e1', 'p1', 'projection.rebuilt', '${now}', 'hash-a',
-      '', 'reg', 1, 'sig'
+      '', '', 'reg', 1, 'sig'
     );
   `);
   const cols = db.prepare("PRAGMA table_info(trust_events)").all();
-  const priorCol = cols.find((c) => c.name === "prior_event_hash");
-  assert.equal(priorCol.notnull, 1, "prior_event_hash must be NOT NULL");
-  assert.match(String(priorCol.dflt_value ?? ""), /''/, "prior_event_hash default ''");
+  const priorHashCol = cols.find((c) => c.name === "prior_event_hash");
+  const priorIdCol = cols.find((c) => c.name === "prior_event_id");
+  assert.equal(priorHashCol.notnull, 1, "prior_event_hash must be NOT NULL");
+  assert.equal(priorIdCol.notnull, 1, "prior_event_id must be NOT NULL");
+  assert.match(String(priorIdCol.dflt_value ?? ""), /''/, "prior_event_id default ''");
   assert.throws(() => {
     db.exec(`
       INSERT INTO trust_events (
         id, subject_profile_id, event_type, occurred_at, payload_hash,
-        prior_event_hash, registry_id, schema_version, signature
+        prior_event_hash, prior_event_id, registry_id, schema_version, signature
       ) VALUES (
         'e2', 'p1', 'projection.rebuilt', '${now}', 'hash-b',
-        '', 'reg', 1, 'sig'
+        '', '', 'reg', 1, 'sig'
       );
     `);
   }, /UNIQUE/i);
@@ -216,14 +218,14 @@ console.log("Migration files:", migrationFiles().join(", "));
     db.exec(`
       INSERT INTO trust_events (
         id, subject_profile_id, event_type, occurred_at, payload_hash,
-        prior_event_hash, registry_id, schema_version, signature
+        prior_event_hash, prior_event_id, registry_id, schema_version, signature
       ) VALUES (
         'e3', 'p1', 'projection.rebuilt', '${now}', 'hash-c',
-        NULL, 'reg', 1, 'sig'
+        '', NULL, 'reg', 1, 'sig'
       );
     `);
   }, /NOT NULL|constraint/i);
-  console.log("PASS 0009 prior unique + NOT NULL forbids NULL genesis forks");
+  console.log("PASS 0009 prior_event_id unique + NOT NULL forbids NULL genesis forks");
 }
 
 {
@@ -243,14 +245,55 @@ console.log("Migration files:", migrationFiles().join(", "));
       ('e-late', 'p1', 'projection.rebuilt', '${later}', 'hash-b', NULL, 'reg', 1, 'sig');
   `);
   applyRange(db, 9, 9);
-  const live = db.prepare("SELECT id FROM trust_events ORDER BY id").all();
+  const live = db.prepare("SELECT id, prior_event_hash, prior_event_id FROM trust_events ORDER BY id").all();
   assert.equal(live.length, 1, "0009 must leave one live genesis event");
   assert.equal(live[0].id, "e-early");
+  assert.equal(live[0].prior_event_hash, "", "genesis prior_event_hash normalized to ''");
+  assert.equal(live[0].prior_event_id, "", "genesis prior_event_id is ''");
   const quarantined = db.prepare("SELECT id FROM trust_events_quarantine").all();
   assert.equal(quarantined.length, 1);
   assert.equal(quarantined[0].id, "e-late");
   assertUniqueIndex(db, "trust_events_subject_prior_uidx");
   console.log("PASS dirty 0008→0009 genesis-fork quarantine");
+}
+
+{
+  // 0009 must preserve signed prior_event_hash (payload-hash linkage) for 0008 chains.
+  const db = new DatabaseSync(":memory:");
+  applyRange(db, 0, 8);
+  db.exec("PRAGMA foreign_keys = ON;");
+  const now = "2026-08-05T00:00:00.000Z";
+  const later = "2026-08-05T01:00:00.000Z";
+  db.exec(`
+    INSERT INTO profiles (id, display_name, created_at, updated_at)
+    VALUES ('p1', 'Seller', '${now}', '${now}');
+    INSERT INTO trust_events (
+      id, subject_profile_id, event_type, occurred_at, payload_hash,
+      prior_event_hash, registry_id, schema_version, signature
+    ) VALUES
+      ('e1', 'p1', 'projection.rebuilt', '${now}', 'payload-hash-1',
+       NULL, 'reg', 1, 'sig-e1'),
+      ('e2', 'p1', 'review.sealed', '${later}', 'payload-hash-2',
+       'payload-hash-1', 'reg', 1, 'sig-e2');
+  `);
+  applyRange(db, 9, 9);
+  const rows = db
+    .prepare(
+      "SELECT id, prior_event_hash, prior_event_id, signature FROM trust_events ORDER BY occurred_at",
+    )
+    .all();
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].prior_event_hash, "", "genesis NULL→'' only");
+  assert.equal(rows[0].prior_event_id, "");
+  assert.equal(rows[0].signature, "sig-e1");
+  assert.equal(
+    rows[1].prior_event_hash,
+    "payload-hash-1",
+    "0009 must not rewrite signed prior_event_hash to event id",
+  );
+  assert.equal(rows[1].prior_event_id, "e1", "prior_event_id derived for linkage");
+  assert.equal(rows[1].signature, "sig-e2");
+  console.log("PASS 0009 preserves signed 0008 prior_event_hash chain");
 }
 
 console.log("All migration proofs passed.");

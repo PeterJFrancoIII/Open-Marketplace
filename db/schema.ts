@@ -348,8 +348,16 @@ export const trustEvents = sqliteTable(
     eventType: text("event_type").notNull(),
     occurredAt: text("occurred_at").notNull(),
     payloadHash: text("payload_hash").notNull(),
-    /** Empty string = genesis; never NULL (UNIQUE forbids concurrent forks). */
+    /**
+     * Signed prior link field (v1 payload-hash chain). Empty string = genesis.
+     * SQL migrations must never rewrite non-empty values (signature-covered).
+     */
     priorEventHash: text("prior_event_hash").notNull().default(""),
+    /**
+     * Envelope linkage / UNIQUE tip key (prior event id). Empty string = genesis.
+     * Derived for legacy rows; signed inside v2+ envelopes as priorEventId.
+     */
+    priorEventId: text("prior_event_id").notNull().default(""),
     registryId: text("registry_id").notNull(),
     schemaVersion: integer("schema_version").notNull().default(1),
     signature: text("signature").notNull(),
@@ -358,7 +366,7 @@ export const trustEvents = sqliteTable(
     index("trust_events_subject_idx").on(table.subjectProfileId, table.occurredAt),
     uniqueIndex("trust_events_subject_prior_uidx").on(
       table.subjectProfileId,
-      table.priorEventHash,
+      table.priorEventId,
     ),
   ],
 );

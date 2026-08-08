@@ -86,7 +86,9 @@ export async function GET(request: Request, context: Params) {
         eventType: row.eventType,
         occurredAt: row.occurredAt,
         payloadHash: row.payloadHash,
-        priorEventHash: row.priorEventHash ?? undefined,
+        // Match signer genesis sentinel (omit empty string).
+        priorEventHash: row.priorEventHash || undefined,
+        priorEventId: row.priorEventId || undefined,
         registryId: row.registryId,
         schemaVersion: row.schemaVersion,
         signature: row.signature,

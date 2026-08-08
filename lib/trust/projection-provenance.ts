@@ -97,6 +97,7 @@ export async function loadProvenProjection(
     occurredAt: event.occurredAt,
     payloadHash: event.payloadHash,
     priorEventHash: event.priorEventHash || undefined,
+    priorEventId: event.priorEventId || undefined,
     registryId: event.registryId,
     schemaVersion: event.schemaVersion,
     signature: event.signature,

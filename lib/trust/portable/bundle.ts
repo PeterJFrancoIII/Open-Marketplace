@@ -1,4 +1,6 @@
 import type { TrustEventEnvelope } from "../types.ts";
+import { TRUST_ENVELOPE_SCHEMA_V2 } from "../types.ts";
+import { priorForEnvelope } from "../prior-hash.ts";
 import {
   assertExportSafe,
   claimsFromTrustSnapshot,
@@ -38,6 +40,50 @@ function bundlePayload(bundle: TrustExportBundle) {
   return rest;
 }
 
+function eventPriorLink(event: TrustEventEnvelope): string | undefined {
+  if (event.schemaVersion >= TRUST_ENVELOPE_SCHEMA_V2) {
+    return priorForEnvelope(event.priorEventId);
+  }
+  return priorForEnvelope(event.priorEventHash);
+}
+
+function isChildOf(
+  child: TrustEventEnvelope,
+  parent: TrustEventEnvelope,
+): boolean {
+  if (child.schemaVersion >= TRUST_ENVELOPE_SCHEMA_V2) {
+    return priorForEnvelope(child.priorEventId) === parent.eventId;
+  }
+  return priorForEnvelope(child.priorEventHash) === parent.payloadHash;
+}
+
+function signedEventBody(envelope: TrustEventEnvelope) {
+  if (envelope.schemaVersion >= TRUST_ENVELOPE_SCHEMA_V2) {
+    return {
+      eventId: envelope.eventId,
+      subjectProfileId: envelope.subjectProfileId,
+      actorProfileId: envelope.actorProfileId,
+      eventType: envelope.eventType,
+      occurredAt: envelope.occurredAt,
+      payloadHash: envelope.payloadHash,
+      priorEventId: priorForEnvelope(envelope.priorEventId),
+      registryId: envelope.registryId,
+      schemaVersion: envelope.schemaVersion,
+    };
+  }
+  return {
+    eventId: envelope.eventId,
+    subjectProfileId: envelope.subjectProfileId,
+    actorProfileId: envelope.actorProfileId,
+    eventType: envelope.eventType,
+    occurredAt: envelope.occurredAt,
+    payloadHash: envelope.payloadHash,
+    priorEventHash: priorForEnvelope(envelope.priorEventHash),
+    registryId: envelope.registryId,
+    schemaVersion: envelope.schemaVersion,
+  };
+}
+
 export async function buildSignedTrustBundle(input: {
   registryId: string;
   keyId: string;
@@ -64,7 +110,8 @@ export async function buildSignedTrustBundle(input: {
     eventType: event.eventType,
     occurredAt: event.occurredAt,
     payloadHash: event.payloadHash,
-    priorEventHash: event.priorEventHash,
+    priorEventHash: priorForEnvelope(event.priorEventHash),
+    priorEventId: priorForEnvelope(event.priorEventId),
     registryId: event.registryId,
     schemaVersion: event.schemaVersion,
     signature: event.signature,
@@ -128,6 +175,7 @@ export async function verifyTrustBundle(input: {
 }): Promise<{
   ok: boolean;
   bundleSignatureValid: boolean;
+  eventsValid: boolean;
   credentials: Array<{
     id: string;
     claimType: string;
@@ -171,12 +219,32 @@ export async function verifyTrustBundle(input: {
   }
 
   let eventsValid = true;
-  // Walk envelope linkage (priorEventHash = prior event id), never timestamp sort.
-  const byId = new Map(input.bundle.events.map((e) => [e.eventId, e]));
-  const roots = input.bundle.events.filter(
-    (e) => !e.priorEventHash || e.priorEventHash === "",
-  );
-  const ordered: typeof input.bundle.events = [];
+  const events = input.bundle.events;
+  const ids = events.map((e) => e.eventId);
+  if (new Set(ids).size !== ids.length) {
+    eventsValid = false;
+    reasons.push("duplicate event ids in bundle");
+  }
+
+  for (const event of events) {
+    if (event.subjectProfileId !== input.bundle.subjectProfileId) {
+      eventsValid = false;
+      reasons.push(`event ${event.eventId} subject mismatch`);
+    }
+    if (event.registryId !== input.bundle.registryId) {
+      eventsValid = false;
+      reasons.push(`event ${event.eventId} registry mismatch`);
+    }
+  }
+
+  const byId = new Map(events.map((e) => [e.eventId, e]));
+  const roots = events.filter((e) => !eventPriorLink(e));
+  if (events.length > 0 && roots.length !== 1) {
+    eventsValid = false;
+    reasons.push(`expected exactly one root, found ${roots.length}`);
+  }
+
+  const ordered: typeof events = [];
   const seen = new Set<string>();
   const queue = [...roots].sort((a, b) => a.eventId.localeCompare(b.eventId));
   while (queue.length) {
@@ -188,8 +256,8 @@ export async function verifyTrustBundle(input: {
     }
     seen.add(event.eventId);
     ordered.push(event);
-    const children = input.bundle.events
-      .filter((e) => e.priorEventHash === event.eventId)
+    const children = events
+      .filter((e) => isChildOf(e, event))
       .sort((a, b) => a.eventId.localeCompare(b.eventId));
     if (children.length > 1) {
       eventsValid = false;
@@ -197,10 +265,20 @@ export async function verifyTrustBundle(input: {
     }
     queue.push(...children);
   }
-  if (ordered.length !== input.bundle.events.length) {
+
+  if (ordered.length !== events.length) {
     eventsValid = false;
-    reasons.push("event chain is incomplete or forked relative to priorEventHash links");
+    reasons.push("event chain is incomplete, forked, cyclic, or disconnected");
   }
+
+  const tips = ordered.filter(
+    (e) => !ordered.some((child) => child !== e && isChildOf(child, e)),
+  );
+  if (events.length > 0 && tips.length !== 1) {
+    eventsValid = false;
+    reasons.push(`expected exactly one tip, found ${tips.length}`);
+  }
+
   for (const event of ordered) {
     if (!event.signature || event.signature.startsWith("unsigned:")) {
       eventsValid = false;
@@ -215,10 +293,19 @@ export async function verifyTrustBundle(input: {
       eventsValid = false;
       reasons.push(`event ${event.eventId} signature invalid`);
     }
-    if (event.priorEventHash) {
-      if (!byId.has(event.priorEventHash)) {
-        eventsValid = false;
-        reasons.push(`event ${event.eventId} priorEventHash missing from bundle`);
+    const prior = eventPriorLink(event);
+    if (prior) {
+      if (event.schemaVersion >= TRUST_ENVELOPE_SCHEMA_V2) {
+        if (!byId.has(prior)) {
+          eventsValid = false;
+          reasons.push(`event ${event.eventId} priorEventId missing from bundle`);
+        }
+      } else {
+        const parent = events.find((e) => e.payloadHash === prior);
+        if (!parent) {
+          eventsValid = false;
+          reasons.push(`event ${event.eventId} priorEventHash missing from bundle`);
+        }
       }
     }
   }
@@ -234,25 +321,46 @@ export async function verifyTrustBundle(input: {
     reasons,
   };
 }
+
 export async function signTrustEventEnvelope(input: {
   unsigned: Omit<TrustEventEnvelope, "payloadHash" | "signature"> & {
     payload: unknown;
   };
   privateKey: CryptoKey;
+  priorEventId?: string;
   priorEventHash?: string;
 }): Promise<TrustEventEnvelope> {
   const payloadHash = await sha256Hex(canonicalize(input.unsigned.payload));
-  const body = {
-    eventId: input.unsigned.eventId,
-    subjectProfileId: input.unsigned.subjectProfileId,
-    actorProfileId: input.unsigned.actorProfileId,
-    eventType: input.unsigned.eventType,
-    occurredAt: input.unsigned.occurredAt,
-    payloadHash,
-    priorEventHash: input.priorEventHash ?? input.unsigned.priorEventHash,
-    registryId: input.unsigned.registryId,
-    schemaVersion: input.unsigned.schemaVersion,
-  };
+  const schemaVersion =
+    input.unsigned.schemaVersion ?? TRUST_ENVELOPE_SCHEMA_V2;
+  const body =
+    schemaVersion >= TRUST_ENVELOPE_SCHEMA_V2
+      ? {
+          eventId: input.unsigned.eventId,
+          subjectProfileId: input.unsigned.subjectProfileId,
+          actorProfileId: input.unsigned.actorProfileId,
+          eventType: input.unsigned.eventType,
+          occurredAt: input.unsigned.occurredAt,
+          payloadHash,
+          priorEventId: priorForEnvelope(
+            input.priorEventId ?? input.unsigned.priorEventId,
+          ),
+          registryId: input.unsigned.registryId,
+          schemaVersion,
+        }
+      : {
+          eventId: input.unsigned.eventId,
+          subjectProfileId: input.unsigned.subjectProfileId,
+          actorProfileId: input.unsigned.actorProfileId,
+          eventType: input.unsigned.eventType,
+          occurredAt: input.unsigned.occurredAt,
+          payloadHash,
+          priorEventHash: priorForEnvelope(
+            input.priorEventHash ?? input.unsigned.priorEventHash,
+          ),
+          registryId: input.unsigned.registryId,
+          schemaVersion,
+        };
   const signature = await signCanonical(input.privateKey, body);
   return { ...body, signature };
 }
@@ -261,6 +369,6 @@ export async function verifyTrustEventEnvelope(input: {
   envelope: TrustEventEnvelope;
   publicKey: CryptoKey;
 }): Promise<boolean> {
-  const { signature, ...body } = input.envelope;
-  return verifyCanonical(input.publicKey, body, signature);
+  const body = signedEventBody(input.envelope);
+  return verifyCanonical(input.publicKey, body, input.envelope.signature);
 }

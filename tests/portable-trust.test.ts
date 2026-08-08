@@ -34,7 +34,7 @@ test("signed event envelopes verify with registry key", async () => {
       eventType: "profile.created",
       occurredAt: "2026-08-05T00:00:00.000Z",
       payload: { standing: "new" },
-      schemaVersion: 1,
+      schemaVersion: 2,
       registryId: "registry-test",
     }),
   );
@@ -94,7 +94,7 @@ test("export bundle omits private material and verifies as a whole", async () =>
       eventType: "transaction.completed",
       occurredAt: "2026-08-01T00:00:00.000Z",
       payload: { count: 1 },
-      schemaVersion: 1,
+      schemaVersion: 2,
       registryId: "registry-test",
     }),
   );

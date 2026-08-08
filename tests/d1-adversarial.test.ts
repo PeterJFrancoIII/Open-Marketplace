@@ -167,7 +167,7 @@ test("identical projection payloads can chain via prior event id", async () => {
     priorEventHash: first.eventId,
   });
   assert.equal(first.payloadHash, second.payloadHash);
-  assert.equal(second.priorEventHash, first.eventId);
+  assert.equal(second.priorEventId, first.eventId);
   assert.notEqual(first.eventId, second.eventId);
 });
 
@@ -180,20 +180,20 @@ test("prior-event-id unique index rejects concurrent chain forks", () => {
   db.exec(`
     INSERT INTO trust_events (
       id, subject_profile_id, event_type, occurred_at, payload_hash,
-      prior_event_hash, registry_id, schema_version, signature
+      prior_event_hash, prior_event_id, registry_id, schema_version, signature
     ) VALUES (
       'e1', 'profile-1', 'projection.rebuilt', '${now}', 'hash-a',
-      '${normalizePriorEventHash(null)}', 'reg', 1, 'sig'
+      '', '${normalizePriorEventHash(null)}', 'reg', 2, 'sig'
     );
   `);
   assert.throws(() => {
     db.exec(`
       INSERT INTO trust_events (
         id, subject_profile_id, event_type, occurred_at, payload_hash,
-        prior_event_hash, registry_id, schema_version, signature
+        prior_event_hash, prior_event_id, registry_id, schema_version, signature
       ) VALUES (
         'e2', 'profile-1', 'review.revealed', '${now}', 'hash-b',
-        '', 'reg', 1, 'sig'
+        '', '', 'reg', 2, 'sig'
       );
     `);
   }, /UNIQUE/i);

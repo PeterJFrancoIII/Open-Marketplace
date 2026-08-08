@@ -24,7 +24,7 @@ import {
   type ReviewRecord,
   type ReviewRole,
 } from "../../../../../lib/trust/reviews.ts";
-import { commitAtomicTrustBatch, commitWithSignedTrustEvent } from "../../../../../lib/trust/persist-event.ts";
+import { commitAtomicTrustBatch } from "../../../../../lib/trust/persist-event.ts";
 import {
   buildProjectionPayloadForProfile,
   projectionUpsertQuery,
@@ -289,17 +289,47 @@ export async function POST(request: Request, context: Params) {
       score: sealed.overallScore,
     });
 
-    await commitWithSignedTrustEvent({
-      subjectProfileId: sealed.subjectId,
-      actorProfileId: actor.profileId,
-      eventType: "review.sealed",
-      occurredAt: sealed.createdAt,
-      payload: {
-        type: "review.sealed",
-        reviewId: sealed.id,
-        score: sealed.overallScore,
-      },
-      run: async ({ db: batchDb, eventInsert }) => {
+    // Include sealed review in projection override so the tip rebuild is atomic
+    // even when public aggregates are unchanged (lone sealed review).
+    const subjectExisting = await db
+      .select()
+      .from(reviews)
+      .where(eq(reviews.subjectId, sealed.subjectId));
+    const reviewsOverride = [
+      sealed,
+      ...subjectExisting.map((row) => rowToReview(row)),
+    ];
+    const projection = await buildProjectionPayloadForProfile(sealed.subjectId, {
+      db,
+      reviewsOverride,
+    });
+
+    await commitAtomicTrustBatch({
+      subjectEvents: [
+        {
+          subjectProfileId: sealed.subjectId,
+          events: [
+            {
+              actorProfileId: actor.profileId,
+              eventType: "review.sealed",
+              occurredAt: sealed.createdAt,
+              payload: {
+                type: "review.sealed",
+                reviewId: sealed.id,
+                score: sealed.overallScore,
+              },
+            },
+            {
+              actorProfileId: actor.profileId,
+              eventType: "projection.rebuilt",
+              occurredAt: sealed.createdAt,
+              payload: projection.payload,
+            },
+          ],
+        },
+      ],
+      run: async ({ db: batchDb, envelopesBySubject, eventInserts }) => {
+        const tip = envelopesBySubject.get(sealed.subjectId)!.at(-1)!;
         await batchDb.batch([
           batchDb.insert(reviews).values({
             id: sealed.id,
@@ -336,7 +366,13 @@ export async function POST(request: Request, context: Params) {
             occurredAt: sealed.createdAt,
           }),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          eventInsert as any,
+          ...(eventInserts as any[]),
+          projectionUpsertQuery(batchDb, {
+            profileId: sealed.subjectId,
+            lastEventId: tip.eventId,
+            payloadJson: projection.payloadJson,
+            calculatedAt: sealed.createdAt,
+          }),
         ]);
       },
     });

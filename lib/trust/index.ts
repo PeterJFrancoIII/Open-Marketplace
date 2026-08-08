@@ -1,7 +1,14 @@
-/** Lean barrel for staged PR 01 only. Full `index.ts` lands in later stages. */
+/** Core trust barrel — late domains import from their own modules. */
 export * from "./types.ts";
 export * from "./state-machines.ts";
 export * from "./projections.ts";
 export * from "./events.ts";
 export * from "./compatibility.ts";
 export * from "./fixtures.ts";
+export * from "./errors.ts";
+export * from "./auth.ts";
+export * from "./session.ts";
+export * from "./schemas.ts";
+export * from "./rate-limit.ts";
+export * from "./idempotency.ts";
+export * from "./transactions.ts";

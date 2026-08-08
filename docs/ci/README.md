@@ -1,5 +1,7 @@
 # CI
 
-GitHub Actions template: [`docs/ci/github-actions.ci.yml`](docs/ci/github-actions.ci.yml)
+Installed workflow: [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)  
+Template source: [`docs/ci/github-actions.ci.yml`](github-actions.ci.yml)
 
-Copy to `.github/workflows/ci.yml` when your GitHub token has the `workflow` scope.
+Runs: `npm ci`, lint, test (includes build), build, production `npm audit --omit=dev`
+(with reviewed exception file if audit is non-zero), and `npm run test:migrations`.

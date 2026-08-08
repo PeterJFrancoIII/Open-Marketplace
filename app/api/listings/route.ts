@@ -4,15 +4,90 @@ import {
   desc,
   eq,
   gte,
+  inArray,
   like,
   lte,
   or,
   type SQL,
 } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { listings, profiles } from "../../../db/schema";
+import { listings, profiles, socialConnections } from "../../../db/schema";
+import { loadProvenProjection } from "../../../lib/trust/projection-provenance.ts";
 import { checkSocialAccounts } from "../../../lib/social-health";
+import {
+  AuthError,
+  InvalidTrustTransitionError,
+  parseActor,
+  parseStrictListingWrite,
+  rateLimit,
+} from "../../../lib/trust";
 import type { SocialProof } from "../../../lib/types";
+
+function parseSocialAccounts(raw: string | null | undefined): SocialProof[] {
+  try {
+    const parsed = JSON.parse(raw || "[]") as unknown;
+    return Array.isArray(parsed) ? (parsed as SocialProof[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Merge oauth_verified social_connections into listing/profile social proofs. */
+function enrichSocialProofsWithOAuth(
+  proofs: SocialProof[],
+  connections: Array<{
+    provider: string;
+    canonicalUrl: string;
+    handle: string | null;
+    status: string;
+    accountCreatedAt: string | null;
+    connectionCount: number | null;
+    connectionLabel: string | null;
+    verifiedAt: string | null;
+    lastSuccessfulRefreshAt: string | null;
+  }>,
+): SocialProof[] {
+  const oauthByProvider = new Map(
+    connections
+      .filter((c) => c.status === "oauth_verified")
+      .map((c) => [c.provider, c] as const),
+  );
+  // Always strip client-spoofed oauth badges; re-apply only from oauth_verified rows.
+  const next = proofs.map((proof) => {
+    const oauth = oauthByProvider.get(proof.provider);
+    if (!oauth) {
+      return { ...proof, metricsSource: "self-reported" as const };
+    }
+    oauthByProvider.delete(proof.provider);
+    return {
+      ...proof,
+      url: oauth.canonicalUrl || proof.url,
+      handle: oauth.handle ?? proof.handle,
+      metricsSource: "oauth" as const,
+      health: proof.health === "dead" || proof.health === "invalid" ? proof.health : "active",
+      accountCreatedAt: oauth.accountCreatedAt ?? proof.accountCreatedAt,
+      connectionCount: oauth.connectionCount ?? proof.connectionCount,
+      connectionLabel:
+        (oauth.connectionLabel as SocialProof["connectionLabel"]) ?? proof.connectionLabel,
+      lastCheckedAt: oauth.lastSuccessfulRefreshAt ?? oauth.verifiedAt ?? proof.lastCheckedAt,
+    };
+  });
+
+  for (const [provider, oauth] of oauthByProvider) {
+    next.push({
+      provider: provider as SocialProof["provider"],
+      url: oauth.canonicalUrl,
+      handle: oauth.handle ?? undefined,
+      metricsSource: "oauth",
+      health: "active",
+      accountCreatedAt: oauth.accountCreatedAt ?? undefined,
+      connectionCount: oauth.connectionCount ?? undefined,
+      connectionLabel: (oauth.connectionLabel as SocialProof["connectionLabel"]) ?? undefined,
+      lastCheckedAt: oauth.lastSuccessfulRefreshAt ?? oauth.verifiedAt ?? undefined,
+    });
+  }
+  return next;
+}
 
 const conditions = ["New", "Like new", "Good", "Fair"] as const;
 const formats = ["Fixed price", "Auction"] as const;
@@ -26,6 +101,12 @@ const restrictedTerms = [
 ];
 
 function registryError(error: unknown) {
+  if (error instanceof AuthError) {
+    return Response.json({ error: error.message }, { status: error.status });
+  }
+  if (error instanceof InvalidTrustTransitionError) {
+    return Response.json({ error: error.message }, { status: 422 });
+  }
   const message = error instanceof Error ? error.message : "Unexpected registry error";
   const unavailable = message.includes("no such table") || message.includes("binding `DB`");
   return Response.json(
@@ -98,18 +179,58 @@ export async function GET(request: Request) {
       .orderBy(order, desc(listings.id))
       .limit(limit);
 
+    const sellerIds = [
+      ...new Set(rows.map(({ listing }) => listing.sellerId).filter(Boolean)),
+    ];
+    const oauthRows =
+      sellerIds.length > 0
+        ? await db
+            .select()
+            .from(socialConnections)
+            .where(
+              and(
+                inArray(socialConnections.profileId, sellerIds),
+                eq(socialConnections.status, "oauth_verified"),
+              ),
+            )
+        : [];
+    const oauthBySeller = new Map<string, typeof oauthRows>();
+    for (const row of oauthRows) {
+      const list = oauthBySeller.get(row.profileId) ?? [];
+      list.push(row);
+      oauthBySeller.set(row.profileId, list);
+    }
+
+    const provenEntries = await Promise.all(
+      sellerIds.map(async (sellerId) => {
+        const snapshot = await loadProvenProjection(sellerId);
+        return [sellerId, snapshot] as const;
+      }),
+    );
+    const projectionBySeller = new Map(provenEntries);
+
     return Response.json({
-      listings: rows.map(({ listing, profile }) => ({
-        ...listing,
-        sellerName: profile?.displayName ?? listing.sellerName,
-        socialProofsJson:
+      listings: rows.map(({ listing, profile }) => {
+        const baseProofs = parseSocialAccounts(
           profile?.socialAccountsJson ?? listing.socialProofsJson,
-        itemsSold: profile?.itemsSold ?? 0,
-        sellerRating: profile?.sellerRating ?? null,
-        sellerRatingCount: profile?.sellerRatingCount ?? 0,
-        buyerRating: profile?.buyerRating ?? null,
-        buyerRatingCount: profile?.buyerRatingCount ?? 0,
-      })),
+        );
+        const enriched = enrichSocialProofsWithOAuth(
+          baseProofs,
+          oauthBySeller.get(listing.sellerId) ?? [],
+        );
+        const projection = projectionBySeller.get(listing.sellerId);
+        return {
+          ...listing,
+          sellerName: profile?.displayName ?? listing.sellerName,
+          socialProofsJson: JSON.stringify(enriched),
+          // Only provenance-backed projections may populate public ratings.
+          itemsSold: projection?.sellerCompletedSales ?? 0,
+          sellerRating: projection?.sellerDisplayMean ?? null,
+          sellerRatingCount: projection?.sellerRatingCount ?? 0,
+          buyerRating: projection?.buyerDisplayMean ?? null,
+          buyerRatingCount: projection?.buyerRatingCount ?? 0,
+        };
+      }),
     });
   } catch (error) {
     return registryError(error);
@@ -118,39 +239,32 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const payload = (await request.json()) as Record<string, unknown>;
-    const title = typeof payload.title === "string" ? payload.title.trim() : "";
-    const description =
-      typeof payload.description === "string" ? payload.description.trim() : "";
-    const category = typeof payload.category === "string" ? payload.category.trim() : "";
-    const locationLabel =
-      typeof payload.locationLabel === "string" ? payload.locationLabel.trim() : "";
-    const sellerId = typeof payload.sellerId === "string" ? payload.sellerId.trim() : "";
-    const sellerName =
-      typeof payload.sellerName === "string" ? payload.sellerName.trim() : "";
-    const priceCents = Number(payload.priceCents);
-    const condition = String(payload.condition ?? "");
-    const format = String(payload.format ?? "");
-    const delivery = String(payload.delivery ?? "");
-    const socialProofs = Array.isArray(payload.socialProofs)
-      ? (payload.socialProofs.slice(0, 3) as SocialProof[])
-      : [];
-    const imageManifest = Array.isArray(payload.imageManifest)
-      ? payload.imageManifest.slice(0, 6)
-      : [];
+    const actor = await parseActor(request, process.env.MODERATOR_TOKEN ?? null);
+    const limited = rateLimit({
+      key: `listing:create:${actor.profileId}`,
+      limit: 20,
+      windowMs: 60_000,
+    });
+    if (!limited.ok) {
+      return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
+    }
 
-    if (!title || title.length > 90) {
-      return Response.json({ error: "A title of 1–90 characters is required." }, { status: 400 });
-    }
-    if (!description || description.length > 1400) {
-      return Response.json({ error: "A description of 1–1400 characters is required." }, { status: 400 });
-    }
-    if (!Number.isSafeInteger(priceCents) || priceCents < 0 || priceCents > 1_000_000_000) {
-      return Response.json({ error: "A valid price is required." }, { status: 400 });
-    }
-    if (!category || !locationLabel || !sellerId || !sellerName) {
-      return Response.json({ error: "Category, area, and seller identity are required." }, { status: 400 });
-    }
+    const payload = await request.json();
+    const write = parseStrictListingWrite(payload);
+    // Seller identity is always the server session — never caller-chosen.
+    const ownedSellerId = actor.profileId;
+    const title = write.title;
+    const description = write.description;
+    const category = write.category;
+    const locationLabel = write.locationLabel;
+    const sellerName = write.sellerName;
+    const priceCents = write.priceCents;
+    const condition = write.condition;
+    const format = write.format;
+    const delivery = write.delivery;
+    const socialProofs = write.socialProofs.slice(0, 3) as unknown as SocialProof[];
+    const imageManifest = write.imageManifest;
+
     if (!conditions.includes(condition as (typeof conditions)[number])) {
       return Response.json({ error: "Unsupported condition." }, { status: 400 });
     }
@@ -185,7 +299,7 @@ export async function POST(request: Request) {
     await db
       .insert(profiles)
       .values({
-        id: sellerId,
+        id: ownedSellerId,
         displayName: sellerName,
         socialAccountsJson: JSON.stringify(checkedSocialProofs),
         updatedAt,
@@ -199,32 +313,32 @@ export async function POST(request: Request) {
         },
       });
 
-    const [listing] = await db
+    const [created] = await db
       .insert(listings)
       .values({
         id,
         title,
         description,
         priceCents,
-        currency: payload.currency === "USD" ? "USD" : "USD",
+        currency: write.currency === "USD" ? "USD" : "USD",
         condition,
         category,
         locationLabel,
         distanceMiles: null,
         format,
         delivery,
-        sellerId,
+        sellerId: ownedSellerId,
         sellerName,
         socialProofsJson: JSON.stringify(checkedSocialProofs),
         imageManifestJson: JSON.stringify(imageManifest),
-        endingAt: typeof payload.endingAt === "string" ? payload.endingAt : null,
+        endingAt: write.endingAt,
       })
       .returning();
 
     return Response.json(
       {
         listing: {
-          ...listing,
+          ...created,
           itemsSold: 0,
           sellerRating: null,
           sellerRatingCount: 0,

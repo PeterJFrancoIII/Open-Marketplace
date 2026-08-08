@@ -1,8 +1,17 @@
+/** Local IndexedDB vault shape (bytes stay on device). */
 export type MediaManifest = {
   hash: string;
   name: string;
   size: number;
   type: string;
+};
+
+/** Registry-safe metadata only — never include image bytes. */
+export type RegistryMediaManifest = {
+  contentHash: string;
+  mimeType: string;
+  filename: string;
+  byteLength: number;
 };
 
 export type SocialProof = {

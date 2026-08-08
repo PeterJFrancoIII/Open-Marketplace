@@ -15,6 +15,62 @@
       "when": 1785960537353,
       "tag": "0001_rapid_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785962422299,
+      "tag": "0002_shocking_slayback",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785962827925,
+      "tag": "0003_useful_shooting_star",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1785966071618,
+      "tag": "0004_talented_pete_wisdom",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1785966423582,
+      "tag": "0005_green_corsair",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1785966786435,
+      "tag": "0006_fixed_magdalene",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1785967836584,
+      "tag": "0007_acoustic_natasha_romanoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1785969564962,
+      "tag": "0008_little_black_bird",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1786120000000,
+      "tag": "0009_trust_event_prior_unique",
+      "breakpoints": true
     }
   ]
 }

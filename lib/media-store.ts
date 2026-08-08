@@ -1,4 +1,4 @@
-import type { MediaManifest } from "./types";
+import type { MediaManifest, RegistryMediaManifest } from "./types";
 
 const DATABASE_NAME = "open-exchange-media";
 const DATABASE_VERSION = 1;
@@ -70,6 +70,31 @@ export async function storeMedia(files: File[]): Promise<MediaManifest[]> {
   } finally {
     database.close();
   }
+}
+
+/** Map local vault manifests to the registry metadata contract. */
+export function toRegistryMediaManifest(
+  items: MediaManifest[],
+): RegistryMediaManifest[] {
+  return items.map((item) => ({
+    contentHash: item.hash.replace(/^sha256:/i, "").toLowerCase(),
+    mimeType: item.type.startsWith("image/") ? item.type : "image/jpeg",
+    filename: item.name,
+    byteLength: item.size,
+  }));
+}
+
+/** Resolve a local vault key from either local or registry manifest fields. */
+export function localMediaKey(item: {
+  hash?: string;
+  contentHash?: string;
+}): string {
+  if (item.hash) return item.hash;
+  if (item.contentHash) {
+    const hex = item.contentHash.replace(/^sha256:/i, "").toLowerCase();
+    return `sha256:${hex}`;
+  }
+  return "";
 }
 
 export async function getLocalMediaUrl(hash: string): Promise<string | null> {

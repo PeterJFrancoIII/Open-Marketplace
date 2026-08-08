@@ -212,7 +212,8 @@ export async function checkSocialAccount(account: SocialProof): Promise<SocialPr
     url: url.toString(),
     handle,
     connectionLabel: providerRules[provider].connectionLabel,
-    metricsSource: account.metricsSource === "oauth" ? "oauth" : "self-reported",
+    // Never honor client-asserted oauth — only server OAuth enrichment may set it.
+    metricsSource: "self-reported",
     lastCheckedAt: checkedAt,
   };
 

@@ -1,7 +1,29 @@
 # Cursor Agent Handoff — Open Marketplace
 
 Open this extracted folder as the project root in Cursor. Read this file,
-`README.md`, `ARCHITECTURE.md`, and `POLICY.md` before changing code.
+`README.md`, `SOCIAL_TRUST_FRAMEWORK.md`, `ARCHITECTURE.md`, and `POLICY.md`
+before changing code.
+
+## Current merge gate — fifth remediation pass (awaiting Main re-review)
+
+- Prior verdict: `OPEN_MARKETPLACE_MAIN_REVIEW_FIX_REQUIRED`
+- Pull request: [PR 1](https://github.com/PeterJFrancoIII/Open-Marketplace/pull/1)
+- Prior blocked heads include `64ef86a…`
+- Rule: do **not** merge, deploy, wire production services, or begin WebRTC work until a **new** Main review returns PASS.
+
+### Round-5 tip blockers (on `64ef86a`) — fixed in this tip
+
+1. **Atomic trust mutations:** reveal/tombstone/completion batch review state + signed events + tip projection together; provenance requires chain tip.
+2. **Migration 0009:** quarantine forks, rebuild prior→event-id links, recreate column as `NOT NULL DEFAULT ''`.
+3. **Envelope linkage:** `priorEventHash` stores prior event id (not payload hash); bundle verify walks linkage, not timestamps.
+4. **Ancestral staged stack:** lean stage 01; stage 08 commits on stage 07 with SOURCE-identical tree.
+5. **CI audit allowlist:** `scripts/audit-allowlist.mjs` enforces exact packages documented in `docs/dependency-advisories.md`.
+
+### Evidence required before Main re-review
+
+- Run on the **new** tip: `npm ci`, `npm run lint`, `npm test`, `npm run build`, `node scripts/audit-allowlist.mjs`, `npm run test:migrations`
+- Green CI on tip and every `codex/stage/*` head
+- Request a fresh defect-first Main review of the **new** SHA (not `64ef86a`). Only a PASS authorizes merge/deploy/wiring or new feature work.
 
 ## Project state
 
@@ -10,11 +32,10 @@ Open this extracted folder as the project root in Cursor. Read this file,
 - Framework: Next.js-compatible Vinext, React 19, TypeScript, Cloudflare Worker.
 - Registry: Cloudflare D1 via Drizzle migrations.
 - Media: image bytes remain in the seller's IndexedDB media vault.
-- Latest validated source commit: `d4ee5f7` (SOL 5.6 Max scaffold).
+- Current review branch: `codex/social-trust-framework`; the reviewed head above is blocked pending remediation.
 - Current deployment:
   `https://open-exchange-market.tempus-innov-6508.chatgpt.site`
-- Validation completed: ESLint, production build, artifact validation,
-  rendered-page tests, and invalid-social-link endpoint test.
+- Last Main review: 46/46 tests passed and lint had no errors, but there is no installed CI workflow, migration `0007` is unsafe for dirty existing data, and production dependency advisories remain.
 
 ## Implemented functionality
 
@@ -23,7 +44,7 @@ Open this extracted folder as the project root in Cursor. Read this file,
 - Best match, newest, ending soon, price, and distance sorting.
 - Fixed-price and auction-shaped listings.
 - Listing composer with local-only image storage and SHA-256 manifests.
-- D1 metadata registry; no image bytes are accepted by `/api/listings`.
+- D1 metadata registry design; strict schema enforcement that guarantees no media bytes reach D1 is a current merge blocker.
 - Clickable Facebook, Instagram, and TikTok account links.
 - Visible social-account creation dates and friend/follower counts.
 - Live, allowlisted social-link health checks on load and publication.
@@ -53,12 +74,22 @@ Open this extracted folder as the project root in Cursor. Read this file,
 9. Preserve the default restricted-items policy and applicable-law checks.
 10. Keep D1 structured data behind the existing database helper and commit every
     generated migration.
+11. Never create one universal trust score or use social popularity in ranking,
+    permissions, reputation, or enforcement.
+12. Accept reviews only from authenticated counterparties to a completed
+    transaction and keep two-sided reviews sealed until simultaneous reveal.
 
 ## Important honesty boundaries
 
-- Account creation dates and friend/follower counts are currently self-reported.
+- Protected mutations now require a server-signed session; this is still a
+  device-bound starter identity, not full account recovery / multi-device auth.
+- Native portable claims must come from transaction-derived `trust_projections`
+  and signed events; unsigned historical rows are ignored on export.
+- Account creation dates and friend/follower counts remain self-reported unless
+  `metricsSource: "oauth"`.
 - Live-link checks are automated URL-health checks, not identity verification.
-- Public OAuth, production authorization, transaction settlement, messages, and
+- Facebook OAuth (PKCE + encrypted grants) is implemented; Instagram/TikTok
+  adapters, production authorization, transaction settlement, messages, and
   WebRTC cross-device media delivery are not complete.
 - A seller browser must be online for true seller-device media delivery unless
   an explicit encrypted pinning mode is added.
@@ -84,6 +115,15 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
 - `app/globals.css` — responsive visual system.
 - `app/api/listings/route.ts` — D1 listing reads/writes and publication rules.
 - `app/api/social-health/route.ts` — social-link checking endpoint.
+- `app/api/oauth/[provider]/{begin,callback,disconnect,refresh}/` — Facebook
+  PKCE OAuth + encrypted grants (PR 5).
+- `app/api/disputes`, `appeals`, `moderation/actions`, `transparency`,
+  `reviews/:id/report` — safety workflow (PR 6).
+- `lib/trust/oauth/` — adapters, AES-GCM grant sealing, claim normalization.
+- `lib/trust/safety.ts` — dispute/moderation/appeal/report domain rules.
+- `lib/trust/portable/` — canonical serialization, ECDSA signing, VC export/verify.
+- `app/api/profiles/[id]/trust/export`, `import-external`, `/api/trust/verify`,
+  `/api/trust/keys` — portable trust (PR 7).
 - `lib/social-health.ts` — allowlisted URL normalization, redirects, and health
   classification.
 - `lib/media-store.ts` — IndexedDB media vault and SHA-256 asset storage.
@@ -92,21 +132,18 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
 - `db/schema.ts` — listings, profiles, reports, and reputation-rating tables.
 - `drizzle/` — generated D1 migrations.
 - `ARCHITECTURE.md` — protocol, integrity, and availability design.
+- `SOCIAL_TRUST_FRAMEWORK.md` — researched trust architecture, data contracts,
+  threat model, acceptance criteria, and staged Cursor plan.
 - `POLICY.md` — default public-instance restrictions.
 
 ## Recommended next milestones
 
-1. Add real public authentication and enforce listing/profile ownership on the
-   server.
-2. Add an authenticated profile editor so a seller can repair or remove a dead
-   social link across every listing.
-3. Add provider OAuth adapters and refresh account metadata through official APIs.
-4. Recompute rating summaries only from completed, authenticated transactions.
-5. Implement WebRTC data-channel media transfer with expiring registry signaling.
-6. Hash-check every received media blob before rendering it.
-7. Add reports, quarantine, appeal, rate limits, and an auditable moderation log.
-8. Add signed canonical listing envelopes and revision/tombstone history.
-9. Configure the donation destination (`NEXT_PUBLIC_DONATION_URL`). Repo URL is already set to `PeterJFrancoIII/Open-Marketplace`.
+1. Fix the seven Main-review blockers above, beginning with server-authenticated identity.
+2. Install CI and add regression tests for every blocker.
+3. Prove all fresh and upgrade migration paths, including duplicate-response data at `0006`.
+4. Split the current oversized PR into the staged review units listed above.
+5. Run the full evidence suite and request Main re-review.
+6. Only after PASS: merge the approved stages, configure the donation destination, and then plan WebRTC media transfer.
 
 ## Definition of done for each Cursor change
 
@@ -118,10 +155,15 @@ Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL` in
 - Document new environment variables in `.env.example`.
 - Do not commit secrets, tokens, social cookies, passwords, or private exports.
 
-## Suggested first Cursor Agent prompt
+## Suggested Cursor Agent prompt
 
-> Read CURSOR_START_HERE.md, README.md, ARCHITECTURE.md, and POLICY.md. Inspect
-> the current code before editing. Build the next milestone without violating
-> the local-media, live-link, reputation-integrity, or restricted-items rules.
-> Explain your plan, make focused changes, generate migrations if required, and
-> finish by running lint and tests.
+> Work only on the merge-gate remediation for Open Marketplace PR 1 on
+> `codex/social-trust-framework`. Read `CURSOR_START_HERE.md`,
+> `SOCIAL_TRUST_FRAMEWORK.md`, `ARCHITECTURE.md`, and `POLICY.md` before
+> editing. Preserve local-only media, separate buyer/seller reputation, and the
+> rule that social popularity never ranks or grants permissions. Fix the seven
+> blockers in the listed order, starting with server-authenticated identity.
+> Add adversarial regression tests, install CI, and verify fresh plus dirty
+> upgrade migrations through `0007`. Do not start WebRTC or other features,
+> and do not merge, deploy, or wire production services. Finish with exact
+> commands, return codes, and the commit SHA for a new Main review.

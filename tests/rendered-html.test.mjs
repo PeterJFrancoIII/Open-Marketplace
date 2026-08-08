@@ -55,8 +55,10 @@ test("renders the marketplace shell and local-media principle", async () => {
 
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /open exchange/i);
+  assert.match(html, /open marketplace/i);
+  assert.match(html, /open-marketplace-logo/i);
   assert.match(html, /trust facts travel with every listing/i);
   assert.match(html, /buyer\/seller ratings are always visible/i);
   assert.match(html, /Fresh near you/i);
+  assert.match(html, /Why this is shown|Trust evidence|completed sale/i);
 });

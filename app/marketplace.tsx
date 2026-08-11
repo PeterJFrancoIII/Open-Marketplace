@@ -9,6 +9,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { authClient } from "../lib/auth-client";
 import { getLocalMediaUrl, storeMedia } from "../lib/media-store";
 import type { Listing, SocialProof } from "../lib/types";
 
@@ -534,6 +535,7 @@ function providerName(provider: SocialProof["provider"]) {
 }
 
 export default function Marketplace() {
+  const { data: session, isPending: sessionPending } = authClient.useSession();
   const [listings, setListings] = useState<Listing[]>(demoListings);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
@@ -555,8 +557,21 @@ export default function Marketplace() {
   const [socialDrafts, setSocialDrafts] = useState<SocialDraft[]>(
     emptySocialDrafts.map((account) => ({ ...account })),
   );
+  const [composeOpened, setComposeOpened] = useState(false);
 
   const donationUrl = process.env.NEXT_PUBLIC_DONATION_URL ?? "";
+  const signedIn = Boolean(session?.user);
+
+  useEffect(() => {
+    if (!signedIn || composeOpened || modal === "create") return;
+    if (new URLSearchParams(window.location.search).get("compose") !== "1") return;
+
+    const frame = window.requestAnimationFrame(() => {
+      setComposeOpened(true);
+      setModal("create");
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [composeOpened, modal, signedIn]);
 
   const requestSocialHealth = useCallback(async (accounts: SocialProof[]) => {
     if (!accounts.length) return [];
@@ -851,8 +866,6 @@ export default function Marketplace() {
         distanceMiles: null,
         format: String(formData.get("format") ?? "Fixed price"),
         delivery: String(formData.get("delivery") ?? "Pickup"),
-        sellerId: getDeviceId(),
-        sellerName: String(formData.get("sellerName") ?? "Community seller").trim(),
         socialProofs,
         imageManifest,
         endingAt:
@@ -873,6 +886,12 @@ export default function Marketplace() {
           error?: string;
           account?: SocialProof;
         };
+        if (response.status === 401) {
+          setModal(null);
+          setToast("Log in to publish this listing.");
+          window.location.assign("/login?returnTo=/%3Fcompose%3D1");
+          return;
+        }
         if (response.status === 422) {
           if (result.account) {
             setSocialDrafts((current) =>
@@ -895,15 +914,14 @@ export default function Marketplace() {
         listing.mediaAvailability = imageManifest.length ? "local" : "offline";
       } catch {
         listing = {
-          ...(payload as Omit<
-            Listing,
-            "id" | "createdAt" | "source" | "mediaAvailability"
-          >),
+          ...payload,
+          sellerId: session?.user.id ?? getDeviceId(),
+          sellerName: session?.user.name ?? "Community seller",
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
           source: "device",
           mediaAvailability: imageManifest.length ? "local" : "offline",
-        };
+        } as Listing;
       }
 
       setListings((current) => [listing, ...current]);
@@ -989,11 +1007,28 @@ export default function Marketplace() {
           >
             Fund it
           </button>
-          <button className="button button-primary" onClick={() => setModal("create")}>
+          <button
+            className="button button-primary"
+            onClick={() => {
+              if (sessionPending) return;
+              if (!signedIn) {
+                window.location.assign("/login?returnTo=/%3Fcompose%3D1");
+                return;
+              }
+              setModal("create");
+            }}
+          >
             <span aria-hidden="true">＋</span>
             <span className="desktop-action">List an item</span>
             <span className="mobile-label">List</span>
           </button>
+          <a
+            className="button button-login"
+            href={signedIn ? "/account" : "/login"}
+          >
+            <span aria-hidden="true">{signedIn ? "●" : "↗"}</span>
+            {signedIn ? "My account" : "Log in"}
+          </a>
         </div>
       </header>
 
@@ -1319,8 +1354,16 @@ export default function Marketplace() {
                     )}
                   </div>
                   <div className="field field-full">
-                    <label htmlFor="sellerName">Display name</label>
-                    <input id="sellerName" name="sellerName" required placeholder="Your name or handle" />
+                    <label htmlFor="sellerAccount">Seller account</label>
+                    <input
+                      id="sellerAccount"
+                      value={session?.user.name ?? "Signed-in account"}
+                      readOnly
+                      aria-describedby="sellerAccountHelp"
+                    />
+                    <small id="sellerAccountHelp">
+                      Listing ownership comes from your signed-in account.
+                    </small>
                   </div>
                   <div className="field field-full social-editor">
                     <div className="social-editor-head">

@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { listings, profiles } from "../../../db/schema";
+import { getMarketplaceSession } from "../../../lib/auth";
 import { checkSocialAccounts } from "../../../lib/social-health";
 import type { SocialProof } from "../../../lib/types";
 
@@ -118,6 +119,16 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const session = await getMarketplaceSession(request);
+    if (!session) {
+      return Response.json(
+        { error: "Log in to publish a listing." },
+        { status: 401 },
+      );
+    }
+
+    const sellerId = session.user.id;
+    const sellerName = session.user.name;
     const payload = (await request.json()) as Record<string, unknown>;
     const title = typeof payload.title === "string" ? payload.title.trim() : "";
     const description =
@@ -125,9 +136,6 @@ export async function POST(request: Request) {
     const category = typeof payload.category === "string" ? payload.category.trim() : "";
     const locationLabel =
       typeof payload.locationLabel === "string" ? payload.locationLabel.trim() : "";
-    const sellerId = typeof payload.sellerId === "string" ? payload.sellerId.trim() : "";
-    const sellerName =
-      typeof payload.sellerName === "string" ? payload.sellerName.trim() : "";
     const priceCents = Number(payload.priceCents);
     const condition = String(payload.condition ?? "");
     const format = String(payload.format ?? "");

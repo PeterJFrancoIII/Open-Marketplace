@@ -63,3 +63,31 @@ test("renders the marketplace shell and local-media principle", async () => {
   assert.match(html, /class=["'][^"']*button-login[^"']*["']/i);
   assert.match(html, />Log in</i);
 });
+
+test("renders the login and account-creation page", async () => {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("login", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+
+  const response = await worker.fetch(
+    new Request("http://localhost/login", {
+      headers: { accept: "text/html" },
+    }),
+    {
+      ASSETS: {
+        fetch: async () => new Response("Not found", { status: 404 }),
+      },
+      DB: undefined,
+    },
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+    },
+  );
+
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Log in to Open Marketplace/i);
+  assert.match(html, /Create account/i);
+  assert.match(html, /12 characters/i);
+});

@@ -6,6 +6,11 @@ Open Marketplace (formerly Open Exchange in the SOL 5.6 scaffold) is a deliberat
 
 This repository is an MVP framework, not a promise that a browser can serve photos while it is closed. The current build stores and previews seller media locally. Cross-device transfer is intentionally isolated behind a small WebRTC-ready transport contract so it can be completed without ever turning the registry into an image host.
 
+[`Master_Descriptor.md`](Master_Descriptor.md) is the canonical product-direction
+document. It defines the planned account, decentralized hosting, host
+verification, priority-listing, privacy, and funding model. A requirement there
+is not implemented merely because it is documented.
+
 ## What works now
 
 - Responsive marketplace grid with desktop and mobile layouts.
@@ -34,6 +39,13 @@ This repository is an MVP framework, not a promise that a browser can serve phot
 - The seller must have an active browser session for true device-to-device media delivery. For offline availability, add opt-in encrypted community pinning or accept that media is unavailable.
 - The public starter blocks weapons, ammunition, explosives, controlled substances, stolen goods, and other unlawful listings. See `POLICY.md`.
 - Do not rely on a client-generated device ID for production authorization. Registry writes need real authentication and server-side ownership checks before a public launch.
+- Accounts, portable signed identities, verified replica/shard hosting, host ID
+  attestations, priority placement, paid priority, and an ad-free Verified Host
+  mode are product requirements but are **not implemented in the current MVP**.
+- Raw photo ID, selfies, biometric templates, document numbers, and address
+  evidence must never be copied into the marketplace registry or decentralized
+  replicas. Only minimal, signed, revocable verification attestations may enter
+  marketplace data.
 
 ## Local development
 
@@ -62,6 +74,11 @@ The central registry stores:
 
 It does **not** store image bytes. Seller images live in the `open-exchange-media` IndexedDB database on the seller's device.
 
+Future decentralized replicas may copy only explicitly eligible metadata and
+signed envelopes. They must not receive identity-verification evidence, private
+messages, payment credentials, private reports, secrets, or other restricted
+records. See `Master_Descriptor.md` and `ARCHITECTURE.md`.
+
 ## Database migrations
 
 The D1 binding is named `DB` in `.openai/hosting.json`.
@@ -76,14 +93,23 @@ Commit the generated SQL under `drizzle/`. The hosting platform applies the migr
 
 Give Cursor this repository and ask it to work through these milestones in order:
 
-1. Connect `MediaTransport` to WebRTC data channels, using the registry only for short-lived signaling messages.
-2. Verify each received blob against the advertised SHA-256 hash before rendering it.
-3. Add public authentication and server-side listing ownership checks.
-4. Replace self-reported social metrics with provider-specific OAuth
+1. Add public accounts, authentication, recovery, and server-side listing
+   ownership checks.
+2. Add signed listing envelopes and portable user-controlled identity keys.
+3. Replace self-reported social metrics with provider-specific OAuth
    attestations; keep live URL health as a separate signal.
-5. Add a report/review UI, rate limits, spam controls, and a transparent moderation log.
-6. Add signed listing envelopes so registry operators cannot silently alter listing metadata.
-7. Configure `NEXT_PUBLIC_DONATION_URL` and the public repository URL.
+4. Add the high-assurance host-verification adapter, storing only minimal signed
+   attestations outside the verifier.
+5. Add full-replica and shard hosting plus recurring integrity and availability
+   proofs.
+6. Add the priority cohort, accessible yellow cards, reason labels, fair
+   rotation, ten-cent paid priority, and public dynamic-pricing configuration.
+7. Add Verified Host ad-free and no-nonessential-tracking mode.
+8. Connect `MediaTransport` to WebRTC data channels and verify each received blob
+   against its advertised SHA-256 hash before rendering it.
+9. Add a report/review UI, rate limits, spam controls, appeals, and a transparent
+   moderation log.
+10. Configure `NEXT_PUBLIC_DONATION_URL` and the public repository URL.
 
 `ARCHITECTURE.md` contains the protocol shape and failure modes.
 
@@ -93,7 +119,14 @@ The checked-in build emits a Cloudflare Worker-compatible artifact. The metadata
 
 ## Funding and governance
 
-The intended operating model is transparent community funding: publish recurring costs, donation totals, and maintainer grants. Do not sell listing visibility or user activity. Add a governance document before accepting outside funds.
+The intended model combines transparent community funding, voluntary donations,
+privacy-respecting advertising where enabled, and disclosed priority placement.
+At launch, a regular account may buy one disclosed priority term for **$0.10 per
+listing**; Verified Hosts receive that placement without the fee. The fee later
+increases under a public, deterministic qualified-active-account formula that
+must be approved before implementation. Publish recurring costs, funding totals,
+the pricing version, and maintainer grants. Never sell user activity, add hidden
+ranking boosts, or let payment bypass moderation. See `Master_Descriptor.md`.
 
 ## License
 

@@ -4,6 +4,10 @@
 
 The registry is a searchable bulletin board, not a file host. It can disappear and be rebuilt from signed listing envelopes without taking seller-owned media with it.
 
+`Master_Descriptor.md` defines the product outcomes this architecture must
+support. The account, host-verification, replication, and priority systems below
+are planned architecture, not claims about the current MVP.
+
 ## Components
 
 | Component | Holds | Must not hold |
@@ -11,7 +15,12 @@ The registry is a searchable bulletin board, not a file host. It can disappear a
 | Browser media vault | Original image blobs, local previews, device key | Other sellers' durable media by default |
 | Metadata registry | Listing fields, filters, social claims, reputation summaries, hashes, availability hints | Photos, videos, message contents |
 | Peer transport | Short-lived encrypted image chunks | Durable media or listing authority |
-| Identity adapter | OAuth attestation metadata | Social passwords or copied session cookies |
+| Account and identity adapter | Public keys, authentication metadata, ownership, OAuth attestations | Password plaintext, copied session cookies, raw host-verification evidence |
+| Verification provider or trust function | Source identity evidence for the disclosed minimum retention period | Marketplace ranking authority or public identity records |
+| Verification attestation registry | Pseudonymous subject, assurance level, verifier, issue/expiry/revocation state | Photo ID, document numbers, selfies, biometric templates, address evidence |
+| Replica or shard host | Eligible signed listing records and public protocol data | Identity evidence, secrets, payment credentials, private messages or reports |
+| Host-proof service | Assigned data scope, challenge results, availability, protocol version | Raw identity evidence or arbitrary private traffic |
+| Ranking and pricing config | Public rule versions, price inputs, priority terms, ranking reason codes | Secret boosts or individually negotiated placement |
 | Donation provider | Contributions and receipts | Marketplace identity graph |
 
 ## Listing publication
@@ -68,6 +77,82 @@ inspection, treats 404/410 and recognized unavailable-page markers as dead,
 and returns unknown when a platform blocks automated checks. Unknown is not
 silently mislabeled as verified. Dead or malformed links block publication.
 
+## Accounts and portable identity
+
+Production writes require authenticated accounts and server-side ownership
+checks. The target protocol uses a user-controlled signing key for portable
+marketplace identity, with passkeys, email, OAuth, or other mechanisms acting as
+authentication and recovery adapters. Account recovery, key rotation,
+revocation, and migration must produce auditable state transitions.
+
+Anonymous browsing may remain available. Listing publication, edits, priority
+purchases, ratings, host enrollment, and other accountable actions require an
+account. A browser-generated device identifier never grants authority by itself.
+
+## Host identity verification
+
+Regular marketplace identity and high-assurance host identity are separate
+layers. A host-verification provider processes government photo ID and approved
+corroborating checks, then returns a minimal signed and revocable attestation.
+Marketplace services and community nodes consume the attestation, never the
+source evidence.
+
+The attestation schema may include only the pseudonymous subject, assurance
+level, verifier, issue time, expiry, revocation state, and strictly necessary
+jurisdictional claims. Any confidential mapping required for a documented fraud
+or misuse investigation stays encrypted with the verifier or authorized trust
+function. Access is policy-gated and audited. It is not part of registry export,
+replication, analytics, application logs, or a public profile.
+
+## Replica and shard proof
+
+The decentralized storage layer distributes only records explicitly marked as
+replication-eligible. Canonical signed envelopes and content hashes allow a node
+to validate a full metadata replica or an assigned shard without trusting the
+source registry.
+
+A proof service issues unpredictable challenges for records within the node's
+assignment and records integrity, availability, response quality, and protocol
+version. A current hosting attestation is derived from recurring successful
+proofs; self-reported uptime is insufficient. Identity and hosting attestations
+have independent expiry and revocation. Both must be current for Verified Host
+benefits.
+
+Proof cadence, availability threshold, shard assignment, grace period, and
+supported protocol versions belong in signed or otherwise auditable public
+configuration. Anti-Sybil and anti-collusion controls must prevent fake nodes or
+circular traffic from manufacturing host status.
+
+## Priority ranking, pricing, and ad-free mode
+
+Ranking is a two-cohort pipeline:
+
+1. Filter every listing through eligibility, moderation, policy, and query
+   matching.
+2. Place eligible Verified Host and Paid Priority listings in the priority
+   cohort.
+3. Order that cohort with published relevance, recency, distance, quality, and
+   fair-rotation rules.
+4. Render the standard cohort after it, while preserving searchability and
+   preventing permanent capture by priority inventory.
+
+Each priority result carries a machine-readable reason code and a visible
+**Verified Host Priority** or **Paid Priority** label. The UI provides an
+accessible yellow treatment; color is not the only signal. Payment amount never
+changes ordering within the cohort, and no hidden administrator boost exists.
+
+Paid priority launches at USD $0.10 per listing for one disclosed term. A
+versioned pricing service later derives the current fee from Sybil-resistant
+qualified network growth using a deterministic formula approved through public
+governance. Price version, inputs, effective date, term, and total are fixed for
+an active checkout and recorded with the receipt. Host eligibility waives the
+fee; it does not create a different secret ranking tier.
+
+Verified Host mode removes ads and nonessential tracking identifiers. Essential
+authentication, security, fraud-prevention, and requested preference storage
+remain separate, documented concerns. Ad and analytics code must be gated so
+host mode does not merely hide an ad while continuing its tracking requests.
+
 ## Reputation
 
 Profile reputation is independent of individual listings. The registry keeps
@@ -91,13 +176,22 @@ Keep the registry lean:
 - expire signaling data aggressively;
 - perform no image transcoding;
 - let sellers calculate hashes;
+- replicate no raw identity evidence or other restricted records;
+- batch or pre-fund micropayments when direct ten-cent settlement is uneconomic;
 - publish operating costs and donation balances.
 
 ## Security work before launch
 
 - Public authentication and server-side authorization.
+- Portable signing keys, recovery, rotation, and revocation.
 - Rate limits per account, device, and network.
 - Signed listing envelopes and replay protection.
+- Threat-modeled high-assurance host verification with minimal attestations,
+  evidence retention/deletion rules, breach response, and audited access.
+- Abuse-resistant replica challenges, shard assignment, host expiry, and
+  suspension/appeal flows.
+- Transparent priority ranking, price versioning, payment receipts/refunds, and
+  verified ad/tracking suppression for hosts.
 - File-type sniffing and safe image decoding on the buyer device.
 - Report, quarantine, appeal, and transparent moderation workflows.
 - CSAM detection/reporting plan that does not turn the registry into a media store.

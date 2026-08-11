@@ -15,6 +15,9 @@ This repository is an MVP framework, not a promise that a browser can serve phot
 - Listing composer with local image previews.
 - SHA-256 image manifests; image blobs are stored in IndexedDB and never sent to `/api/listings`.
 - Cloudflare D1 metadata registry with indexed listing fields.
+- D1-backed accounts and sessions via Better Auth (email + password).
+- Server-session ownership for listing writes; browser-supplied seller identity is ignored.
+- Standard `/account` console and read-only `/admin` overview for exact allowlisted emails.
 - Clickable Facebook, Instagram, and TikTok profiles with visible account age,
   friend/follower counts, check status, and last-check timestamps.
 - Live allowlisted link checks on page load, manual recheck, and publication;
@@ -26,6 +29,13 @@ This repository is an MVP framework, not a promise that a browser can serve phot
 
 ## Important boundaries
 
+- Public browsing stays open without an account. Publishing a listing requires a
+  signed-in session validated on the server.
+- Account emails are not verified yet. Do not market account creation as identity
+  verification, and do not call an email or account “verified.”
+- Password-reset delivery does not exist yet.
+- Admin access is an exact, case-insensitive server-side match against
+  `MARKETPLACE_ADMIN_EMAILS`. The value is never taken from browser input.
 - A resolving social URL proves only that the link works. Account creation dates
   and connection counts remain self-reported until provider OAuth supplies them.
   Provider OAuth requires developer applications, callback URLs, and each
@@ -33,7 +43,6 @@ This repository is an MVP framework, not a promise that a browser can serve phot
 - Cross-device image delivery is not complete in this scaffold. `lib/media-transport.ts` defines the boundary; connect a WebRTC data-channel implementation and a minimal signaling endpoint next.
 - The seller must have an active browser session for true device-to-device media delivery. For offline availability, add opt-in encrypted community pinning or accept that media is unavailable.
 - The public starter blocks weapons, ammunition, explosives, controlled substances, stolen goods, and other unlawful listings. See `POLICY.md`.
-- Do not rely on a client-generated device ID for production authorization. Registry writes need real authentication and server-side ownership checks before a public launch.
 
 ## Local development
 
@@ -45,7 +54,18 @@ cp .env.example .env.local
 npm run dev
 ```
 
-The starter uses Vinext and Cloudflare-compatible bindings. Set `NEXT_PUBLIC_DONATION_URL` to a GitHub Sponsors, Open Collective, or other transparent funding page.
+The starter uses Vinext and Cloudflare-compatible bindings. Set:
+
+- `NEXT_PUBLIC_DONATION_URL` to a GitHub Sponsors, Open Collective, or other transparent funding page;
+- `BETTER_AUTH_SECRET` to a strong random secret (`openssl rand -base64 32`);
+- `MARKETPLACE_ADMIN_EMAILS` to the exact comma-separated emails allowed to open `/admin`.
+
+Apply the D1 migrations under `drizzle/` before enabling accounts in an environment.
+The GitHub Pages deployment workflow does **not** apply database migrations. Apply
+the SQL separately to the target D1 database before deploying this account build.
+In the existing `open-marketplace-demo` Pages project, configure the `DB` binding
+and the `BETTER_AUTH_SECRET` / `MARKETPLACE_ADMIN_EMAILS` runtime values; GitHub's
+deployment token does not make those values available to the application.
 
 ## Data layout
 
@@ -78,7 +98,8 @@ Give Cursor this repository and ask it to work through these milestones in order
 
 1. Connect `MediaTransport` to WebRTC data channels, using the registry only for short-lived signaling messages.
 2. Verify each received blob against the advertised SHA-256 hash before rendering it.
-3. Add public authentication and server-side listing ownership checks.
+3. Add email verification and password-reset delivery through a configured
+   transactional email provider.
 4. Replace self-reported social metrics with provider-specific OAuth
    attestations; keep live URL health as a separate signal.
 5. Add a report/review UI, rate limits, spam controls, and a transparent moderation log.
@@ -90,6 +111,11 @@ Give Cursor this repository and ask it to work through these milestones in order
 ## Deployment
 
 The checked-in build emits a Cloudflare Worker-compatible artifact. The metadata registry can be hosted on a low-cost edge database. A fork that targets another platform should replace only the small registry adapter; the browser media vault and transport contract are platform-independent.
+
+The existing production URL is `https://open-marketplace-demo.pages.dev`. Preserve
+that Pages project rather than creating a duplicate. Before releasing account
+features, apply the D1 migrations and configure the runtime binding and secrets
+described above.
 
 ## Funding and governance
 

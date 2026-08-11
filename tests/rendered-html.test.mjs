@@ -62,6 +62,7 @@ test("renders the marketplace shell and local-media principle", async () => {
   assert.match(html, /href=["']\/login["']/i);
   assert.match(html, /class=["'][^"']*button-login[^"']*["']/i);
   assert.match(html, />Log in</i);
+  assert.doesNotMatch(html, /\/workspace\/scratch|\.vinext\/fonts/i);
 });
 
 test("renders the login and account-creation page", async () => {

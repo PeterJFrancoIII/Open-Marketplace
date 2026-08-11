@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
+import { APIError } from "better-auth/api";
 import { headers as nextHeaders } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "../db";
@@ -18,6 +19,30 @@ const DEPLOYED_TRUSTED_ORIGINS = [
   "https://*.open-marketplace-demo.pages.dev",
 ];
 
+function normalizeDisplayName(value: unknown) {
+  if (typeof value !== "string") {
+    throw new APIError("BAD_REQUEST", {
+      message: "Display name must be between 1 and 80 characters.",
+    });
+  }
+  const name = value.trim();
+  if (!name || name.length > 80) {
+    throw new APIError("BAD_REQUEST", {
+      message: "Display name must be between 1 and 80 characters.",
+    });
+  }
+  return name;
+}
+
+function isAllowedAuthHost(host: string) {
+  return (
+    host === "open-marketplace-demo.pages.dev" ||
+    host.endsWith(".open-marketplace-demo.pages.dev") ||
+    host.startsWith("localhost:") ||
+    host === "localhost"
+  );
+}
+
 function trustedOriginsFor(request?: Request) {
   const origins = [...DEPLOYED_TRUSTED_ORIGINS];
   if (!request) return origins;
@@ -31,6 +56,37 @@ function trustedOriginsFor(request?: Request) {
   }
 
   return origins;
+}
+
+/** Rebuild a Request URL from Host headers when pages call headers()-based helpers. */
+function requestFromHeaders(headerBag: Headers): Request | undefined {
+  const host = (
+    headerBag.get("x-forwarded-host") ??
+    headerBag.get("host") ??
+    ""
+  )
+    .split(",")[0]
+    ?.trim()
+    .toLowerCase();
+  if (!host || !isAllowedAuthHost(host)) return undefined;
+
+  const forwardedProto = headerBag
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase();
+  const protocol =
+    forwardedProto === "http" || forwardedProto === "https"
+      ? forwardedProto
+      : host === "localhost" || host.startsWith("localhost:")
+        ? "http"
+        : "https";
+
+  try {
+    return new Request(`${protocol}://${host}/`);
+  } catch {
+    return undefined;
+  }
 }
 
 type CloudflareEnv = {
@@ -47,13 +103,7 @@ function resolveBaseURL(request?: Request) {
   if (!request) return PRODUCTION_BASE_URL;
   try {
     const url = new URL(request.url);
-    const host = url.host.toLowerCase();
-    if (
-      host === "open-marketplace-demo.pages.dev" ||
-      host.endsWith(".open-marketplace-demo.pages.dev") ||
-      host.startsWith("localhost:") ||
-      host === "localhost"
-    ) {
+    if (isAllowedAuthHost(url.host.toLowerCase())) {
       return url.origin;
     }
   } catch {
@@ -96,6 +146,23 @@ export async function getMarketplaceAuth(request?: Request) {
       storage: "database",
       modelName: "rateLimit",
     },
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user) => ({
+            data: { ...user, name: normalizeDisplayName(user.name) },
+          }),
+        },
+        update: {
+          before: async (user) => {
+            if (user.name === undefined) return;
+            return {
+              data: { ...user, name: normalizeDisplayName(user.name) },
+            };
+          },
+        },
+      },
+    },
     advanced: {
       ipAddress: {
         ipAddressHeaders: ["cf-connecting-ip"],
@@ -123,10 +190,15 @@ export async function getMarketplaceSession(
     | Awaited<ReturnType<typeof nextHeaders>>,
 ) {
   try {
-    const request = requestOrHeaders instanceof Request ? requestOrHeaders : undefined;
     const headerBag = asHeaders(
-      request?.headers ?? requestOrHeaders ?? (await nextHeaders()),
+      requestOrHeaders instanceof Request
+        ? requestOrHeaders.headers
+        : (requestOrHeaders ?? (await nextHeaders())),
     );
+    const request =
+      requestOrHeaders instanceof Request
+        ? requestOrHeaders
+        : requestFromHeaders(headerBag);
     const auth = await getMarketplaceAuth(request);
     return await auth.api.getSession({ headers: headerBag });
   } catch {
@@ -143,16 +215,6 @@ export async function requireMarketplaceSession(
     redirect(`/login?returnTo=${encodeURIComponent(returnTo)}`);
   }
   return session;
-}
-
-/** Vinext absolutizes next/navigation redirect() Location headers; boundary tests require a relative path. */
-export function marketplaceLoginRedirectResponse(returnTo: string) {
-  return new Response(null, {
-    status: 307,
-    headers: {
-      Location: `/login?returnTo=${encodeURIComponent(returnTo)}`,
-    },
-  });
 }
 
 export async function getMarketplaceAdminEmails() {

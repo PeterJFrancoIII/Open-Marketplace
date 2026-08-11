@@ -95,7 +95,9 @@ Keep the registry lean:
 
 ## Security work before launch
 
-- Public authentication and server-side authorization.
+- Public authentication and server-side authorization are present for account
+  sessions and listing writes. Email verification delivery, password-reset
+  delivery, and identity-document checks are still launch gates.
 - Rate limits per account, device, and network.
 - Signed listing envelopes and replay protection.
 - File-type sniffing and safe image decoding on the buyer device.
@@ -104,3 +106,15 @@ Keep the registry lean:
 - Jurisdiction-aware restricted-item rules.
 - Abuse-resistant signaling and TURN quotas.
 - Privacy, retention, and law-enforcement request policies.
+
+## Account authorization
+
+Accounts and sessions live in D1 through Better Auth. Public browsing remains
+open. `POST /api/listings` requires a validated session and stores
+session-derived `sellerId` / `sellerName` only. Admin access to `/admin` is an
+exact server-side allowlist check against `MARKETPLACE_ADMIN_EMAILS`; signed-in
+non-admins receive the framework not-found response. Required environment
+variables are `BETTER_AUTH_SECRET` and `MARKETPLACE_ADMIN_EMAILS`. Apply the
+auth migration before enabling accounts in an environment. Emails are not yet
+verified, password-reset delivery does not exist, and account creation is not
+identity verification.

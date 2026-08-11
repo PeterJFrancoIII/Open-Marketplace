@@ -16,7 +16,7 @@ test("redirects signed-out /account requests to login", async () => {
   const worker = await loadWorker("account-boundary");
   const response = await worker.fetch(
     new Request("http://localhost/account", {
-      headers: { accept: "text/html" },
+      headers: { accept: "text/html", host: "localhost" },
       redirect: "manual",
     }),
     {
@@ -30,9 +30,10 @@ test("redirects signed-out /account requests to login", async () => {
   );
 
   assert.equal(response.status, 307);
+  // Vinext page redirects absolutize Location against the request origin.
   assert.match(
     response.headers.get("location") ?? "",
-    /^\/login\?returnTo=%2Faccount/,
+    /^(?:https?:\/\/localhost(?::\d+)?)?\/login\?returnTo=%2Faccount/,
   );
 });
 
@@ -40,7 +41,7 @@ test("redirects signed-out /admin requests to login", async () => {
   const worker = await loadWorker("admin-boundary");
   const response = await worker.fetch(
     new Request("http://localhost/admin", {
-      headers: { accept: "text/html" },
+      headers: { accept: "text/html", host: "localhost" },
       redirect: "manual",
     }),
     {
@@ -56,7 +57,7 @@ test("redirects signed-out /admin requests to login", async () => {
   assert.equal(response.status, 307);
   assert.match(
     response.headers.get("location") ?? "",
-    /^\/login\?returnTo=%2Fadmin/,
+    /^(?:https?:\/\/localhost(?::\d+)?)?\/login\?returnTo=%2Fadmin/,
   );
 });
 

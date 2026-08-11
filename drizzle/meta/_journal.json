@@ -15,6 +15,13 @@
       "when": 1785960537353,
       "tag": "0001_rapid_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786481143145,
+      "tag": "0002_married_wolverine",
+      "breakpoints": true
     }
   ]
 }

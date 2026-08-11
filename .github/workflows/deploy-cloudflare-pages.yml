@@ -36,9 +36,12 @@ jobs:
       - name: Build application
         run: npm run build
 
+      - name: Test Pages asset routing
+        run: node --test tests/pages-worker-assets.test.mjs
+
       - name: Package Pages worker
         run: |
-          npx --no-install esbuild dist/server/index.js \
+          npx --no-install esbuild scripts/pages-worker-entry.mjs \
             --bundle \
             --format=esm \
             --platform=browser \

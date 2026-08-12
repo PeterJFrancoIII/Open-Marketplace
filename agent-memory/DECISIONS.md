@@ -1,8 +1,8 @@
 ---
-schema_version: "1.1"
+schema_version: "1.2"
 document_id: "OM-DECISIONS-001"
 kind: "decision_registry"
-updated_at: "2026-08-12T20:22:00Z"
+updated_at: "2026-08-12T20:58:03Z"
 updated_by: "codex_architect"
 decisions:
   - {id: "OM-DEC-001", status: "accepted", title: "Architect and implementation-subagent role split", decision: "Codex owns architecture and administration; Cursor agents execute assigned work packages and return evidence.", authority: "human_owner", decided_on: "2026-08-12"}
@@ -20,6 +20,12 @@ decisions:
     status: "accepted"
     title: "Shared-memory citation on every Cursor task"
     decision: "Each Cursor task must read the canonical GitHub shared-memory set and record repository, ref/commit, and cited shared-memory paths in its handoff."
+    authority: "human_owner"
+    decided_on: "2026-08-12"
+  - id: "OM-DEC-008"
+    status: "accepted"
+    title: "Owner-mediated Cursor dispatch protocol"
+    decision: "Codex prepares and commits the detailed machine-readable task contract to canonical shared memory. When the task is execution-ready, Codex tells the human owner only 'handoff to cursor'; the human owner invokes Cursor. Cursor returns evidence as ready_for_review and never self-accepts."
     authority: "human_owner"
     decided_on: "2026-08-12"
 ---

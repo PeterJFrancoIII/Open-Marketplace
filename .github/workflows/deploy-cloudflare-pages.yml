@@ -60,6 +60,14 @@ jobs:
             exit 1
           }
 
+      - name: Configure non-production Pages preview bindings
+        if: github.ref_name != 'main'
+        env:
+          BETTER_AUTH_SECRET: ${{ secrets.PAGES_PREVIEW_BETTER_AUTH_SECRET }}
+          MARKETPLACE_ADMIN_EMAILS: ${{ vars.PAGES_PREVIEW_ADMIN_EMAILS }}
+          PREVIEW_D1_DATABASE_ID: 8ddff0ae-f810-4d71-955e-4aab40a00e27
+        run: node scripts/configure-pages-preview.mjs
+
       - name: Deploy to Cloudflare Pages
         run: |
           npx --no-install wrangler pages deploy dist/client \

@@ -1,8 +1,8 @@
 ---
-schema_version: "1.3"
+schema_version: "1.4"
 document_id: "OM-TASKS-001"
 kind: "task_registry"
-updated_at: "2026-08-12T21:02:00Z"
+updated_at: "2026-08-12T22:50:00Z"
 updated_by: "codex_architect"
 tasks:
   - {id: "OM-GOV-001", title: "Create repository-backed shared memory and agent rules", workstream: "OM-GOV", status: "accepted", owner_role: "codex_architect_admin", assigned_agent: "codex-architect", implementation_commit: "5d560e8335438c3da08b9589fdf12555037ddba4", handoff_commit: "9dc317cdb402dc5ad024da1f740d1091c4c62ea6", pull_request: 22}
@@ -21,125 +21,115 @@ tasks:
   - id: "OM-ACC-002"
     title: "Reconcile PR #21 with governance main and prepare owner-testable account preview"
     workstream: "OM-ACC"
-    status: "blocked"
-    review_stage: "owner_preview_unreachable"
+    status: "ready_for_review"
+    review_stage: "awaiting_human_owner_functional_test"
     owner_role: "codex_architect_admin"
     assigned_agent: "cursor_implementation_subagent"
     branch: "feature/account-management-portal"
     base_branch: "main"
     shared_memory_ref: "main"
-    observed_base_commit: "d357af8e3f027ba538c331fd97c62dc6d6eb2374"
-    implementation_head: "9c28a5db9f4aa41932977a005806beb98b57c4e4"
-    branch_tip: "dc5a23a99f97e0c2729d0f9a8cfdbcb59f603e27"
-    handoff_path: "agent-memory/handoffs/2026-08-12--OM-ACC-002--cursor-grok-4-6.md"
+    current_head: "f6b5ab180a2da243d64662d82abecc452d62a3dc"
+    account_implementation_head: "9c28a5db9f4aa41932977a005806beb98b57c4e4"
+    preview_implementation_head: "5c68a7c7a5d94a332274074065f0d30a4a502a9e"
     pull_request: 21
     pull_request_state: "draft"
     mergeable: true
-    depends_on: ["OM-ACC-001"]
+    depends_on: ["OM-ACC-001", "OM-DEP-001"]
     architect_review:
-      status: "passed_for_owner_test"
-      reviewed_head: "dc5a23a99f97e0c2729d0f9a8cfdbcb59f603e27"
-      scope_result: "passed"
-      governance_result: "passed"
-      branch_workflow_result: "passed"
-    owner_manual_result: "failed_preview_unreachable"
-    owner_observation: "http://localhost:5173/ does not open"
-    acceptance_blocker: "OM-DEP-001 then human_owner_functional_pass"
-    forbidden_actions: ["merge PR #21", "deploy to production", "mark owner manual test as pass"]
+      account_scope: "passed_for_owner_test"
+      owner_reachable_preview: "passed_for_owner_test"
+      reviewed_branch_tip: "f6b5ab180a2da243d64662d82abecc452d62a3dc"
+      branch_workflow: "passed"
+    owner_preview:
+      url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
+      environment: "non_production"
+      pages_project: "open-marketplace-demo"
+      preview_database: "open-marketplace-account-preview-d1"
+      handoff_path: "agent-memory/handoffs/2026-08-12--OM-DEP-001--cursor-grok-4-6.md"
+    owner_manual_result: "not_run_on_https_preview"
+    prior_owner_result: "failed_preview_unreachable"
+    acceptance_blocker: "human_owner_functional_pass"
+    owner_manual_checklist:
+      - "Open marketplace home and browse without signing in."
+      - "Create a test account using non-sensitive test data."
+      - "Sign in and open the account page."
+      - "Create a test listing and confirm the listing uses the signed-in account identity."
+      - "Sign out and confirm publishing is no longer available without signing in."
+      - "If using the configured preview-admin email, confirm Admin overview appears after sign-in."
+      - "Report pass/fail to Codex in ordinary language."
+    forbidden_actions:
+      - "merge PR #21 before human functional pass"
+      - "deploy account portal to production"
+      - "mark owner manual test as pass"
   - id: "OM-DEP-001"
     title: "Deliver owner-reachable non-production account portal preview"
     workstream: "OM-DEP"
-    status: "assigned"
+    status: "ready_for_review"
+    review_stage: "awaiting_human_owner_functional_test"
     owner_role: "codex_architect_admin"
     assigned_agent: "cursor_implementation_subagent"
     supports_task: "OM-ACC-002"
     branch: "feature/account-management-portal"
     pull_request: 21
     shared_memory_ref: "main"
-    target_base_ref: "main"
-    required_feature_head_ancestor: "dc5a23a99f97e0c2729d0f9a8cfdbcb59f603e27"
-    depends_on: ["OM-GOV-002", "OM-ACC-001"]
-    objective: "Provide an HTTPS preview that the human owner can open from their browser and use to test PR #21 end-to-end. Prefer the existing Cloudflare Pages branch preview. Do not count agent-only localhost as success."
-    required_shared_memory_paths:
-      - "Master_Descriptor.md"
-      - "AGENTS.md"
-      - "agent-memory/README.md"
-      - "agent-memory/STATE.md"
-      - "agent-memory/TASKS.md"
-      - "agent-memory/DECISIONS.md"
-    preview_contract:
+    observed_base_commit: "b470fb6a8745d1c914bc066661c868c73f810be2"
+    implementation_head: "5c68a7c7a5d94a332274074065f0d30a4a502a9e"
+    branch_tip: "f6b5ab180a2da243d64662d82abecc452d62a3dc"
+    handoff_path: "agent-memory/handoffs/2026-08-12--OM-DEP-001--cursor-grok-4-6.md"
+    architect_review:
+      status: "passed_for_owner_test"
+      existing_pages_project_reused: true
+      production_url_change_authorized: false
+      preview_surface: "Cloudflare Pages branch preview"
+      latest_branch_workflow: "passed"
+    functional_preview:
+      url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
+      deployment_url: "https://923a95f0.open-marketplace-demo.pages.dev/"
       environment: "non_production"
-      delivery: "owner_reachable_https_url"
-      preferred_surface: "Cloudflare Pages branch preview for feature/account-management-portal"
-      fallback_surface: "temporary Cloudflare Tunnel only if the URL remains reachable for the owner's test session"
-      forbidden_surface: "agent-only localhost"
-      required_binding: "DB"
-      required_secret_names: ["BETTER_AUTH_SECRET"]
-      optional_preview_var_names: ["MARKETPLACE_ADMIN_EMAILS"]
-      required_user_flows: ["public browse", "create account", "sign in", "account page", "create listing as signed-in user", "sign out", "publishing blocked while signed out"]
-      owner_manual_result_on_handoff: "not_run"
-    allowed_paths:
-      - ".github/workflows/deploy-cloudflare-pages.yml"
-      - ".env.example"
-      - ".openai/hosting.json"
-      - "ARCHITECTURE.md"
-      - "CURSOR_START_HERE.md"
-      - "README.md"
-      - "scripts/**"
-      - "tests/**"
-      - "agent-memory/handoffs/**"
-      - "app/**"
-      - "db/**"
-      - "drizzle/**"
-      - "lib/**"
-      - "package.json"
-      - "package-lock.json"
-    repository_actions:
-      - "fetch canonical main immediately before work"
-      - "keep feature/account-management-portal based on current main"
-      - "edit allowed_paths only and only as needed for preview correctness"
-      - "commit and push task changes to feature/account-management-portal"
-      - "leave PR #21 draft"
-    cloudflare_actions_authorized:
-      scope: "non-production only"
-      account_access: "use existing Cloudflare OAuth/Wrangler session; do not require or store an API token in Git"
       pages_project: "open-marketplace-demo"
-      allowed:
-        - "inspect current branch preview deployment and obtain its canonical preview URL"
-        - "create or reuse a dedicated non-production D1 database for account-preview data if required"
-        - "apply drizzle migrations 0000 through 0002 to the dedicated preview D1 only"
-        - "bind the dedicated preview D1 to binding name DB for the non-production preview"
-        - "set a generated non-production BETTER_AUTH_SECRET in Cloudflare preview/runtime secret storage"
-        - "set MARKETPLACE_ADMIN_EMAILS only to non-sensitive preview test email values if needed"
-        - "deploy or redeploy feature/account-management-portal to the non-production Pages preview"
-        - "inspect deployment logs/status and externally probe the returned HTTPS URL"
-      forbidden:
-        - "modify production D1 data or production D1 migrations"
-        - "replace or change the production URL https://open-marketplace-demo.pages.dev"
-        - "modify DNS or zone sentineldefensetechnologies.co.za"
-        - "write secrets, tokens, cookies, or credentials to Git/shared memory/handoff"
-        - "merge PR #21"
-        - "mark human owner functional test pass"
-    verification_required:
-      - "record canonical main commit and cited shared-memory paths"
-      - "git diff --check"
-      - "npm run lint"
-      - "npm test"
-      - "record exact HTTPS preview URL"
-      - "external GET preview home returns 200"
-      - "external GET /login returns 200"
-      - "preview D1/auth smoke probe succeeds without production credentials"
-      - "authenticated listing POST uses server session identity"
-      - "signed-out listing POST is rejected"
-      - "preview URL is not localhost and is intended for human-owner access"
-    completion_contract:
-      subagent_status: "ready_for_review_or_blocked"
-      handoff_required: true
-      shared_memory_refs_required: true
-      preview_url_required: true
-      owner_manual_result: "not_run"
-      no_merge: true
-      no_production_release: true
+      preview_database: "open-marketplace-account-preview-d1"
+    verification:
+      - "git diff --check: passed"
+      - "npm run lint: passed"
+      - "npm test: 21 passed, 0 failed"
+      - "latest branch Pages workflow at f6b5ab180a2da243d64662d82abecc452d62a3dc: passed"
+      - "Cursor handoff reports HTTPS home/login/listings/auth/account/listing probes passed"
+      - "Cursor handoff reports signed-out listing POST rejected and authenticated listing seller identity derived from session"
+    owner_manual_result: "not_run"
+    acceptance_blocker: "human_owner_functional_pass"
+    architecture_note: "The current preview helper PATCH payload restates production deployment config while configuring preview settings. It is not production approval. Reusable automation hardening is tracked separately in OM-DEP-002 before this pattern is generalized."
+    forbidden_actions:
+      - "merge PR #21 before human functional pass"
+      - "change production URL"
+      - "apply account migrations to production D1"
+      - "mark owner manual test as pass"
+  - id: "OM-DEP-002"
+    title: "Harden Pages preview configuration against production-setting drift"
+    workstream: "OM-DEP"
+    status: "backlog"
+    owner_role: "codex_architect_admin"
+    assigned_agent: null
+    depends_on: ["OM-DEP-001"]
+    objective: "Before preview automation is treated as a reusable framework, ensure branch-preview configuration cannot overwrite unrelated future production settings, or document and test the minimum Cloudflare API coupling that is unavoidable."
+    architect_first: true
+    forbidden_actions: ["change production URL", "change production D1 data", "assign Cursor before architect contract is written"]
+  - id: "OM-ACC-003"
+    title: "Design two-factor authentication framework"
+    workstream: "OM-ACC"
+    status: "backlog"
+    owner_role: "codex_architect_admin"
+    assigned_agent: null
+    depends_on: ["OM-ACC-002"]
+    architect_first: true
+    required_design_outputs:
+      - "threat model and which actions require second factor or step-up authentication"
+      - "factor selection and enrollment model without inventing custom cryptography"
+      - "recovery and lost-device policy"
+      - "admin-account requirements"
+      - "rate limits, audit events, storage boundaries, and privacy considerations"
+      - "migration and rollout plan for existing accounts"
+      - "test and owner-preview acceptance plan"
+    forbidden_actions: ["implement 2FA before architecture acceptance", "store recovery secrets or private authentication material in Git/shared memory"]
   - id: "OM-TRUST-001"
     title: "Author identity, hosting-node, priority, payment, and privacy contracts"
     workstream: "OM-IDV"
@@ -151,4 +141,4 @@ tasks:
 
 # Task Registry
 
-The YAML front matter is canonical. Cursor may execute only tasks with execution-ready status and explicit assignment. Cursor never self-accepts. A user-facing task cannot be accepted while the owner result is `not_run`, `failed`, or `failed_preview_unreachable`.
+The YAML front matter is canonical. Cursor may execute only tasks with execution-ready status and explicit assignment. Cursor never self-accepts. A user-facing task cannot be accepted while the owner result is `not_run`, `not_run_on_https_preview`, `failed`, or `failed_preview_unreachable`.

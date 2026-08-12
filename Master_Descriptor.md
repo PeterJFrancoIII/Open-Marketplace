@@ -1,12 +1,12 @@
 ---
-schema_version: "1.0"
+schema_version: "1.1"
 document:
   id: "OM-MASTER-001"
   kind: "project_master_descriptor"
   canonical: true
   status: "active"
-  updated_at: "2026-08-12T19:34:00Z"
-  updated_by: "codex-architect"
+  updated_at: "2026-08-12T20:22:00Z"
+  updated_by: "codex_architect"
 project:
   id: "open-marketplace"
   name: "Open Marketplace"
@@ -18,13 +18,13 @@ project:
 authority:
   - rank: 1
     role: "human_owner"
-    responsibility: "final product and production authority"
+    responsibility: "final product, functional acceptance, merge, and production authority"
   - rank: 2
     role: "codex_architect_admin"
-    responsibility: "architecture, task contracts, review, integration, and administration"
+    responsibility: "architecture, machine-readable contracts, task assignment, review, integration, and administration"
   - rank: 3
     role: "cursor_implementation_subagent"
-    responsibility: "execute assigned work packages and return evidence"
+    responsibility: "execute only assigned work packages and return evidence"
 source_precedence:
   - "human_owner_instruction"
   - "Master_Descriptor.md"
@@ -37,96 +37,42 @@ source_precedence:
   - "ARCHITECTURE.md"
   - "POLICY.md"
 status_vocabulary:
-  task:
-    - "backlog"
-    - "blocked"
-    - "assigned"
-    - "in_progress"
-    - "ready_for_review"
-    - "accepted"
-    - "cancelled"
-  workstream:
-    - "specified"
-    - "framework_required"
-    - "reference_implementation"
-    - "preview_validation"
-    - "production_ready"
-    - "released"
+  task: ["backlog", "blocked", "assigned", "in_progress", "ready_for_review", "accepted", "cancelled"]
+  workstream: ["specified", "framework_required", "reference_implementation", "preview_validation", "production_ready", "released"]
 current_repository_state:
-  main_commit: "38d823a754d5da62bd87fe4c436a5ac8140146dc"
+  state_basis_commit: "b7c634829210cf2e386129058710a98a1db26663"
+  state_basis_semantics: "snapshot basis; the commit containing this file may be newer"
   governance_reference:
     branch: "agent/shared-agent-memory"
-    commit: "5d560e8335438c3da08b9589fdf12555037ddba4"
+    implementation_commit: "5d560e8335438c3da08b9589fdf12555037ddba4"
+    handoff_commit: "9dc317cdb402dc5ad024da1f740d1091c4c62ea6"
+    merge_commit: "b7c634829210cf2e386129058710a98a1db26663"
     pull_request: 22
-    pull_request_state: "draft"
+    pull_request_state: "merged"
   account_reference:
     branch: "feature/account-management-portal"
     commit: "2a42055ec93297b5556eeec571844ec2f1b57cf3"
     pull_request: 21
     pull_request_state: "draft"
-    ci_state: "passed"
+    mergeable_after_governance_merge: false
     production_state: "not_released"
 workstreams:
-  - id: "OM-GOV"
-    name: "Agent governance and shared memory"
-    status: "reference_implementation"
-    architect: "codex_architect_admin"
-    implementer: "codex_architect_admin"
-  - id: "OM-ACC"
-    name: "Account creation and account/admin consoles"
-    status: "reference_implementation"
-    architect: "codex_architect_admin"
-    implementer: "cursor_implementation_subagent"
-    reference_pull_request: 21
-  - id: "OM-DEP"
-    name: "Cloudflare preview and production configuration"
-    status: "framework_required"
-    architect: "codex_architect_admin"
-    implementer: "cursor_implementation_subagent"
-  - id: "OM-IDV"
-    name: "High-assurance identity verification"
-    status: "framework_required"
-    architect: "codex_architect_admin"
-    implementer: "cursor_implementation_subagent"
-  - id: "OM-NODE"
-    name: "Decentralized hosting-node registration and proof"
-    status: "framework_required"
-    architect: "codex_architect_admin"
-    implementer: "cursor_implementation_subagent"
-  - id: "OM-RANK"
-    name: "Priority listing eligibility and deterministic ordering"
-    status: "framework_required"
-    architect: "codex_architect_admin"
-    implementer: "cursor_implementation_subagent"
-  - id: "OM-BILL"
-    name: "Paid priority listings and dynamic pricing"
-    status: "framework_required"
-    architect: "codex_architect_admin"
-    implementer: "cursor_implementation_subagent"
-  - id: "OM-PRIV"
-    name: "Ad-free hosting benefits and privacy/cookie policy"
-    status: "framework_required"
-    architect: "codex_architect_admin"
-    implementer: "cursor_implementation_subagent"
-  - id: "OM-MOD"
-    name: "Moderation, audit log, and administrator capabilities"
-    status: "framework_required"
-    architect: "codex_architect_admin"
-    implementer: "cursor_implementation_subagent"
+  - {id: "OM-GOV", name: "Agent governance and shared memory", status: "specified", architect: "codex_architect_admin", implementer: "codex_architect_admin"}
+  - {id: "OM-ACC", name: "Account creation and account/admin consoles", status: "reference_implementation", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent", reference_pull_request: 21}
+  - {id: "OM-DEP", name: "Cloudflare preview and production configuration", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
+  - {id: "OM-IDV", name: "High-assurance identity verification", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
+  - {id: "OM-NODE", name: "Decentralized hosting-node registration and proof", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
+  - {id: "OM-RANK", name: "Priority listing eligibility and deterministic ordering", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
+  - {id: "OM-BILL", name: "Paid priority listings and dynamic pricing", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
+  - {id: "OM-PRIV", name: "Ad-free hosting benefits and privacy/cookie policy", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
+  - {id: "OM-MOD", name: "Moderation, audit log, and administrator capabilities", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
 product_requirements:
-  public_browsing:
-    required: true
-  account_creation:
-    required: true
-    identity_verified_by_default: false
+  public_browsing: {required: true}
+  account_creation: {required: true, identity_verified_by_default: false}
   decentralized_hosts:
     required: true
-    eligibility_requires:
-      - "high_assurance_identity_verification"
-      - "verifiable_hosting_node_operation"
-    permitted_benefits:
-      - "priority_listing_status"
-      - "ad_free_experience"
+    eligibility_requires: ["high_assurance_identity_verification", "verifiable_hosting_node_operation"]
+    permitted_benefits: ["priority_listing_status", "ad_free_experience"]
   priority_listings:
     presentation: "yellow_box"
     ordering: "before_regular_listings"
@@ -135,24 +81,12 @@ product_requirements:
     implementation_state: "architecture_required"
 security_and_privacy_invariants:
   - "Never commit or log secrets, authentication tokens, cookies, passwords, or private exports."
-  - "Never store raw identity documents in Git, shared memory, a public object store, or the general marketplace metadata tables."
-  - "Identity verification must use a purpose-built protected boundary with retention, deletion, access-audit, and incident-response rules."
+  - "Never store raw identity documents in Git, shared memory, a public object store, or general marketplace metadata tables."
   - "Listing ownership, administrator status, verification status, host status, and priority eligibility are server-derived."
   - "Listing image bytes remain outside the public metadata registry."
   - "Public browsing remains available unless the human owner explicitly changes this requirement."
   - "No destructive administrator capability is added without authorization, audit logging, tests, and a separate task approval."
-  - "No production deployment is inferred from a passing build, preview, or subagent report."
-production_gates:
-  - id: "PG-01"
-    requirement: "all relevant tasks are accepted by Codex"
-  - id: "PG-02"
-    requirement: "full tests, lint, build, artifact validation, and required visual checks pass"
-  - id: "PG-03"
-    requirement: "Cloudflare bindings, migrations, secrets, and rollback are verified in preview"
-  - id: "PG-04"
-    requirement: "security and privacy boundaries are reviewed"
-  - id: "PG-05"
-    requirement: "human owner gives explicit production approval"
+  - "No production approval is inferred from builds, tests, previews, or subagent reports."
 shared_memory:
   root: "agent-memory"
   protocol: "agent-memory/README.md"
@@ -160,54 +94,37 @@ shared_memory:
   task_registry: "agent-memory/TASKS.md"
   decisions: "agent-memory/DECISIONS.md"
   handoff_template: "agent-memory/HANDOFF_TEMPLATE.md"
+  github_citation_required_per_task: true
+  citation_minimum:
+    - "repository"
+    - "canonical_ref_or_commit"
+    - "Master_Descriptor.md"
+    - "agent-memory/TASKS.md"
+    - "agent-memory/STATE.md"
+manual_functional_acceptance:
+  applies_to: "every user-facing behavior change"
+  preview_required: true
+  owner_checklist_required: true
+  owner_is_test_operator: true
+  owner_result_values: ["not_run", "pass", "fail"]
+  required_result_before_codex_acceptance: "pass"
+  required_result_before_merge: "pass"
+  exemptions:
+    - "docs_or_governance_only"
+    - "tests_only_with_no_behavior_change"
+    - "internal_maintenance_with_no_behavior_change"
+  exemption_must_be_declared_in_task: true
+production_gates:
+  - {id: "PG-01", requirement: "all relevant tasks are accepted by Codex"}
+  - {id: "PG-02", requirement: "tests, lint, build, artifact validation, and required visual checks pass"}
+  - {id: "PG-03", requirement: "Cloudflare bindings, migrations, secrets, and rollback are verified in preview when applicable"}
+  - {id: "PG-04", requirement: "security and privacy boundaries are reviewed"}
+  - {id: "PG-05", requirement: "human owner manually passes the runnable preview for every user-facing behavior change"}
+  - {id: "PG-06", requirement: "human owner gives explicit production approval"}
 ---
 
 # Open Marketplace Master Descriptor
 
-This file is the canonical machine-readable project contract. The YAML front
-matter is authoritative. The prose below explains it for humans; it does not
-silently override structured fields.
+The YAML front matter is authoritative. The human owner and Codex jointly define architecture; Codex converts decisions into bounded machine-readable task contracts; Cursor implements assigned tasks only.
 
-## Operating model
-
-The human owner chooses product direction and production outcomes. Codex acts as
-architect and administrator: it turns direction into bounded contracts,
-frameworks, tests, assignments, review gates, and release decisions. Cursor IDE
-and Cloud agents perform implementation work packages under those contracts.
-
-Subagents do not self-assign broad objectives or declare acceptance. Each task
-must identify allowed paths, forbidden actions, dependencies, expected outputs,
-and executable acceptance checks. A task is accepted only after Codex reviews
-the diff and verification evidence.
-
-## Current truth
-
-The account and admin portal exists as a reference implementation in draft PR
-#21. It is not part of `main` or production. The shared-memory system is being
-introduced independently on `agent/shared-agent-memory` so governance can be
-reviewed without mixing it into feature code.
-
-## Product direction requiring architecture
-
-The marketplace is intended to support decentralized copies or database-hosting
-nodes. A person receiving hosting benefits must pass high-assurance identity
-verification and prove operation of an eligible node. The verification design
-must minimize custody of sensitive identity data and make access, retention,
-deletion, and incident handling explicit before implementation.
-
-Eligible hosts may receive priority-listing status or an ad-free experience.
-Priority listings appear in a yellow treatment and sort ahead of regular
-listings. Regular users may purchase priority beginning at USD 0.10 per listing;
-the later dynamic-pricing policy must be deterministic, disclosed, testable, and
-not controlled by browser input.
-
-These requirements are direction, not completed designs. `OM-IDV`, `OM-NODE`,
-`OM-RANK`, `OM-BILL`, and `OM-PRIV` require architect-authored task contracts
-before a Cursor subagent implements them.
-
-## Release rule
-
-No branch reaches production merely because an agent completed it, CI passed,
-or a Cloudflare preview exists. Every applicable production gate in the YAML
-front matter must be satisfied and the human owner must explicitly approve the
-release.
+Every Cursor task must begin by reading the GitHub-backed shared memory and must end with exact shared-memory references in its handoff. Every user-facing change must remain runnable for the human owner and cannot be accepted or merged until the owner reports a manual functional pass.

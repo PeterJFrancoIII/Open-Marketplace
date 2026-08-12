@@ -5,7 +5,7 @@ document:
   kind: "project_master_descriptor"
   canonical: true
   status: "active"
-  updated_at: "2026-08-12T19:27:59Z"
+  updated_at: "2026-08-12T19:34:00Z"
   updated_by: "codex-architect"
 project:
   id: "open-marketplace"
@@ -54,7 +54,11 @@ status_vocabulary:
     - "released"
 current_repository_state:
   main_commit: "38d823a754d5da62bd87fe4c436a5ac8140146dc"
-  governance_branch: "agent/shared-agent-memory"
+  governance_reference:
+    branch: "agent/shared-agent-memory"
+    commit: "5d560e8335438c3da08b9589fdf12555037ddba4"
+    pull_request: 22
+    pull_request_state: "draft"
   account_reference:
     branch: "feature/account-management-portal"
     commit: "2a42055ec93297b5556eeec571844ec2f1b57cf3"

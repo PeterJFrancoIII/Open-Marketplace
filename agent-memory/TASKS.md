@@ -2,7 +2,7 @@
 schema_version: "1.0"
 document_id: "OM-TASKS-001"
 kind: "task_registry"
-updated_at: "2026-08-12T19:27:59Z"
+updated_at: "2026-08-12T19:34:00Z"
 updated_by: "codex_architect"
 tasks:
   - id: "OM-GOV-001"
@@ -14,6 +14,8 @@ tasks:
     branch: "agent/shared-agent-memory"
     base_branch: "main"
     base_commit: "38d823a754d5da62bd87fe4c436a5ac8140146dc"
+    implementation_commit: "5d560e8335438c3da08b9589fdf12555037ddba4"
+    pull_request: 22
     depends_on: []
     allowed_paths:
       - "AGENTS.md"

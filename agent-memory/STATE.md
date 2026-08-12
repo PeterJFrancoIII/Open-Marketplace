@@ -2,7 +2,7 @@
 schema_version: "1.0"
 document_id: "OM-STATE-001"
 kind: "project_state"
-updated_at: "2026-08-12T19:27:59Z"
+updated_at: "2026-08-12T19:34:00Z"
 updated_by: "codex_architect"
 repository:
   name: "PeterJFrancoIII/Open-Marketplace"
@@ -16,7 +16,10 @@ production:
 active_changes:
   - id: "OM-GOV-001"
     branch: "agent/shared-agent-memory"
-    state: "in_progress"
+    commit: "5d560e8335438c3da08b9589fdf12555037ddba4"
+    pull_request: 22
+    pull_request_state: "draft"
+    state: "ready_for_review"
     purpose: "repository-backed shared memory and agent rules"
   - id: "OM-ACC-001"
     branch: "feature/account-management-portal"
@@ -44,7 +47,7 @@ known_blockers:
   - id: "OM-BLOCK-003"
     scope: "account_portal_production"
     description: "Production D1 migration, DB binding, authentication secret, admin allowlist, and production acceptance have not been confirmed."
-next_architect_action: "Publish OM-GOV-001 for review, then reconcile PR #21 against the accepted master descriptor."
+next_architect_action: "Obtain human review for PR #22, then reconcile PR #21 against the accepted master descriptor."
 ---
 
 # Current Project State

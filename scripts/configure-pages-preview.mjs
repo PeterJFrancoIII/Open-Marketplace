@@ -51,6 +51,20 @@ const response = await fetch(
           build_image_major_version: 3,
           usage_model: "standard",
         },
+        production: {
+          env_vars: {
+            RELEASE_MODE: { type: "plain_text", value: "demo" },
+          },
+          d1_databases: {
+            DB: { id: "6ceb8dfc-4a92-4d4d-832f-ff1a54847326" },
+          },
+          fail_open: true,
+          always_use_latest_compatibility_date: false,
+          compatibility_date: "2026-05-15",
+          compatibility_flags: ["nodejs_compat"],
+          build_image_major_version: 3,
+          usage_model: "standard",
+        },
       },
     }),
   },

@@ -96,6 +96,7 @@ cp .env.example .env.local
 npm run lint
 npm test
 npm run dev
+node scripts/apply-local-d1-migrations.mjs
 ```
 
 Node.js 22.13 or newer is required. Set `NEXT_PUBLIC_DONATION_URL`,

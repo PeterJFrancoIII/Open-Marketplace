@@ -13,7 +13,8 @@
     "test": "npm run build && node --test tests/*.test.mjs",
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
+    "db:apply-local": "node scripts/apply-local-d1-migrations.mjs"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.6.27",

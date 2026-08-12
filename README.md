@@ -52,7 +52,10 @@ Requirements: Node.js 22.13 or newer and npm.
 npm ci
 cp .env.example .env.local
 npm run dev
+node scripts/apply-local-d1-migrations.mjs
 ```
+
+`apply-local-d1-migrations.mjs` writes schema into local Miniflare D1 storage under `.wrangler/state` only. Run it after the first `npm run dev` so that directory exists. Do not use it against production D1.
 
 The starter uses Vinext and Cloudflare-compatible bindings. Set:
 

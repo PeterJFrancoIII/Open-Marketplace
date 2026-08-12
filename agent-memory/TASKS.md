@@ -42,8 +42,10 @@ tasks:
     assigned_agent: "cursor_implementation_subagent"
     branch: "feature/account-management-portal"
     base_branch: "main"
+    shared_memory_ref: "main"
     required_source_head: "2a42055ec93297b5556eeec571844ec2f1b57cf3"
-    target_base_commit: "b7c634829210cf2e386129058710a98a1db26663"
+    target_base_ref: "main"
+    minimum_base_ancestor: "b7c634829210cf2e386129058710a98a1db26663"
     pull_request: 21
     depends_on: ["OM-ACC-001"]
     functional_preview_required: true
@@ -63,7 +65,7 @@ tasks:
       - "agent-memory/handoffs/**"
     authorized_actions:
       - "fetch main"
-      - "rebase or merge main into feature/account-management-portal"
+      - "rebase or merge current main into feature/account-management-portal"
       - "resolve conflicts while preserving canonical governance precedence"
       - "edit allowed_paths only"
       - "run local migrations against local development storage only"
@@ -82,7 +84,8 @@ tasks:
       - "write secrets or private data to Git"
       - "mark owner manual test as pass"
     implementation_requirements:
-      - "Read and cite GitHub shared memory before edits."
+      - "Read and cite GitHub shared memory from shared_memory_ref before edits."
+      - "Fetch target_base_ref immediately before integration and record its observed commit in the handoff."
       - "Bring PR #21 onto the current governance baseline without weakening governance files."
       - "Preserve public browsing and server-derived seller/admin identity boundaries."
       - "Make the account flow runnable locally for the human owner without production credentials."

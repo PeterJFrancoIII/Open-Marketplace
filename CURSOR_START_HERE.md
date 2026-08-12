@@ -1,7 +1,20 @@
 # Cursor Agent Handoff — Open Marketplace
 
-Open this extracted folder as the project root in Cursor. Read this file,
-`README.md`, `ARCHITECTURE.md`, and `POLICY.md` before changing code.
+## Required coordination bootstrap
+
+Open this repository as a project root in Cursor. Before changing any file,
+read `AGENTS.md`, `Master_Descriptor.md`, `agent-memory/README.md`,
+`agent-memory/STATE.md`, `agent-memory/TASKS.md`, and
+`agent-memory/DECISIONS.md`. Then read this file, `README.md`,
+`ARCHITECTURE.md`, and `POLICY.md`.
+
+Cursor agents are implementation subagents. Work only from a task ID assigned
+in `agent-memory/TASKS.md`, stay inside its allowed paths and actions, and write
+an append-only handoff under `agent-memory/handoffs/` before stopping. Codex is
+the architect and administrator and reconciles canonical state after review.
+
+If this file conflicts with `Master_Descriptor.md` or the accepted shared-memory
+records, stop and report the conflict; do not follow stale text.
 
 ## Project state
 

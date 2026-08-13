@@ -1,13 +1,13 @@
 ---
-schema_version: "1.8"
+schema_version: "1.9"
 document_id: "OM-STATE-001"
 kind: "project_state"
-updated_at: "2026-08-13T02:47:00Z"
+updated_at: "2026-08-13T02:51:00Z"
 updated_by: "codex_architect"
 repository:
   name: "PeterJFrancoIII/Open-Marketplace"
   default_branch: "main"
-  state_basis_commit: "99a7a359dc9925a80e8e5ced0b10d622026e0b79"
+  state_basis_commit: "3c771d0d39ae3819db1b5af5b317b996af597db2"
 production:
   provider: "Cloudflare Pages"
   project: "open-marketplace-demo"
@@ -31,30 +31,33 @@ active_changes:
     current_head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c"
     pull_request: 21
     pull_request_state: "draft"
-    state: "ready_for_review"
-    review_stage: "awaiting_human_owner_functional_test"
+    state: "blocked"
+    review_stage: "owner_expanded_manual_payment_set_requires_OM-ACC-006"
     purpose: "account/admin portal with server-side authentication and owner-managed manual social/payment settings"
-    architect_review: "passed_for_owner_test"
-    latest_branch_ci: {head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c", workflow: "Deploy to Cloudflare Pages", run_id: 31661766350, result: "success"}
+    prior_architect_review: "passed_for_owner_test_before_owner_payment-set_expansion"
+    owner_required_launch_sets:
+      social_profiles: ["Facebook", "Instagram", "TikTok"]
+      manual_payment_methods: ["PayPal", "Venmo", "Cash App", "Zelle", "Apple Cash"]
+      crypto: ["Bitcoin / Bitcoin Mainnet", "Ethereum / Ethereum Mainnet", "Tether (USDT) / Ethereum Mainnet (ERC-20)", "BNB / BNB Smart Chain Mainnet", "USDC / Ethereum Mainnet (ERC-20)"]
+      oauth_provider_connect: false
     owner_preview:
       url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
-      deployment_url: "https://760b2b84.open-marketplace-demo.pages.dev/"
       environment: "non_production"
       pages_project: "open-marketplace-demo"
       preview_database: "open-marketplace-account-preview-d1"
-    owner_manual_result: "not_run_on_current_https_preview"
-    acceptance_blocker: "human_owner_functional_pass"
+    owner_manual_result: "not_run_after_manual_payment_set_expansion"
+    acceptance_blocker: "OM-ACC-006 then human_owner_functional_pass"
   - id: "OM-DEP-001"
     branch: "feature/account-management-portal"
     current_head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c"
     pull_request: 21
     state: "ready_for_review"
-    review_stage: "awaiting_human_owner_functional_test"
+    review_stage: "owner_test_deferred_until_OM-ACC-006"
     purpose: "owner-reachable non-production HTTPS preview for PR #21"
     latest_branch_ci: {head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c", workflow: "Deploy to Cloudflare Pages", run_id: 31661766350, result: "success"}
     preview_url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
     latest_reviewed_deployment_url: "https://760b2b84.open-marketplace-demo.pages.dev/"
-    owner_manual_result: "not_run_on_current_https_preview"
+    owner_manual_result: "not_run_after_OM-ACC-006"
   - id: "OM-ACC-004"
     branch: "feature/account-management-portal"
     implementation_head: "c4247d52813eda683cc55db4d777f67294a8195e"
@@ -62,26 +65,35 @@ active_changes:
     current_head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c"
     pull_request: 21
     state: "ready_for_review"
-    review_stage: "corrected_by_OM-ACC-005_awaiting_owner_test"
+    review_stage: "component_preserved_pending_OM-ACC-006"
     purpose: "persistent Facebook/Instagram/TikTok URLs and manual public payment destinations"
-    architect_review: "passed_for_owner_test_after_OM-ACC-005"
-    owner_manual_result: "not_run_on_corrected_preview"
+    architect_review: "social/account component passed; payment set now expanded by owner"
+    owner_manual_result: "not_run_after_OM-ACC-006"
   - id: "OM-ACC-005"
     branch: "feature/account-management-portal"
     implementation_head: "85a1102c4bc8a40c84be1a5416d23a582bc41846"
     current_head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c"
     pull_request: 21
     state: "ready_for_review"
-    review_stage: "awaiting_human_owner_functional_test"
+    review_stage: "crypto_component_passed_architect_review"
     purpose: "frozen top-five crypto payment set with explicit receive networks while preserving account/social behavior"
-    architect_review: "passed_for_owner_test"
+    architect_review: "passed_for_owner_test_before_OM-ACC-006_scope_expansion"
+    launch_crypto_set: ["Bitcoin / Bitcoin Mainnet", "Ethereum / Ethereum Mainnet", "Tether (USDT) / Ethereum Mainnet (ERC-20)", "BNB / BNB Smart Chain Mainnet", "USDC / Ethereum Mainnet (ERC-20)"]
     handoff: "agent-memory/handoffs/2026-08-13--OM-ACC-005--cursor-grok-4-6.md"
-    launch_payment_set:
-      fiat: ["PayPal", "Venmo", "Cash App"]
-      crypto: ["Bitcoin / Bitcoin Mainnet", "Ethereum / Ethereum Mainnet", "Tether (USDT) / Ethereum Mainnet (ERC-20)", "BNB / BNB Smart Chain Mainnet", "USDC / Ethereum Mainnet (ERC-20)"]
-      excluded: ["Solana", "Zelle", "Apple Pay", "Stripe", "Plaid"]
-    latest_branch_ci: {head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c", workflow: "Deploy to Cloudflare Pages", run_id: 31661766350, result: "success"}
-    preview_url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
+    owner_manual_result: "not_run_after_OM-ACC-006"
+  - id: "OM-ACC-006"
+    branch: "feature/account-management-portal"
+    pull_request: 21
+    state: "assigned"
+    review_stage: "implementation"
+    purpose: "add Zelle and Apple Cash manual public destinations so the payment-method set is exactly PayPal, Venmo, Cash App, Zelle, and Apple Cash while preserving the existing five crypto rails"
+    required_feature_head_ancestor: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c"
+    owner_requirement_source: "Human owner handoff at 2026-08-13T02:51:00Z"
+    public_identifier_rules:
+      Zelle: "manually entered email or U.S. mobile number; never auto-fill private login contact data"
+      Apple_Cash: "manually entered email or U.S. mobile number; never auto-fill private login contact data"
+    safety_boundary: "These are public P2P contact destinations only. No provider verification, payment execution, escrow, reversal, protection claim, OAuth, or checkout. UI must warn users to confirm the recipient independently."
+    preview_requirement: "update the existing owner-reachable non-production Cloudflare Pages preview"
     owner_manual_result: "not_run"
 queued_architecture:
   - id: "OM-FUL-001"
@@ -101,19 +113,20 @@ queued_architecture:
 deferred_capabilities:
   - id: "oauth_provider_linking"
     status: "unassigned"
-    scope: "Social and payment OAuth/provider Connect flows are not part of OM-ACC-004/005. Current UI uses manual public URLs/handles/addresses. Absence of Connect Facebook/PayPal/etc. controls is not a defect in the current acceptance gate. Create architecture/task only after an explicit human-owner request specifying providers and social/payment scope."
+    scope: "Social and payment OAuth/provider Connect flows remain outside OM-ACC-004/005/006. Current launch requirement is manual public URLs/handles/addresses/contact identifiers only."
 known_blockers:
   - {id: "OM-BLOCK-001", scope: "main", description: "Standard npm test wrapper requires GNU timeout on this Mac; PR #21 contains a portable correction."}
   - {id: "OM-BLOCK-002", scope: "main", description: "Main rendered HTML test contains the retired Open Exchange assertion; PR #21 contains a correction."}
   - {id: "OM-BLOCK-003", scope: "account_portal_production", description: "Production D1 migration, DB binding, authentication secret, admin allowlist, email verification delivery, password reset delivery, 2FA architecture, and production acceptance are not confirmed."}
+  - {id: "OM-BLOCK-007", scope: "manual_payment_methods", description: "Owner requires five manual payment methods; current preview has only PayPal, Venmo, and Cash App. Zelle and Apple Cash are assigned in OM-ACC-006."}
 resolved_blockers:
   - {id: "OM-BLOCK-004", scope: "owner_preview", resolution: "Agent-only localhost rejected; persistent Cloudflare Pages branch-preview URL supplied for owner test."}
-  - {id: "OM-BLOCK-005", scope: "account_settings", resolution: "Required manual social/payment settings were implemented in OM-ACC-004 and corrected by OM-ACC-005; final validation is the human owner functional test."}
-  - {id: "OM-BLOCK-006", scope: "payment_settings", resolution: "Solana was replaced by USDC and crypto destinations were bound to explicit launch networks in OM-ACC-005; architect review passed for owner testing."}
-next_cursor_task: null
-next_architect_action: "Wait for the human owner to test https://feature-account-management-p.open-marketplace-demo.pages.dev/ and report pass/fail on the current manual social/payment settings. OAuth Connect controls are out of scope and should not be treated as a failure unless the human owner explicitly changes the product requirement. Do not accept OM-ACC-002, merge PR #21, deploy production, or assign OM-FUL-001 before the account-preview owner gate is resolved."
+  - {id: "OM-BLOCK-005", scope: "account_settings", resolution: "Required manual social/profile settings and base payment settings were implemented; final account acceptance now includes OM-ACC-006."}
+  - {id: "OM-BLOCK-006", scope: "crypto_payment_settings", resolution: "Solana was replaced by USDC and crypto destinations were bound to explicit launch networks in OM-ACC-005; architect review passed for that component."}
+next_cursor_task: "OM-ACC-006"
+next_architect_action: "Wait for OM-ACC-006 handoff. Review exact five manual payment methods, Zelle/Apple Cash public-contact validation and privacy warning, unchanged social/crypto behavior, automated tests, production isolation, branch CI, and the updated owner-reachable HTTPS preview. If review passes, present the preview to the human owner for manual functional pass/fail. Do not accept OM-ACC-002, merge PR #21, deploy production, or assign OM-FUL-001 before that gate is resolved."
 ---
 
 # Current Project State
 
-OM-ACC-005 passed Codex architect review. PR #21 remains draft at `bec794fe9589a4ae15fe71ddb2e463d98eaca78c`, the current Cloudflare Pages branch workflow passed, and the persistent HTTPS preview is ready for the human owner's functional test. Account settings intentionally use manual public social URLs and payment destinations; OAuth provider-connect flows remain unassigned and are not part of the current pass/fail gate. Production remains unchanged.
+The human owner expanded the account-settings launch requirement to exactly three social profiles, five manual payment methods, and five crypto rails. The current preview already satisfies the social and crypto sets but has only three of the five manual payment methods. OM-ACC-006 is assigned to add Zelle and Apple Cash as deliberately entered public email/U.S.-mobile contact destinations, with no OAuth or checkout. PR #21 remains draft and production remains unchanged.

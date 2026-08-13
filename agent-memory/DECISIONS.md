@@ -1,8 +1,8 @@
 ---
-schema_version: "1.3"
+schema_version: "1.4"
 document_id: "OM-DECISIONS-001"
 kind: "decision_registry"
-updated_at: "2026-08-12T21:02:00Z"
+updated_at: "2026-08-13T02:30:00Z"
 updated_by: "codex_architect"
 decisions:
   - {id: "OM-DEC-001", status: "accepted", title: "Architect and implementation-subagent role split", decision: "Codex owns architecture and administration; Cursor agents execute assigned work packages and return evidence.", authority: "human_owner", decided_on: "2026-08-12"}
@@ -35,6 +35,17 @@ decisions:
     authority: "codex_architect_admin"
     basis: "OM-DEC-006 plus owner-reported localhost reachability failure"
     decided_on: "2026-08-12"
+  - id: "OM-DEC-010"
+    status: "accepted"
+    title: "Snapshot-based launch crypto rails with explicit networks"
+    decision: "For the current account-settings launch, interpret the owner's top-five crypto requirement as a five-asset market-cap snapshot including Bitcoin, consistent with the prior Cursor implementation shape. Freeze the 2026-08-13 verified snapshot as BTC, ETH, USDT, BNB, and USDC rather than dynamically re-ranking saved payment fields. Every crypto receive destination must bind the asset to an explicit network. Initial network scope is Bitcoin Mainnet for BTC, Ethereum Mainnet for ETH, Ethereum/ERC-20 for USDT and USDC, and BNB Smart Chain Mainnet for BNB. Additional assets or networks require a separate reviewed task."
+    authority: "codex_architect_admin"
+    basis:
+      - "OM-ACC-004 handoff recovered the owner wording PayPal, Venmo, Cash App, and Bitcoin/top-five crypto requirement but acknowledged the individual crypto list was not directly owner-named."
+      - "Architect market-cap verification on 2026-08-13 against CoinGecko and CoinMarketCap placed USDC at #5 and Solana below #5."
+      - "Official Tether, Circle, and BNB network guidance establishes that supported crypto assets can exist across multiple chains and that the correct network matters for receipt/recovery."
+      - "A fixed launch snapshot preserves meaning for saved account settings when market rankings later move."
+    decided_on: "2026-08-13"
 ---
 
 # Decision Registry

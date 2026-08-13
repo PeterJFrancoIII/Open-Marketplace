@@ -1,8 +1,8 @@
 ---
-schema_version: "1.5"
+schema_version: "1.6"
 document_id: "OM-TASKS-001"
 kind: "task_registry"
-updated_at: "2026-08-13T01:54:00Z"
+updated_at: "2026-08-13T02:30:00Z"
 updated_by: "codex_architect"
 tasks:
   - {id: "OM-GOV-001", title: "Create repository-backed shared memory and agent rules", workstream: "OM-GOV", status: "accepted", owner_role: "codex_architect_admin", assigned_agent: "codex-architect", implementation_commit: "5d560e8335438c3da08b9589fdf12555037ddba4", handoff_commit: "9dc317cdb402dc5ad024da1f740d1091c4c62ea6", pull_request: 22}
@@ -17,105 +17,103 @@ tasks:
     reference_head: "2a42055ec93297b5556eeec571844ec2f1b57cf3"
     pull_request: 21
     depends_on: ["OM-GOV-002"]
-    result: "substantial reference implementation; governance reconciliation completed; acceptance still requires owner-reachable preview and human functional pass"
+    result: "substantial reference implementation; governance reconciliation completed; final account acceptance still requires owner-reachable preview and human functional pass"
   - id: "OM-ACC-002"
     title: "Reconcile PR #21 with governance main and prepare owner-testable account preview"
     workstream: "OM-ACC"
     status: "blocked"
-    review_stage: "owner_functional_gap_found"
+    review_stage: "payment_settings_correction_required_before_owner_test"
     owner_role: "codex_architect_admin"
     assigned_agent: "cursor_implementation_subagent"
     branch: "feature/account-management-portal"
     base_branch: "main"
     shared_memory_ref: "main"
-    current_head: "f6b5ab180a2da243d64662d82abecc452d62a3dc"
+    current_head: "62669c5e993acb4bf7dc354ade0f5fea5db72f52"
     account_implementation_head: "9c28a5db9f4aa41932977a005806beb98b57c4e4"
     preview_implementation_head: "5c68a7c7a5d94a332274074065f0d30a4a502a9e"
     pull_request: 21
     pull_request_state: "draft"
-    mergeable: true
-    depends_on: ["OM-ACC-001", "OM-DEP-001", "OM-ACC-004"]
-    architect_review:
-      account_scope: "passed_for_owner_test_before_owner_gap_report"
-      owner_reachable_preview: "passed_for_owner_test"
-      reviewed_branch_tip: "f6b5ab180a2da243d64662d82abecc452d62a3dc"
-      branch_workflow: "passed"
+    depends_on: ["OM-ACC-001", "OM-DEP-001", "OM-ACC-004", "OM-ACC-005"]
     owner_preview:
       url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
       environment: "non_production"
       pages_project: "open-marketplace-demo"
       preview_database: "open-marketplace-account-preview-d1"
-      handoff_path: "agent-memory/handoffs/2026-08-12--OM-DEP-001--cursor-grok-4-6.md"
-    owner_manual_result: "failed_missing_required_settings"
-    prior_owner_result: "failed_preview_unreachable"
-    owner_observation: "User settings should include options to link social media accounts and the payment options previously described by the owner to the Cursor agent."
-    failed_requirements:
-      - "account settings omit persistent social-media linking"
-      - "account settings omit the exact owner-specified payment-link options previously described to Cursor"
-    acceptance_blocker: "OM-ACC-004 then human_owner_functional_pass"
-    forbidden_actions:
-      - "merge PR #21 before human functional pass"
-      - "deploy account portal to production"
-      - "mark owner manual test as pass"
+    owner_manual_result: "not_run_after_payment_architect_correction"
+    prior_owner_results:
+      - "failed_preview_unreachable"
+      - "failed_missing_required_settings"
+    acceptance_blocker: "OM-ACC-005 then human_owner_functional_pass"
+    forbidden_actions: ["merge PR #21", "deploy account portal to production", "mark owner manual test as pass"]
   - id: "OM-DEP-001"
     title: "Deliver owner-reachable non-production account portal preview"
     workstream: "OM-DEP"
     status: "ready_for_review"
-    review_stage: "awaiting_human_owner_functional_test_after_account_correction"
+    review_stage: "owner_test_deferred_until_OM-ACC-005"
     owner_role: "codex_architect_admin"
     assigned_agent: "cursor_implementation_subagent"
     supports_task: "OM-ACC-002"
     branch: "feature/account-management-portal"
     pull_request: 21
     shared_memory_ref: "main"
-    observed_base_commit: "b470fb6a8745d1c914bc066661c868c73f810be2"
     implementation_head: "5c68a7c7a5d94a332274074065f0d30a4a502a9e"
-    branch_tip: "f6b5ab180a2da243d64662d82abecc452d62a3dc"
-    handoff_path: "agent-memory/handoffs/2026-08-12--OM-DEP-001--cursor-grok-4-6.md"
-    architect_review:
-      status: "passed_for_owner_test"
-      existing_pages_project_reused: true
-      production_url_change_authorized: false
-      preview_surface: "Cloudflare Pages branch preview"
-      latest_branch_workflow: "passed"
+    branch_tip: "62669c5e993acb4bf7dc354ade0f5fea5db72f52"
+    latest_branch_workflow: {run_id: 31660568138, workflow: "Deploy to Cloudflare Pages", result: "success", head: "62669c5e993acb4bf7dc354ade0f5fea5db72f52"}
     functional_preview:
       url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
-      deployment_url: "https://923a95f0.open-marketplace-demo.pages.dev/"
+      latest_reviewed_deployment_url: "https://95c543a4.open-marketplace-demo.pages.dev/"
       environment: "non_production"
       pages_project: "open-marketplace-demo"
       preview_database: "open-marketplace-account-preview-d1"
-    verification:
-      - "git diff --check: passed"
-      - "npm run lint: passed"
-      - "npm test: 21 passed, 0 failed"
-      - "latest branch Pages workflow at f6b5ab180a2da243d64662d82abecc452d62a3dc: passed"
-      - "Cursor handoff reports HTTPS home/login/listings/auth/account/listing probes passed"
-      - "Cursor handoff reports signed-out listing POST rejected and authenticated listing seller identity derived from session"
-    owner_manual_result: "not_run_after_OM-ACC-004"
-    acceptance_blocker: "OM-ACC-004 then human_owner_functional_pass"
-    architecture_note: "The current preview helper PATCH payload restates production deployment config while configuring preview settings. It is not production approval. Reusable automation hardening is tracked separately in OM-DEP-002 before this pattern is generalized."
-    forbidden_actions:
-      - "merge PR #21 before human functional pass"
-      - "change production URL"
-      - "apply account migrations to production D1"
-      - "mark owner manual test as pass"
+    owner_manual_result: "not_run_after_OM-ACC-005"
+    architecture_note: "The preview helper still requires separate OM-DEP-002 hardening before it is generalized as reusable infrastructure."
+    forbidden_actions: ["merge PR #21", "change production URL", "apply account migrations to production D1", "mark owner manual test as pass"]
   - id: "OM-ACC-004"
     title: "Add persistent social-media and owner-specified payment-link settings"
+    workstream: "OM-ACC"
+    status: "changes_requested"
+    review_stage: "architect_review_failed_payment_definition"
+    owner_role: "codex_architect_admin"
+    assigned_agent: "cursor_implementation_subagent"
+    supports_task: "OM-ACC-002"
+    branch: "feature/account-management-portal"
+    pull_request: 21
+    shared_memory_ref: "main"
+    implementation_commit: "c4247d52813eda683cc55db4d777f67294a8195e"
+    handoff_commit: "62669c5e993acb4bf7dc354ade0f5fea5db72f52"
+    handoff_path: "agent-memory/handoffs/2026-08-13--OM-ACC-004--cursor-grok-4-6.md"
+    returned_status: "ready_for_review"
+    architect_review:
+      social_settings: "pass"
+      session_owned_profile_mutation: "pass"
+      social_self_reported_boundary: "pass"
+      automated_tests: "pass_reported_27"
+      implementation_workflow: {run_id: 31660457017, result: "success", head: "c4247d52813eda683cc55db4d777f67294a8195e"}
+      latest_branch_workflow: {run_id: 31660568138, result: "success", head: "62669c5e993acb4bf7dc354ade0f5fea5db72f52"}
+      preview_reachability_evidence: "pass_from_cursor_handoff_and_workflow"
+      payment_definition: "changes_requested"
+    payment_review_findings:
+      - "The owner requirement recovered by Cursor was PayPal, Venmo, Cash App, and a top-five crypto requirement; the individual crypto list was not directly owner-named."
+      - "Cursor used Solana as the fifth crypto, but the architect's 2026-08-13 market-cap verification from CoinGecko and CoinMarketCap placed USDC at #5 and Solana below #5."
+      - "USDT exists on multiple supported blockchains, and the current model stores a bare destination without an explicit network. Ambiguous crypto destinations are unsafe for a marketplace payment-contact feature."
+      - "The correction must preserve the working social/account implementation and replace only the unsafe/stale payment definition and validation semantics."
+    acceptance_blocker: "OM-ACC-005"
+    forbidden_actions: ["accept OM-ACC-004 as final", "merge PR #21", "deploy to production", "apply production D1 migrations"]
+  - id: "OM-ACC-005"
+    title: "Correct top-five crypto rails and bind every crypto destination to an explicit network"
     workstream: "OM-ACC"
     status: "assigned"
     review_stage: "implementation"
     owner_role: "codex_architect_admin"
     assigned_agent: "cursor_implementation_subagent"
     supports_task: "OM-ACC-002"
+    remediates_task: "OM-ACC-004"
     branch: "feature/account-management-portal"
     pull_request: 21
     shared_memory_ref: "main"
-    target_base_ref: "main"
-    contract_base_commit: "53856c06e23587dca12de597af8a67529a7f8e21"
-    required_feature_head_ancestor: "f6b5ab180a2da243d64662d82abecc452d62a3dc"
-    depends_on: ["OM-ACC-001", "OM-DEP-001"]
-    owner_observation: "User settings should have options to link social medias and payment options previously described to the Cursor agent."
-    objective: "Extend authenticated User/Account settings so each user can persistently add, edit, and remove their social-media links and the exact payment-link options the owner previously specified to Cursor, then make the corrected account flow available on the existing owner-reachable HTTPS preview."
+    required_feature_head_ancestor: "62669c5e993acb4bf7dc354ade0f5fea5db72f52"
+    depends_on: ["OM-ACC-004"]
+    objective: "Preserve the working OM-ACC-004 social/account settings while correcting the launch crypto payment rails to the architect-approved 2026-08-13 top-five snapshot and making every crypto destination explicitly asset-and-network bound before owner functional testing."
     required_shared_memory_paths:
       - "Master_Descriptor.md"
       - "AGENTS.md"
@@ -123,106 +121,108 @@ tasks:
       - "agent-memory/STATE.md"
       - "agent-memory/TASKS.md"
       - "agent-memory/DECISIONS.md"
-    confirmed_social_platforms:
-      - "Facebook"
-      - "Instagram"
-      - "TikTok"
-    social_contract:
-      - "Use or extend the existing social-account/profile model rather than creating a competing per-page-only data model."
-      - "Expose the existing supported social-account fields in authenticated account settings, with add/update/remove and persistence across reload/sign-out/sign-in."
-      - "At minimum Facebook, Instagram, and TikTok links must be supported because those platforms are already part of the marketplace trust surface."
-      - "Reuse the existing allowlisted social-link normalization/health-check boundary where applicable."
-      - "A resolving URL is link-health evidence only; never label a social identity verified solely because the URL resolves."
-      - "New-listing social defaults should come from the signed-in user's saved profile where compatible with the existing listing social-proof model; do not allow browser-supplied data to change account ownership."
-    payment_requirements:
-      source_of_truth: "the exact payment options previously described by the human owner to the Cursor agent"
-      recovery_order:
-        - "Cursor IDE/local agent conversation and task context in which the owner previously specified payment options"
-        - "repository branches, handoffs, docs, or task artifacts that record those exact owner requirements"
-      no_guessing: true
-      blocked_if_unrecoverable: "blocked_missing_exact_payment_option_list"
-      implementation_boundary:
-        - "Implement account-level public payment destination/link/handle metadata for only the exact recovered owner-specified options."
-        - "Do not add guessed providers or substitute common payment platforms."
-        - "Do not implement custody, escrow, checkout, settlement, bank/card credential storage, provider API secrets, or private payment authentication material in this task."
-        - "Validate and normalize public identifiers/URLs and reject unsafe arbitrary schemes or malformed destinations."
-        - "Never store secrets, access tokens, private keys, card numbers, bank credentials, or passwords in profile data, Git, logs, handoffs, or shared memory."
-    ownership_and_storage_contract:
-      - "Account/profile mutations require a validated server session and derive the user/profile owner from that session."
-      - "One account must not read private settings or modify another account's profile settings."
-      - "Persist settings in D1 using the existing profile model where sound; if schema changes are required, add a forward migration and preserve existing account/listing data."
-      - "Public-facing social/payment metadata must be explicitly modeled as public profile/contact metadata; authentication credentials remain separate."
+    architect_payment_contract:
+      fiat_rails:
+        - {id: "paypal", label: "PayPal"}
+        - {id: "venmo", label: "Venmo"}
+        - {id: "cashapp", label: "Cash App"}
+      crypto_snapshot:
+        snapshot_date_utc: "2026-08-13"
+        interpretation: "For this launch snapshot, 'top 5 cryptos' means the five highest market-cap cryptoassets including Bitcoin, consistent with the prior five-asset Cursor implementation."
+        evidence: "Architect verified the market-cap ordering against current CoinGecko and CoinMarketCap results before assigning this correction."
+        assets:
+          - {asset: "BTC", label: "Bitcoin", network_id: "bitcoin_mainnet", network_label: "Bitcoin Mainnet"}
+          - {asset: "ETH", label: "Ethereum", network_id: "ethereum_mainnet", network_label: "Ethereum Mainnet"}
+          - {asset: "USDT", label: "Tether (USDT)", network_id: "usdt_ethereum", network_label: "Ethereum Mainnet (ERC-20)"}
+          - {asset: "BNB", label: "BNB", network_id: "bnb_bsc", network_label: "BNB Smart Chain Mainnet"}
+          - {asset: "USDC", label: "USDC", network_id: "usdc_ethereum", network_label: "Ethereum Mainnet (ERC-20)"}
+      remove_from_launch_allowlist:
+        - "Solana"
+      rationale:
+        - "The top-five list is frozen as a launch snapshot rather than dynamically re-ranked, so saved account settings do not change meaning when market rankings move."
+        - "Tether and USDC operate on multiple blockchains; a receive destination must therefore bind a network explicitly."
+        - "The initial single-network scope is intentionally narrow: Bitcoin Mainnet, Ethereum Mainnet/ERC-20, and BNB Smart Chain Mainnet. Additional networks require a later reviewed task."
+    implementation_requirements:
+      - "Preserve Facebook, Instagram, and TikTok account settings, persistence, link-health behavior, and forced self-reported status from OM-ACC-004."
+      - "Preserve session-derived account ownership and seller identity boundaries."
+      - "Replace Solana with USDC in the launch payment UI, allowlist, types, docs, and tests."
+      - "Model crypto destinations with an explicit stable asset+network identifier; bare ambiguous ids such as usdt, bnb, or usdc are not sufficient for persisted data."
+      - "UI labels must show both asset and network before the user saves an address."
+      - "Store only public receive identifiers/addresses. Never store or log private keys, seed phrases, passwords, card/bank credentials, OAuth tokens, or wallet signing secrets."
+      - "Validate address syntax appropriate to the fixed network where feasible without custom cryptography; fail closed on unsupported networks or malformed/secret-looking input."
+      - "If existing preview profile JSON contains the removed Solana rail or legacy ambiguous crypto ids, ignore or safely normalize/migrate preview data without inventing a destination or network."
+      - "Do not implement wallet signing, WalletConnect, payment execution, conversion, custody, escrow, refunds, fees, settlement, or provider OAuth in this task."
     allowed_paths:
       - "app/account/**"
-      - "app/api/**"
-      - "components/**"
+      - "app/api/account/profile/**"
+      - "app/api/listings/**"
       - "db/**"
       - "drizzle/**"
-      - "lib/**"
-      - "scripts/**"
+      - "lib/payment-destinations.ts"
+      - "lib/types.ts"
       - "tests/**"
+      - "scripts/**"
       - "README.md"
       - "CURSOR_START_HERE.md"
       - "ARCHITECTURE.md"
-      - "package.json"
-      - "package-lock.json"
       - "agent-memory/handoffs/**"
     repository_actions:
       - "fetch canonical main immediately before work and record the observed commit"
-      - "merge/rebase current main into feature/account-management-portal without weakening canonical governance"
-      - "preserve f6b5ab180a2da243d64662d82abecc452d62a3dc as an ancestor"
-      - "edit allowed paths only"
-      - "commit and push task changes to feature/account-management-portal"
+      - "merge/rebase current main into feature/account-management-portal without weakening governance"
+      - "preserve 62669c5e993acb4bf7dc354ade0f5fea5db72f52 as an ancestor"
+      - "make only the narrow correction described by OM-ACC-005"
+      - "commit and push to feature/account-management-portal"
       - "leave PR #21 draft"
     cloudflare_actions_authorized:
       scope: "non-production preview only"
       pages_project: "open-marketplace-demo"
       preview_database: "open-marketplace-account-preview-d1"
       allowed:
-        - "apply only OM-ACC-004-required forward migrations to the dedicated preview D1"
-        - "redeploy the feature/account-management-portal branch preview"
-        - "probe the owner-reachable HTTPS preview and account/profile APIs"
+        - "apply only a forward preview migration if the corrected data model actually requires one"
+        - "redeploy the feature branch preview"
+        - "probe the HTTPS preview and relevant account/profile APIs"
       forbidden:
         - "apply migrations to production D1"
-        - "modify the production URL"
         - "modify production account data"
+        - "change the production URL"
         - "write secrets to Git/shared memory/handoffs"
     verification_required:
       - "record canonical main commit and cited shared-memory paths before edits"
-      - "record evidence identifying the exact recovered owner-specified payment options; do not include any secret values"
       - "git diff --check"
       - "npm run lint"
       - "npm test"
-      - "tests prove only the authenticated owner can mutate profile settings"
-      - "tests prove supported social settings persist and can be removed"
-      - "tests prove payment destinations are restricted to the recovered allowed option set and unsafe values are rejected"
-      - "tests prove no social link is promoted to verified based only on URL health"
-      - "existing public browsing, authentication, admin authorization, and session-derived listing ownership remain intact"
+      - "tests prove the exact launch payment set is PayPal, Venmo, Cash App, BTC, ETH, USDT, BNB, and USDC"
+      - "tests prove Solana, Zelle, Apple Pay, Stripe, Plaid, unsupported networks, and unsafe secret-looking values are rejected/not shown"
+      - "tests prove each crypto destination has the expected explicit network id/label"
+      - "tests prove save/reload/remove persistence for corrected payment destinations"
+      - "tests prove one account cannot read or mutate another account's settings"
+      - "tests prove Facebook/Instagram/TikTok persistence and self-reported status remain unchanged"
+      - "tests prove listing publication remains session-owned and saved profile social defaults still work"
       - "branch Pages workflow succeeds on the returned exact head"
-      - "owner-reachable HTTPS preview shows the corrected settings UI"
-    owner_manual_checklist:
+      - "owner-reachable HTTPS preview shows corrected payment labels and networks"
+      - "production D1 remains without account migrations and production URL remains unchanged"
+    owner_manual_checklist_after_architect_review:
       - "Sign in and open Account settings on the HTTPS preview."
-      - "Confirm a Social media section exists with Facebook, Instagram, and TikTok."
-      - "Add, edit, remove, save, reload, and re-open social links; confirm saved values persist as expected."
-      - "Confirm a Payment options section contains the exact options previously specified to Cursor, with no invented providers."
-      - "Add/edit/remove a non-sensitive test payment destination for each supported option and confirm persistence."
-      - "Create a new listing and confirm saved social profile data is used as intended without changing the signed-in seller identity."
-      - "Sign out or use a different account and confirm another user's settings cannot be edited."
+      - "Confirm Facebook, Instagram, and TikTok are still present."
+      - "Confirm Payment options shows PayPal, Venmo, Cash App, Bitcoin, Ethereum, Tether (USDT), BNB, and USDC; Solana should not appear."
+      - "Confirm every crypto option visibly names its network: Bitcoin Mainnet; Ethereum Mainnet; USDT Ethereum/ERC-20; BNB Smart Chain Mainnet; USDC Ethereum/ERC-20."
+      - "Use only non-sensitive test/public destinations to add, edit, remove, save, reload, and confirm persistence."
+      - "Confirm a different account cannot edit the first account's settings and listing seller identity remains the signed-in account."
       - "Report pass/fail to Codex in ordinary language."
     forbidden_actions:
-      - "invent payment platforms or payment requirements"
+      - "modify working social semantics outside what is required for compatibility"
+      - "re-rank crypto assets dynamically at runtime"
+      - "add extra crypto assets or networks"
       - "merge PR #21"
       - "deploy account changes to production"
       - "apply production D1 migrations"
-      - "weaken authentication or server-derived ownership boundaries"
-      - "claim social identity verification from link health"
-      - "store payment/authentication secrets or private financial credentials"
+      - "store private financial/authentication material"
       - "mark human owner functional test pass"
     completion_contract:
       subagent_status: "ready_for_review_or_blocked"
       handoff_required: true
       shared_memory_refs_required: true
-      exact_payment_requirement_evidence_required: true
+      exact_head_and_workflow_evidence_required: true
       owner_reachable_https_preview_required: true
       owner_manual_result: "not_run"
       no_merge: true
@@ -234,9 +234,8 @@ tasks:
     owner_role: "codex_architect_admin"
     assigned_agent: null
     depends_on: ["OM-DEP-001"]
-    objective: "Before preview automation is treated as a reusable framework, ensure branch-preview configuration cannot overwrite unrelated future production settings, or document and test the minimum Cloudflare API coupling that is unavoidable."
+    objective: "Before preview automation is treated as reusable framework infrastructure, ensure branch-preview configuration cannot overwrite unrelated future production settings, or document/test minimum unavoidable Cloudflare API coupling."
     architect_first: true
-    forbidden_actions: ["change production URL", "change production D1 data", "assign Cursor before architect contract is written"]
   - id: "OM-ACC-003"
     title: "Design two-factor authentication framework"
     workstream: "OM-ACC"
@@ -245,14 +244,6 @@ tasks:
     assigned_agent: null
     depends_on: ["OM-ACC-002"]
     architect_first: true
-    required_design_outputs:
-      - "threat model and which actions require second factor or step-up authentication"
-      - "factor selection and enrollment model without inventing custom cryptography"
-      - "recovery and lost-device policy"
-      - "admin-account requirements"
-      - "rate limits, audit events, storage boundaries, and privacy considerations"
-      - "migration and rollout plan for existing accounts"
-      - "test and owner-preview acceptance plan"
     forbidden_actions: ["implement 2FA before architecture acceptance", "store recovery secrets or private authentication material in Git/shared memory"]
   - id: "OM-TRUST-001"
     title: "Author identity, hosting-node, priority, payment, and privacy contracts"
@@ -265,4 +256,4 @@ tasks:
 
 # Task Registry
 
-The YAML front matter is canonical. Cursor may execute only tasks with execution-ready status and explicit assignment. Cursor never self-accepts. A user-facing task cannot be accepted while the owner result is `not_run`, `not_run_on_https_preview`, `failed`, `failed_preview_unreachable`, or `failed_missing_required_settings`.
+The YAML front matter is canonical. Cursor may execute only tasks with execution-ready status and explicit assignment. Cursor never self-accepts. A user-facing task cannot be accepted while the owner functional result is not an explicit pass.

@@ -22,15 +22,18 @@ export type PaymentRail =
   | "paypal"
   | "venmo"
   | "cashapp"
-  | "bitcoin"
-  | "ethereum"
-  | "usdt"
-  | "bnb"
-  | "solana";
+  | "bitcoin_mainnet"
+  | "ethereum_mainnet"
+  | "usdt_ethereum"
+  | "bnb_bsc"
+  | "usdc_ethereum";
 
 export type PaymentDestination = {
   rail: PaymentRail;
   destination: string;
+  asset: "BTC" | "ETH" | "USDT" | "BNB" | "USDC" | null;
+  networkId: string | null;
+  networkLabel: string | null;
 };
 
 export type Listing = {

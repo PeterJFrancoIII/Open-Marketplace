@@ -243,7 +243,17 @@ export default function AccountSettings({
         {
           paymentDestinations: PAYMENT_RAILS.flatMap((rail) => {
             const destination = paymentDrafts[rail.id].trim();
-            return destination ? [{ rail: rail.id, destination }] : [];
+            return destination
+              ? [
+                  {
+                    rail: rail.id,
+                    destination,
+                    asset: rail.asset,
+                    networkId: rail.networkId,
+                    networkLabel: rail.networkLabel,
+                  },
+                ]
+              : [];
           }),
         },
         "payment",
@@ -489,15 +499,17 @@ export default function AccountSettings({
         <div>
           <h3 id="payment-options-title">Payment options</h3>
           <p className="portal-lead">
-            Public destinations only: PayPal, Venmo, Cash App, Bitcoin, Ethereum,
-            Tether (USDT), BNB, and Solana. Do not paste private keys, seed
-            phrases, bank details, or card numbers.
+            Public destinations only: PayPal, Venmo, Cash App, Bitcoin on Bitcoin
+            Mainnet, Ethereum on Ethereum Mainnet, Tether (USDT) on Ethereum
+            Mainnet (ERC-20), BNB on BNB Smart Chain Mainnet, and USDC on
+            Ethereum Mainnet (ERC-20). Do not paste private keys, seed phrases,
+            bank details, or card numbers.
           </p>
         </div>
         {PAYMENT_RAILS.map((rail) => (
           <div className="portal-settings-row" key={rail.id}>
             <div className="portal-settings-row-head">
-              <strong>{rail.label}</strong>
+              <strong>{rail.networkLabel ? `${rail.label} · ${rail.networkLabel}` : rail.label}</strong>
               {paymentDrafts[rail.id] ? (
                 <button
                   className="button button-ghost"

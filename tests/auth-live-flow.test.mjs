@@ -336,7 +336,14 @@ test("signed-in users can open /account", async () => {
   assert.match(html, /Ethereum/i);
   assert.match(html, /Tether \(USDT\)/i);
   assert.match(html, /BNB/i);
-  assert.match(html, /Solana/i);
+  assert.match(html, /USDC/i);
+  assert.match(html, /Bitcoin on Bitcoin Mainnet/i);
+  assert.match(html, /Bitcoin · Bitcoin Mainnet/i);
+  assert.match(html, /Ethereum · Ethereum Mainnet/i);
+  assert.match(html, /Tether \(USDT\) · Ethereum Mainnet \(ERC-20\)/i);
+  assert.match(html, /BNB · BNB Smart Chain Mainnet/i);
+  assert.match(html, /USDC · Ethereum Mainnet \(ERC-20\)/i);
+  assert.doesNotMatch(html, /Solana/i);
   assert.doesNotMatch(html, /Zelle|Apple Pay|Stripe|Plaid/i);
 });
 
@@ -688,11 +695,13 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
   const env = createTestEnv(d1);
   const cookieJar = new Map();
 
-  await signUp(worker, env, {
+  const signup = await signUp(worker, env, {
     name: "Payment Owner",
     email: "payment-owner@example.com",
     password: USER_PASSWORD,
   });
+  const { user } = await signup.json();
+  assert.ok(user?.id);
   await signIn(worker, env, cookieJar, {
     email: "payment-owner@example.com",
     password: USER_PASSWORD,
@@ -703,7 +712,29 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
   const emptyBody = await empty.json();
   assert.deepEqual(
     emptyBody.allowedPaymentRails.map((rail) => rail.id),
-    ["paypal", "venmo", "cashapp", "bitcoin", "ethereum", "usdt", "bnb", "solana"],
+    [
+      "paypal",
+      "venmo",
+      "cashapp",
+      "bitcoin_mainnet",
+      "ethereum_mainnet",
+      "usdt_ethereum",
+      "bnb_bsc",
+      "usdc_ethereum",
+    ],
+  );
+  assert.deepEqual(
+    emptyBody.allowedPaymentRails.map((rail) => rail.networkLabel),
+    [
+      null,
+      null,
+      null,
+      "Bitcoin Mainnet",
+      "Ethereum Mainnet",
+      "Ethereum Mainnet (ERC-20)",
+      "BNB Smart Chain Mainnet",
+      "Ethereum Mainnet (ERC-20)",
+    ],
   );
 
   const saved = await putJson(worker, env, "/api/account/profile", cookieJar, {
@@ -711,21 +742,193 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
       { rail: "paypal", destination: "seller@example.com" },
       { rail: "venmo", destination: "@openmarkettest" },
       { rail: "cashapp", destination: "$openmarket" },
-      { rail: "bitcoin", destination: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" },
-      { rail: "ethereum", destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0" },
-      { rail: "usdt", destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0" },
-      { rail: "bnb", destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0" },
-      { rail: "solana", destination: "So11111111111111111111111111111111111111112" },
+      {
+        rail: "bitcoin_mainnet",
+        destination: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+      },
+      {
+        rail: "ethereum_mainnet",
+        destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+      },
+      {
+        rail: "usdt_ethereum",
+        destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+      },
+      {
+        rail: "bnb_bsc",
+        destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+      },
+      {
+        rail: "usdc_ethereum",
+        destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+      },
     ],
   });
   assert.equal(saved.status, 200);
   const savedBody = await saved.json();
   assert.equal(savedBody.paymentDestinations.length, 8);
+  assert.deepEqual(
+    savedBody.paymentDestinations.map((item) => ({
+      rail: item.rail,
+      asset: item.asset,
+      networkId: item.networkId,
+      networkLabel: item.networkLabel,
+    })),
+    [
+      {
+        rail: "paypal",
+        asset: null,
+        networkId: null,
+        networkLabel: null,
+      },
+      {
+        rail: "venmo",
+        asset: null,
+        networkId: null,
+        networkLabel: null,
+      },
+      {
+        rail: "cashapp",
+        asset: null,
+        networkId: null,
+        networkLabel: null,
+      },
+      {
+        rail: "bitcoin_mainnet",
+        asset: "BTC",
+        networkId: "bitcoin_mainnet",
+        networkLabel: "Bitcoin Mainnet",
+      },
+      {
+        rail: "ethereum_mainnet",
+        asset: "ETH",
+        networkId: "ethereum_mainnet",
+        networkLabel: "Ethereum Mainnet",
+      },
+      {
+        rail: "usdt_ethereum",
+        asset: "USDT",
+        networkId: "usdt_ethereum",
+        networkLabel: "Ethereum Mainnet (ERC-20)",
+      },
+      {
+        rail: "bnb_bsc",
+        asset: "BNB",
+        networkId: "bnb_bsc",
+        networkLabel: "BNB Smart Chain Mainnet",
+      },
+      {
+        rail: "usdc_ethereum",
+        asset: "USDC",
+        networkId: "usdc_ethereum",
+        networkLabel: "Ethereum Mainnet (ERC-20)",
+      },
+    ],
+  );
+  assert.equal(
+    savedBody.paymentDestinations.some((item) => item.rail === "solana"),
+    false,
+  );
+
+  const removed = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [
+      { rail: "paypal", destination: "seller@example.com" },
+    ],
+  });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(
+    (await removed.json()).paymentDestinations.map((item) => item.rail),
+    ["paypal"],
+  );
+
+  const restored = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [
+      { rail: "paypal", destination: "seller@example.com" },
+      {
+        rail: "usdc_ethereum",
+        destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+      },
+    ],
+  });
+  assert.equal(restored.status, 200);
 
   const guessed = await putJson(worker, env, "/api/account/profile", cookieJar, {
     paymentDestinations: [{ rail: "zelle", destination: "seller@example.com" }],
   });
   assert.equal(guessed.status, 400);
+
+  const solana = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [
+      {
+        rail: "solana",
+        destination: "So11111111111111111111111111111111111111112",
+      },
+    ],
+  });
+  assert.equal(solana.status, 400);
+
+  const bareBitcoin = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [
+      {
+        rail: "bitcoin",
+        destination: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+      },
+    ],
+  });
+  assert.equal(bareBitcoin.status, 400);
+
+  const bareEthereum = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [
+      {
+        rail: "ethereum",
+        destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+      },
+    ],
+  });
+  assert.equal(bareEthereum.status, 400);
+
+  const ambiguousUsdt = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [
+      {
+        rail: "usdt",
+        destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+      },
+    ],
+  });
+  assert.equal(ambiguousUsdt.status, 400);
+
+  const unsupportedNetwork = await putJson(
+    worker,
+    env,
+    "/api/account/profile",
+    cookieJar,
+    {
+      paymentDestinations: [
+        {
+          rail: "usdt_tron",
+          destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+        },
+      ],
+    },
+  );
+  assert.equal(unsupportedNetwork.status, 400);
+
+  const mismatchedNetwork = await putJson(
+    worker,
+    env,
+    "/api/account/profile",
+    cookieJar,
+    {
+      paymentDestinations: [
+        {
+          rail: "usdt_ethereum",
+          networkId: "usdt_tron",
+          destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+        },
+      ],
+    },
+  );
+  assert.equal(mismatchedNetwork.status, 400);
 
   const unsafeScheme = await putJson(worker, env, "/api/account/profile", cookieJar, {
     paymentDestinations: [{ rail: "paypal", destination: "javascript:alert(1)" }],
@@ -735,7 +938,7 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
   const privateKey = await putJson(worker, env, "/api/account/profile", cookieJar, {
     paymentDestinations: [
       {
-        rail: "bitcoin",
+        rail: "bitcoin_mainnet",
         destination: "5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ",
       },
     ],
@@ -744,9 +947,78 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
 
   const afterRejects = await getJson(worker, env, "/api/account/profile", cookieJar);
   const afterBody = await afterRejects.json();
-  assert.equal(afterBody.paymentDestinations.length, 8);
+  assert.deepEqual(
+    afterBody.paymentDestinations.map((item) => item.rail),
+    ["paypal", "usdc_ethereum"],
+  );
   assert.equal(
     afterBody.paymentDestinations.some((item) => item.rail === "zelle"),
+    false,
+  );
+
+  await env.DB.prepare(
+    "update profiles set payment_destinations_json = ? where id = ?",
+  )
+    .bind(
+      JSON.stringify([
+        {
+          rail: "bitcoin",
+          destination: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+        },
+        {
+          rail: "ethereum",
+          destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+        },
+        {
+          rail: "solana",
+          destination: "So11111111111111111111111111111111111111112",
+        },
+        {
+          rail: "usdt",
+          destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+        },
+        {
+          rail: "bnb",
+          destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+        },
+        {
+          rail: "usdc",
+          destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+        },
+      ]),
+      user.id,
+    )
+    .run();
+
+  const legacy = await getJson(worker, env, "/api/account/profile", cookieJar);
+  assert.equal(legacy.status, 200);
+  const legacyBody = await legacy.json();
+  assert.deepEqual(
+    legacyBody.paymentDestinations.map((item) => ({
+      rail: item.rail,
+      asset: item.asset,
+      networkId: item.networkId,
+      networkLabel: item.networkLabel,
+    })),
+    [
+      {
+        rail: "bitcoin_mainnet",
+        asset: "BTC",
+        networkId: "bitcoin_mainnet",
+        networkLabel: "Bitcoin Mainnet",
+      },
+      {
+        rail: "ethereum_mainnet",
+        asset: "ETH",
+        networkId: "ethereum_mainnet",
+        networkLabel: "Ethereum Mainnet",
+      },
+    ],
+  );
+  assert.equal(
+    legacyBody.paymentDestinations.some((item) =>
+      ["solana", "usdt", "bnb", "usdc"].includes(item.rail),
+    ),
     false,
   );
 });

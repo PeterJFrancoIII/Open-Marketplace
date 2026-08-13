@@ -12,6 +12,7 @@ import {
 import { getDb } from "../../../db";
 import { listings, profiles } from "../../../db/schema";
 import { getMarketplaceSession } from "../../../lib/auth";
+import { parsePaymentDestinationsJson } from "../../../lib/payment-destinations";
 import { parseSocialAccountsJson } from "../../../lib/profile-settings";
 import { checkSocialAccounts } from "../../../lib/social-health";
 import type { SocialProof } from "../../../lib/types";
@@ -106,7 +107,9 @@ export async function GET(request: Request) {
         sellerName: profile?.displayName ?? listing.sellerName,
         socialProofsJson:
           profile?.socialAccountsJson ?? listing.socialProofsJson,
-        paymentDestinationsJson: profile?.paymentDestinationsJson ?? "[]",
+        paymentDestinationsJson: JSON.stringify(
+          parsePaymentDestinationsJson(profile?.paymentDestinationsJson),
+        ),
         itemsSold: profile?.itemsSold ?? 0,
         sellerRating: profile?.sellerRating ?? null,
         sellerRatingCount: profile?.sellerRatingCount ?? 0,
@@ -214,8 +217,9 @@ export async function POST(request: Request) {
     const socialAccountsJson = JSON.stringify(
       incomingSocialProofs.length ? checkedSocialProofs : storedSocialProofs,
     );
-    const paymentDestinationsJson =
-      existingProfile?.paymentDestinationsJson ?? "[]";
+    const paymentDestinationsJson = JSON.stringify(
+      parsePaymentDestinationsJson(existingProfile?.paymentDestinationsJson),
+    );
     await db
       .insert(profiles)
       .values({

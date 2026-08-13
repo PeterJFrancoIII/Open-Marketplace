@@ -1,13 +1,13 @@
 ---
-schema_version: "1.6"
+schema_version: "1.7"
 document_id: "OM-STATE-001"
 kind: "project_state"
-updated_at: "2026-08-13T02:30:00Z"
+updated_at: "2026-08-13T02:34:00Z"
 updated_by: "codex_architect"
 repository:
   name: "PeterJFrancoIII/Open-Marketplace"
   default_branch: "main"
-  state_basis_commit: "8e6e6f66f4b1cbd55d8720d1c75b83f4c05bc11b"
+  state_basis_commit: "9382f206734cc268d17c046e183cd56ea7cd2d0d"
 production:
   provider: "Cloudflare Pages"
   project: "open-marketplace-demo"
@@ -19,6 +19,8 @@ governance:
   state: "merged"
   merge_commit: "b7c634829210cf2e386129058710a98a1db26663"
   operating_model: "human_owner > codex_architect_admin > cursor_implementation_subagent"
+  owner_operator_mode: "ui_only_non_coding"
+  agent_support_requirement: "Do not require the human owner to edit code, run terminal commands, or operate Git. Owner acceptance is performed through reachable UI and plain-language pass/fail reporting."
   manual_functional_preview_gate: "active"
   owner_reachable_preview_gate: "active"
   cursor_shared_memory_citation_gate: "active"
@@ -88,6 +90,14 @@ active_changes:
     preview_requirement: "update the existing owner-reachable non-production Cloudflare Pages preview"
     owner_manual_result: "not_run"
 queued_architecture:
+  - id: "OM-FUL-001"
+    purpose: "Implement owner-defined listing handling time, shipping tracking-proof evidence, and prepayment video-chat guidance from OM-DEC-011 through OM-DEC-013."
+    state: "backlog"
+    sequencing: "Do not assign or implement concurrently with OM-ACC-005. Architect task contract is created after OM-ACC-005 review and the account-preview owner gate is resolved."
+    product_contract:
+      handling_time: "same_day | 1_day | 2_days | 3_days; max 3 days; visible on listing; means ready to ship or pickup"
+      tracking_proof: "shipping only; seller uploads photo/screenshot; bytes remain browser-local; registry stores hash plus optional public tracking number; no live carrier tracker"
+      prepayment_video_chat: "encouraged before money moves; external/user-arranged; no built-in room; no video-verified badge; no in-app checkout"
   - id: "OM-ACC-003"
     purpose: "Codex design for two-factor authentication before any Cursor implementation"
     state: "backlog"
@@ -103,9 +113,9 @@ known_blockers:
 resolved_blockers:
   - {id: "OM-BLOCK-004", scope: "owner_preview", resolution: "Agent-only localhost rejected; persistent Cloudflare Pages branch-preview URL supplied for owner test."}
 next_cursor_task: "OM-ACC-005"
-next_architect_action: "Wait for OM-ACC-005 handoff. Review exact branch head, corrected payment set/network semantics, automated tests, production isolation, branch CI, and owner-reachable HTTPS preview. If the correction passes architect review, present the HTTPS preview to the human owner for manual functional pass/fail. Do not accept OM-ACC-002, merge PR #21, or deploy production before that pass and explicit release approval."
+next_architect_action: "Wait for OM-ACC-005 handoff. Review exact branch head, corrected payment set/network semantics, automated tests, production isolation, branch CI, and owner-reachable HTTPS preview. If the correction passes architect review, present the HTTPS preview to the human owner for manual functional pass/fail. Do not accept OM-ACC-002, merge PR #21, deploy production, or assign OM-FUL-001 before that gate is resolved."
 ---
 
 # Current Project State
 
-OM-ACC-004 successfully added the requested social-settings framework and session-owned profile persistence, but its payment definition did not pass architect review. OM-ACC-005 is assigned to replace Solana with the verified launch-snapshot #5 asset USDC and to bind all crypto destinations to explicit networks. PR #21 remains draft and production remains unchanged.
+OM-ACC-004 successfully added the requested social-settings framework and session-owned profile persistence, but its payment definition did not pass architect review. OM-ACC-005 is assigned to replace Solana with the verified launch-snapshot #5 asset USDC and to bind all crypto destinations to explicit networks. The owner's handling-time, tracking-proof, and prepayment-video-chat rules are now canonical and queued as OM-FUL-001, but are intentionally not assigned while OM-ACC-005 is active. PR #21 remains draft and production remains unchanged.

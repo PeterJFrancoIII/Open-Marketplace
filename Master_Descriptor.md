@@ -1,11 +1,11 @@
 ---
-schema_version: "1.1"
+schema_version: "1.2"
 document:
   id: "OM-MASTER-001"
   kind: "project_master_descriptor"
   canonical: true
   status: "active"
-  updated_at: "2026-08-12T20:22:00Z"
+  updated_at: "2026-08-13T02:34:00Z"
   updated_by: "codex_architect"
 project:
   id: "open-marketplace"
@@ -60,6 +60,7 @@ workstreams:
   - {id: "OM-GOV", name: "Agent governance and shared memory", status: "specified", architect: "codex_architect_admin", implementer: "codex_architect_admin"}
   - {id: "OM-ACC", name: "Account creation and account/admin consoles", status: "reference_implementation", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent", reference_pull_request: 21}
   - {id: "OM-DEP", name: "Cloudflare preview and production configuration", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
+  - {id: "OM-FUL", name: "Listing fulfillment and transaction confidence", status: "specified", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
   - {id: "OM-IDV", name: "High-assurance identity verification", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
   - {id: "OM-NODE", name: "Decentralized hosting-node registration and proof", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
   - {id: "OM-RANK", name: "Priority listing eligibility and deterministic ordering", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
@@ -69,6 +70,28 @@ workstreams:
 product_requirements:
   public_browsing: {required: true}
   account_creation: {required: true, identity_verified_by_default: false}
+  seller_handling_time:
+    required: true
+    selection_point: "listing_publish"
+    allowed_values: ["same_day", "1_day", "2_days", "3_days"]
+    max_days: 3
+    semantics: "time until the item is ready to ship or ready for pickup"
+    display_on_listing: true
+  shipping_tracking_proof:
+    required_for_shipping: true
+    seller_prompted: true
+    accepted_evidence: ["photo", "screenshot"]
+    evidence_examples: ["shipping_label", "carrier_tracking_page"]
+    proof_bytes_storage: "seller_browser_only"
+    registry_fields: ["proof_content_hash", "optional_public_tracking_number"]
+    live_carrier_tracking: false
+  prepayment_video_chat:
+    encouraged: true
+    purpose: "allow buyer and seller to visually inspect that goods exist and appear consistent with the listed condition before money moves"
+    built_in_video_room: false
+    verification_badge: false
+    placement: "listing_before_contact_or_payment"
+    in_app_checkout: false
   decentralized_hosts:
     required: true
     eligibility_requires: ["high_assurance_identity_verification", "verifiable_hosting_node_operation"]
@@ -84,6 +107,8 @@ security_and_privacy_invariants:
   - "Never store raw identity documents in Git, shared memory, a public object store, or general marketplace metadata tables."
   - "Listing ownership, administrator status, verification status, host status, and priority eligibility are server-derived."
   - "Listing image bytes remain outside the public metadata registry."
+  - "Tracking-proof image bytes remain device-local; only a content hash and optional public tracking number may enter the registry."
+  - "A buyer-seller video chat is encouraged communication, not an identity, item, condition, or payment verification guarantee."
   - "Public browsing remains available unless the human owner explicitly changes this requirement."
   - "No destructive administrator capability is added without authorization, audit logging, tests, and a separate task approval."
   - "No production approval is inferred from builds, tests, previews, or subagent reports."

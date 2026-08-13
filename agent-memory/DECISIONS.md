@@ -1,8 +1,8 @@
 ---
-schema_version: "1.4"
+schema_version: "1.5"
 document_id: "OM-DECISIONS-001"
 kind: "decision_registry"
-updated_at: "2026-08-13T02:30:00Z"
+updated_at: "2026-08-13T02:34:00Z"
 updated_by: "codex_architect"
 decisions:
   - {id: "OM-DEC-001", status: "accepted", title: "Architect and implementation-subagent role split", decision: "Codex owns architecture and administration; Cursor agents execute assigned work packages and return evidence.", authority: "human_owner", decided_on: "2026-08-12"}
@@ -45,6 +45,24 @@ decisions:
       - "Architect market-cap verification on 2026-08-13 against CoinGecko and CoinMarketCap placed USDC at #5 and Solana below #5."
       - "Official Tether, Circle, and BNB network guidance establishes that supported crypto assets can exist across multiple chains and that the correct network matters for receipt/recovery."
       - "A fixed launch snapshot preserves meaning for saved account settings when market rankings later move."
+    decided_on: "2026-08-13"
+  - id: "OM-DEC-011"
+    status: "accepted"
+    title: "Seller handling time is required and capped at three days"
+    decision: "When publishing a listing, the seller must choose exactly one handling-time option: same day, 1 day, 2 days, or 3 days. Longer handling times are not allowed. Handling time means when the item will be ready to ship or ready for pickup, and the selected value must be visible on the listing."
+    authority: "human_owner"
+    decided_on: "2026-08-13"
+  - id: "OM-DEC-012"
+    status: "accepted"
+    title: "Shipping tracking proof remains device-local evidence"
+    decision: "For shipping fulfillment, prompt the seller to provide proof of tracking as a photo or screenshot of the shipping label or tracking page. Proof image bytes remain in the seller's browser under the same device-local media boundary as listing photos. The registry may retain only a content hash and an optional public tracking number. This is evidence capture, not a live UPS/FedEx/carrier tracker."
+    authority: "human_owner"
+    decided_on: "2026-08-13"
+  - id: "OM-DEC-013"
+    status: "accepted"
+    title: "Encourage prepayment buyer-seller video chat without verification claims"
+    decision: "Before money moves, encourage buyers and sellers to arrange a video chat so both can visually inspect that the goods exist and appear consistent with the listed condition. The marketplace does not provide a built-in Zoom/Meet-style room for this requirement and must not create a 'video verified' badge or equivalent verification claim. The guidance belongs on the listing before contact or payment, and the current product still has no in-app checkout."
+    authority: "human_owner"
     decided_on: "2026-08-13"
 ---
 

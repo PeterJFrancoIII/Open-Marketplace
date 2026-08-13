@@ -1,13 +1,13 @@
 ---
-schema_version: "1.7"
+schema_version: "1.8"
 document_id: "OM-STATE-001"
 kind: "project_state"
-updated_at: "2026-08-13T02:34:00Z"
+updated_at: "2026-08-13T02:47:00Z"
 updated_by: "codex_architect"
 repository:
   name: "PeterJFrancoIII/Open-Marketplace"
   default_branch: "main"
-  state_basis_commit: "9382f206734cc268d17c046e183cd56ea7cd2d0d"
+  state_basis_commit: "99a7a359dc9925a80e8e5ced0b10d622026e0b79"
 production:
   provider: "Cloudflare Pages"
   project: "open-marketplace-demo"
@@ -28,72 +28,66 @@ governance:
 active_changes:
   - id: "OM-ACC-002"
     branch: "feature/account-management-portal"
-    current_head: "62669c5e993acb4bf7dc354ade0f5fea5db72f52"
+    current_head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c"
     pull_request: 21
     pull_request_state: "draft"
-    state: "blocked"
-    review_stage: "payment_settings_correction_required_before_owner_test"
-    purpose: "account/admin portal with server-side authentication and owner-managed social/payment settings"
+    state: "ready_for_review"
+    review_stage: "awaiting_human_owner_functional_test"
+    purpose: "account/admin portal with server-side authentication and owner-managed manual social/payment settings"
+    architect_review: "passed_for_owner_test"
+    latest_branch_ci: {head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c", workflow: "Deploy to Cloudflare Pages", run_id: 31661766350, result: "success"}
     owner_preview:
       url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
+      deployment_url: "https://760b2b84.open-marketplace-demo.pages.dev/"
       environment: "non_production"
       pages_project: "open-marketplace-demo"
       preview_database: "open-marketplace-account-preview-d1"
-    owner_manual_result: "not_run_after_payment_architect_correction"
-    acceptance_blocker: "OM-ACC-005 then human_owner_functional_pass"
+    owner_manual_result: "not_run_on_current_https_preview"
+    acceptance_blocker: "human_owner_functional_pass"
   - id: "OM-DEP-001"
     branch: "feature/account-management-portal"
-    current_head: "62669c5e993acb4bf7dc354ade0f5fea5db72f52"
+    current_head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c"
     pull_request: 21
     state: "ready_for_review"
-    review_stage: "owner_test_deferred_until_OM-ACC-005"
+    review_stage: "awaiting_human_owner_functional_test"
     purpose: "owner-reachable non-production HTTPS preview for PR #21"
-    latest_branch_ci: {head: "62669c5e993acb4bf7dc354ade0f5fea5db72f52", workflow: "Deploy to Cloudflare Pages", run_id: 31660568138, result: "success"}
+    latest_branch_ci: {head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c", workflow: "Deploy to Cloudflare Pages", run_id: 31661766350, result: "success"}
     preview_url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
-    latest_reviewed_deployment_url: "https://95c543a4.open-marketplace-demo.pages.dev/"
-    owner_manual_result: "not_run_after_OM-ACC-005"
+    latest_reviewed_deployment_url: "https://760b2b84.open-marketplace-demo.pages.dev/"
+    owner_manual_result: "not_run_on_current_https_preview"
   - id: "OM-ACC-004"
     branch: "feature/account-management-portal"
     implementation_head: "c4247d52813eda683cc55db4d777f67294a8195e"
-    handoff_head: "62669c5e993acb4bf7dc354ade0f5fea5db72f52"
+    correction_head: "85a1102c4bc8a40c84be1a5416d23a582bc41846"
+    current_head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c"
     pull_request: 21
-    state: "changes_requested"
-    review_stage: "architect_review_failed_payment_definition"
-    purpose: "persistent social-media and recovered owner payment settings"
-    handoff: "agent-memory/handoffs/2026-08-13--OM-ACC-004--cursor-grok-4-6.md"
-    passed_review_surfaces:
-      - "Facebook/Instagram/TikTok settings are persistent and session-owned"
-      - "social links remain self-reported and link health is not identity verification"
-      - "session-derived listing seller identity remains intact"
-      - "27-test suite reported passing"
-      - "implementation and latest branch Cloudflare Pages workflows succeeded"
-      - "preview D1 only was migrated; production account D1 migration remains absent"
-    changes_requested:
-      - "replace stale fifth crypto Solana with current snapshot #5 USDC"
-      - "bind each crypto asset to an explicit network so stablecoin destinations are not ambiguous"
+    state: "ready_for_review"
+    review_stage: "corrected_by_OM-ACC-005_awaiting_owner_test"
+    purpose: "persistent Facebook/Instagram/TikTok URLs and manual public payment destinations"
+    architect_review: "passed_for_owner_test_after_OM-ACC-005"
+    owner_manual_result: "not_run_on_corrected_preview"
   - id: "OM-ACC-005"
     branch: "feature/account-management-portal"
+    implementation_head: "85a1102c4bc8a40c84be1a5416d23a582bc41846"
+    current_head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c"
     pull_request: 21
-    state: "assigned"
-    review_stage: "implementation"
-    purpose: "correct top-five crypto snapshot and explicit crypto-network semantics while preserving OM-ACC-004 social/account behavior"
-    required_feature_head_ancestor: "62669c5e993acb4bf7dc354ade0f5fea5db72f52"
-    launch_crypto_snapshot:
-      date_utc: "2026-08-13"
-      assets: ["BTC", "ETH", "USDT", "BNB", "USDC"]
-      networks:
-        BTC: "Bitcoin Mainnet"
-        ETH: "Ethereum Mainnet"
-        USDT: "Ethereum Mainnet (ERC-20)"
-        BNB: "BNB Smart Chain Mainnet"
-        USDC: "Ethereum Mainnet (ERC-20)"
-    preview_requirement: "update the existing owner-reachable non-production Cloudflare Pages preview"
+    state: "ready_for_review"
+    review_stage: "awaiting_human_owner_functional_test"
+    purpose: "frozen top-five crypto payment set with explicit receive networks while preserving account/social behavior"
+    architect_review: "passed_for_owner_test"
+    handoff: "agent-memory/handoffs/2026-08-13--OM-ACC-005--cursor-grok-4-6.md"
+    launch_payment_set:
+      fiat: ["PayPal", "Venmo", "Cash App"]
+      crypto: ["Bitcoin / Bitcoin Mainnet", "Ethereum / Ethereum Mainnet", "Tether (USDT) / Ethereum Mainnet (ERC-20)", "BNB / BNB Smart Chain Mainnet", "USDC / Ethereum Mainnet (ERC-20)"]
+      excluded: ["Solana", "Zelle", "Apple Pay", "Stripe", "Plaid"]
+    latest_branch_ci: {head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c", workflow: "Deploy to Cloudflare Pages", run_id: 31661766350, result: "success"}
+    preview_url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
     owner_manual_result: "not_run"
 queued_architecture:
   - id: "OM-FUL-001"
     purpose: "Implement owner-defined listing handling time, shipping tracking-proof evidence, and prepayment video-chat guidance from OM-DEC-011 through OM-DEC-013."
     state: "backlog"
-    sequencing: "Do not assign or implement concurrently with OM-ACC-005. Architect task contract is created after OM-ACC-005 review and the account-preview owner gate is resolved."
+    sequencing: "Do not assign until the account-preview owner gate is resolved."
     product_contract:
       handling_time: "same_day | 1_day | 2_days | 3_days; max 3 days; visible on listing; means ready to ship or pickup"
       tracking_proof: "shipping only; seller uploads photo/screenshot; bytes remain browser-local; registry stores hash plus optional public tracking number; no live carrier tracker"
@@ -104,18 +98,22 @@ queued_architecture:
   - id: "OM-DEP-002"
     purpose: "Harden reusable Pages preview configuration against future production-setting drift"
     state: "backlog"
+deferred_capabilities:
+  - id: "oauth_provider_linking"
+    status: "unassigned"
+    scope: "Social and payment OAuth/provider Connect flows are not part of OM-ACC-004/005. Current UI uses manual public URLs/handles/addresses. Absence of Connect Facebook/PayPal/etc. controls is not a defect in the current acceptance gate. Create architecture/task only after an explicit human-owner request specifying providers and social/payment scope."
 known_blockers:
   - {id: "OM-BLOCK-001", scope: "main", description: "Standard npm test wrapper requires GNU timeout on this Mac; PR #21 contains a portable correction."}
   - {id: "OM-BLOCK-002", scope: "main", description: "Main rendered HTML test contains the retired Open Exchange assertion; PR #21 contains a correction."}
   - {id: "OM-BLOCK-003", scope: "account_portal_production", description: "Production D1 migration, DB binding, authentication secret, admin allowlist, email verification delivery, password reset delivery, 2FA architecture, and production acceptance are not confirmed."}
-  - {id: "OM-BLOCK-005", scope: "account_settings", description: "Original account settings omitted required social/payment settings; OM-ACC-004 added them but requires payment-definition correction before owner acceptance."}
-  - {id: "OM-BLOCK-006", scope: "payment_settings", description: "OM-ACC-004 used Solana instead of current market-cap #5 USDC and stored multi-network crypto destinations without explicit network binding; OM-ACC-005 is assigned remediation."}
 resolved_blockers:
   - {id: "OM-BLOCK-004", scope: "owner_preview", resolution: "Agent-only localhost rejected; persistent Cloudflare Pages branch-preview URL supplied for owner test."}
-next_cursor_task: "OM-ACC-005"
-next_architect_action: "Wait for OM-ACC-005 handoff. Review exact branch head, corrected payment set/network semantics, automated tests, production isolation, branch CI, and owner-reachable HTTPS preview. If the correction passes architect review, present the HTTPS preview to the human owner for manual functional pass/fail. Do not accept OM-ACC-002, merge PR #21, deploy production, or assign OM-FUL-001 before that gate is resolved."
+  - {id: "OM-BLOCK-005", scope: "account_settings", resolution: "Required manual social/payment settings were implemented in OM-ACC-004 and corrected by OM-ACC-005; final validation is the human owner functional test."}
+  - {id: "OM-BLOCK-006", scope: "payment_settings", resolution: "Solana was replaced by USDC and crypto destinations were bound to explicit launch networks in OM-ACC-005; architect review passed for owner testing."}
+next_cursor_task: null
+next_architect_action: "Wait for the human owner to test https://feature-account-management-p.open-marketplace-demo.pages.dev/ and report pass/fail on the current manual social/payment settings. OAuth Connect controls are out of scope and should not be treated as a failure unless the human owner explicitly changes the product requirement. Do not accept OM-ACC-002, merge PR #21, deploy production, or assign OM-FUL-001 before the account-preview owner gate is resolved."
 ---
 
 # Current Project State
 
-OM-ACC-004 successfully added the requested social-settings framework and session-owned profile persistence, but its payment definition did not pass architect review. OM-ACC-005 is assigned to replace Solana with the verified launch-snapshot #5 asset USDC and to bind all crypto destinations to explicit networks. The owner's handling-time, tracking-proof, and prepayment-video-chat rules are now canonical and queued as OM-FUL-001, but are intentionally not assigned while OM-ACC-005 is active. PR #21 remains draft and production remains unchanged.
+OM-ACC-005 passed Codex architect review. PR #21 remains draft at `bec794fe9589a4ae15fe71ddb2e463d98eaca78c`, the current Cloudflare Pages branch workflow passed, and the persistent HTTPS preview is ready for the human owner's functional test. Account settings intentionally use manual public social URLs and payment destinations; OAuth provider-connect flows remain unassigned and are not part of the current pass/fail gate. Production remains unchanged.

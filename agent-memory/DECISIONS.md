@@ -1,8 +1,8 @@
 ---
-schema_version: "1.5"
+schema_version: "1.6"
 document_id: "OM-DECISIONS-001"
 kind: "decision_registry"
-updated_at: "2026-08-13T02:34:00Z"
+updated_at: "2026-08-13T02:51:00Z"
 updated_by: "codex_architect"
 decisions:
   - {id: "OM-DEC-001", status: "accepted", title: "Architect and implementation-subagent role split", decision: "Codex owns architecture and administration; Cursor agents execute assigned work packages and return evidence.", authority: "human_owner", decided_on: "2026-08-12"}
@@ -63,6 +63,16 @@ decisions:
     title: "Encourage prepayment buyer-seller video chat without verification claims"
     decision: "Before money moves, encourage buyers and sellers to arrange a video chat so both can visually inspect that the goods exist and appear consistent with the listed condition. The marketplace does not provide a built-in Zoom/Meet-style room for this requirement and must not create a 'video verified' badge or equivalent verification claim. The guidance belongs on the listing before contact or payment, and the current product still has no in-app checkout."
     authority: "human_owner"
+    decided_on: "2026-08-13"
+  - id: "OM-DEC-014"
+    status: "accepted"
+    title: "Fixed launch sets for social profiles, manual payment methods, and crypto"
+    decision: "The account-settings launch set is fixed by owner requirement rather than dynamically re-ranked: social profiles are Facebook, Instagram, and TikTok; manual public payment methods are PayPal, Venmo, Cash App, Zelle, and Apple Cash; crypto rails remain BTC, ETH, USDT, BNB, and USDC on the explicit networks defined by OM-DEC-010. Zelle and Apple Cash are paste-and-save public P2P contact destinations only, using a deliberately entered email address or U.S. mobile number. The app must never auto-copy private authentication contact data into these public fields, must not claim provider enrollment or ownership verification, and must clearly warn users to confirm the recipient independently. OAuth/provider Connect flows, checkout, custody, escrow, payment execution, reversal, and marketplace payment-protection claims remain out of scope."
+    authority: "human_owner"
+    architecture_basis:
+      - "Human owner handoff to Main at 2026-08-13T02:51:00Z explicitly specified the exact 3-social / 5-payment-method / 5-crypto launch set and retained paste-and-save behavior without OAuth."
+      - "Official Zelle guidance identifies an enrolled email address or U.S. mobile number as the recipient contact and advises sending money only to people known and trusted."
+      - "Official Apple Cash guidance supports person-to-person transfers through a selected person/contact; transaction records may identify the person by name, phone number, or email, and Apple advises sending to people known and trusted."
     decided_on: "2026-08-13"
 ---
 

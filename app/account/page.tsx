@@ -1,7 +1,9 @@
 import { count, desc, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { getDb } from "../../db";
-import { listings } from "../../db/schema";
+import { listings, profiles } from "../../db/schema";
+import { parsePaymentDestinationsJson } from "../../lib/payment-destinations";
+import { parseSocialAccountsJson } from "../../lib/profile-settings";
 import {
   getMarketplaceAdminEmails,
   requireMarketplaceSession,
@@ -27,7 +29,7 @@ export default async function AccountPage() {
   const isAdmin = isAdminEmail(session.user.email, adminEmails);
 
   const db = await getDb();
-  const [statusCounts, recent] = await Promise.all([
+  const [statusCounts, recent, profileRows] = await Promise.all([
     db
       .select({ status: listings.status, value: count() })
       .from(listings)
@@ -39,7 +41,13 @@ export default async function AccountPage() {
       .where(eq(listings.sellerId, session.user.id))
       .orderBy(desc(listings.createdAt))
       .limit(8),
+    db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, session.user.id))
+      .limit(1),
   ]);
+  const profile = profileRows[0];
 
   const counts = {
     active: 0,
@@ -140,6 +148,10 @@ export default async function AccountPage() {
       <AccountSettings
         initialName={session.user.name}
         email={session.user.email}
+        initialSocialAccounts={parseSocialAccountsJson(profile?.socialAccountsJson)}
+        initialPaymentDestinations={parsePaymentDestinationsJson(
+          profile?.paymentDestinationsJson,
+        )}
       />
     </PortalShell>
   );

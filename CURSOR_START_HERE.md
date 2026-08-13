@@ -41,6 +41,9 @@ records, stop and report the conflict; do not follow stale text.
 - D1 metadata registry; no image bytes are accepted by `/api/listings`.
 - Account creation/login, `/account` management console, and read-only `/admin`
   overview for allowlisted administrators.
+- Persistent Facebook, Instagram, and TikTok links plus public PayPal, Venmo,
+  Cash App, Bitcoin, Ethereum, USDT, BNB, and Solana destinations in account
+  settings. New listings default to the signed-in profile's saved social links.
 - Clickable Facebook, Instagram, and TikTok account links.
 - Visible social-account creation dates and friend/follower counts.
 - Live, allowlisted social-link health checks on load and publication.
@@ -114,12 +117,15 @@ inject application runtime secrets.
   consoles sharing one portal shell.
 - `app/login/` — combined login and account-creation UI.
 - `app/api/listings/route.ts` — D1 listing reads/writes and publication rules.
+- `app/api/account/profile/route.ts` — session-owned social and payment settings.
 - `app/api/auth/[...all]/route.ts` — Better Auth handler.
 - `app/api/social-health/route.ts` — social-link checking endpoint.
 - `lib/auth.ts` / `lib/auth-client.ts` / `lib/admin-policy.ts` — session helpers
   and exact admin allowlist checks.
 - `lib/social-health.ts` — allowlisted URL normalization, redirects, and health
   classification.
+- `lib/payment-destinations.ts` / `lib/profile-settings.ts` — public payment
+  destination validation and profile social persistence.
 - `lib/media-store.ts` — IndexedDB media vault and SHA-256 asset storage.
 - `lib/media-transport.ts` — WebRTC-ready transport contract.
 - `lib/types.ts` — shared listing, media, social, and reputation types.
@@ -131,15 +137,13 @@ inject application runtime secrets.
 ## Recommended next milestones
 
 1. Add email verification and password-reset delivery once outbound email exists.
-2. Add an authenticated profile editor so a seller can repair or remove a dead
-   social link across every listing.
-3. Add provider OAuth adapters and refresh account metadata through official APIs.
-4. Recompute rating summaries only from completed, authenticated transactions.
-5. Implement WebRTC data-channel media transfer with expiring registry signaling.
-6. Hash-check every received media blob before rendering it.
-7. Add reports, quarantine, appeal, rate limits, and an auditable moderation log.
-8. Add signed canonical listing envelopes and revision/tombstone history.
-9. Configure the donation destination (`NEXT_PUBLIC_DONATION_URL`). Repo URL is already set to `PeterJFrancoIII/Open-Marketplace`.
+2. Add provider OAuth adapters and refresh account metadata through official APIs.
+3. Recompute rating summaries only from completed, authenticated transactions.
+4. Implement WebRTC data-channel media transfer with expiring registry signaling.
+5. Hash-check every received media blob before rendering it.
+6. Add reports, quarantine, appeal, rate limits, and an auditable moderation log.
+7. Add signed canonical listing envelopes and revision/tombstone history.
+8. Configure the donation destination (`NEXT_PUBLIC_DONATION_URL`). Repo URL is already set to `PeterJFrancoIII/Open-Marketplace`.
 
 ## Definition of done for each Cursor change
 

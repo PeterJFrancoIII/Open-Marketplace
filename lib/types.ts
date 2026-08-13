@@ -18,6 +18,21 @@ export type SocialProof = {
   healthMessage?: string;
 };
 
+export type PaymentRail =
+  | "paypal"
+  | "venmo"
+  | "cashapp"
+  | "bitcoin"
+  | "ethereum"
+  | "usdt"
+  | "bnb"
+  | "solana";
+
+export type PaymentDestination = {
+  rail: PaymentRail;
+  destination: string;
+};
+
 export type Listing = {
   id: string;
   title: string;

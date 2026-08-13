@@ -18,6 +18,10 @@ This repository is an MVP framework, not a promise that a browser can serve phot
 - D1-backed accounts and sessions via Better Auth (email + password).
 - Server-session ownership for listing writes; browser-supplied seller identity is ignored.
 - Standard `/account` console and read-only `/admin` overview for exact allowlisted emails.
+- Authenticated account settings for Facebook, Instagram, and TikTok profile links
+  plus public PayPal, Venmo, Cash App, Bitcoin, Ethereum, USDT, BNB, and Solana
+  destinations. These are public handles/URLs/addresses, not OAuth, checkout, or
+  custody.
 - Clickable Facebook, Instagram, and TikTok profiles with visible account age,
   friend/follower counts, check status, and last-check timestamps.
 - Live allowlisted link checks on page load, manual recheck, and publication;
@@ -77,6 +81,7 @@ The central registry stores:
 - title, description, price, condition, category, and location label;
 - fixed-price or auction format and pickup/shipping options;
 - seller display name and public social-profile claims;
+- public payment destination/handle metadata for the owner-specified rails;
 - public account creation date, friend/follower count, link-health result, and
   when the link was last checked;
 - centrally computed items sold plus separate buyer and seller ratings;

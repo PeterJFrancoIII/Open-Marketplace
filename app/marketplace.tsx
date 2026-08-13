@@ -352,6 +352,20 @@ const emptySocialDrafts: SocialDraft[] = [
   { provider: "tiktok", url: "", accountCreatedAt: "", connectionCount: "" },
 ];
 
+function draftsFromSocialProofs(accounts: SocialProof[]): SocialDraft[] {
+  return emptySocialDrafts.map((draft) => {
+    const saved = accounts.find((account) => account.provider === draft.provider);
+    if (!saved?.url) return { ...draft };
+    return {
+      ...draft,
+      url: saved.url,
+      accountCreatedAt: saved.accountCreatedAt ?? "",
+      connectionCount:
+        saved.connectionCount == null ? "" : String(saved.connectionCount),
+    };
+  });
+}
+
 const demoReputation: Record<
   string,
   Pick<
@@ -557,6 +571,9 @@ export default function Marketplace() {
   const [socialDrafts, setSocialDrafts] = useState<SocialDraft[]>(
     emptySocialDrafts.map((account) => ({ ...account })),
   );
+  const [profileSocialDrafts, setProfileSocialDrafts] = useState<SocialDraft[]>(
+    emptySocialDrafts.map((account) => ({ ...account })),
+  );
   const [composeOpened, setComposeOpened] = useState(false);
 
   const donationUrl = process.env.NEXT_PUBLIC_DONATION_URL ?? "";
@@ -572,6 +589,27 @@ export default function Marketplace() {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [composeOpened, modal, signedIn]);
+
+  useEffect(() => {
+    if (!signedIn) return;
+
+    let cancelled = false;
+    void (async () => {
+      const response = await fetch("/api/account/profile", {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok || cancelled) return;
+      const payload = (await response.json()) as { socialAccounts?: SocialProof[] };
+      const drafts = draftsFromSocialProofs(payload.socialAccounts ?? []);
+      if (cancelled) return;
+      setProfileSocialDrafts(drafts);
+      setSocialDrafts(drafts.map((account) => ({ ...account })));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
 
   const requestSocialHealth = useCallback(async (accounts: SocialProof[]) => {
     if (!accounts.length) return [];
@@ -930,7 +968,7 @@ export default function Marketplace() {
       }
       setSelectedFiles([]);
       setFilePreviews([]);
-      setSocialDrafts(emptySocialDrafts.map((account) => ({ ...account })));
+      setSocialDrafts(profileSocialDrafts.map((account) => ({ ...account })));
       setModal(null);
       setToast(
         listing.source === "registry"
@@ -1369,7 +1407,7 @@ export default function Marketplace() {
                     <div className="social-editor-head">
                       <div>
                         <strong>Social trust profile</strong>
-                        <span>Links are checked live. Account dates and connection counts are public.</span>
+                        <span>Defaults come from your saved account settings. Links are checked live. Account dates and connection counts are public and self-reported.</span>
                       </div>
                       <span className="live-check-pill">↻ checked on publish</span>
                     </div>

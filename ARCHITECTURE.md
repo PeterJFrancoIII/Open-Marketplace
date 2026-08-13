@@ -62,6 +62,13 @@ The UI accepts public profile URLs so the information architecture can be tested
 
 Never ask users to paste social passwords, cookies, access tokens, or private profile exports into the app.
 
+Public payment destinations are account-level contact metadata for the exact
+rails the owner specified: PayPal, Venmo, Cash App, Bitcoin, Ethereum, Tether
+(USDT), BNB, and Solana. Store only public emails, handles, URLs, or addresses.
+Never store private keys, seed phrases, bank/card credentials, or provider
+tokens. A saved destination is not checkout, custody, or a verified payment
+identity.
+
 The live-link checker accepts only allowlisted HTTPS Facebook, Instagram, and
 TikTok profile hosts. It follows only allowlisted redirects, caps response
 inspection, treats 404/410 and recognized unavailable-page markers as dead,
@@ -111,7 +118,9 @@ Keep the registry lean:
 
 Accounts and sessions live in D1 through Better Auth. Public browsing remains
 open. `POST /api/listings` requires a validated session and stores
-session-derived `sellerId` / `sellerName` only. Admin access to `/admin` is an
+session-derived `sellerId` / `sellerName` only. Authenticated `GET`/`PUT`
+`/api/account/profile` persist that session's public social and payment
+metadata; browser fields cannot select another user. Admin access to `/admin` is an
 exact server-side allowlist check against `MARKETPLACE_ADMIN_EMAILS`; signed-in
 non-admins receive the framework not-found response. Required environment
 variables are `BETTER_AUTH_SECRET` and `MARKETPLACE_ADMIN_EMAILS`. Apply the

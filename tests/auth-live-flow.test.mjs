@@ -137,6 +137,49 @@ async function postJson(worker, env, path, cookieJar, body) {
   });
 }
 
+async function putJson(worker, env, path, cookieJar, body) {
+  return workerFetch(worker, env, path, {
+    method: "PUT",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+    },
+    cookieJar,
+    body: JSON.stringify(body),
+  });
+}
+
+async function getJson(worker, env, path, cookieJar) {
+  return workerFetch(worker, env, path, {
+    headers: { accept: "application/json" },
+    cookieJar,
+  });
+}
+
+function installSocialFetchStub() {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input instanceof Request
+            ? input.url
+            : String(input);
+    if (/^https:\/\/(?:www\.)?(?:facebook|instagram|tiktok)\.com\//i.test(url)) {
+      return new Response("<html><body>profile</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    }
+    return originalFetch.call(globalThis, input, init);
+  };
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
+
 function insertListing(
   d1,
   { id, sellerId, sellerName, status, priceCents, createdAt, title = id },
@@ -281,6 +324,20 @@ test("signed-in users can open /account", async () => {
   assert.match(html, />My listings</i);
   assert.match(html, />Account settings</i);
   assert.match(html, /Back to marketplace/i);
+  assert.match(html, /Social media/i);
+  assert.match(html, /Facebook/i);
+  assert.match(html, /Instagram/i);
+  assert.match(html, /TikTok/i);
+  assert.match(html, /Payment options/i);
+  assert.match(html, /PayPal/i);
+  assert.match(html, /Venmo/i);
+  assert.match(html, /Cash App/i);
+  assert.match(html, /Bitcoin/i);
+  assert.match(html, /Ethereum/i);
+  assert.match(html, /Tether \(USDT\)/i);
+  assert.match(html, /BNB/i);
+  assert.match(html, /Solana/i);
+  assert.doesNotMatch(html, /Zelle|Apple Pay|Stripe|Plaid/i);
 });
 
 test("account totals cover every owned listing and preserve cent prices", async () => {
@@ -545,4 +602,260 @@ test("listing POST ignores browser-supplied seller identity", async () => {
   assert.equal(body.listing.sellerName, "Normal User");
   assert.notEqual(body.listing.sellerId, "attacker-id");
   assert.notEqual(body.listing.sellerName, "Attacker Name");
+});
+
+test("unsigned profile settings requests are rejected", async () => {
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("live-profile-unsigned");
+  const env = createTestEnv(d1);
+
+  const read = await getJson(worker, env, "/api/account/profile");
+  assert.equal(read.status, 401);
+
+  const write = await putJson(worker, env, "/api/account/profile", undefined, {
+    socialAccounts: [],
+  });
+  assert.equal(write.status, 401);
+});
+
+test("authenticated owners persist and remove social settings without oauth verification", async () => {
+  const restoreFetch = installSocialFetchStub();
+  try {
+    const d1 = createMemoryD1();
+    applyMarketplaceMigrations(d1);
+    const worker = await loadWorker("live-profile-social");
+    const env = createTestEnv(d1);
+    const cookieJar = new Map();
+
+    await signUp(worker, env, {
+      name: "Social Owner",
+      email: "social-owner@example.com",
+      password: USER_PASSWORD,
+    });
+    await signIn(worker, env, cookieJar, {
+      email: "social-owner@example.com",
+      password: USER_PASSWORD,
+    });
+
+    const saved = await putJson(worker, env, "/api/account/profile", cookieJar, {
+      socialAccounts: [
+        {
+          provider: "facebook",
+          url: "https://facebook.com/openmarketplace.test",
+          accountCreatedAt: "2018-06-01",
+          connectionCount: 12,
+          metricsSource: "oauth",
+        },
+      ],
+    });
+    assert.equal(saved.status, 200);
+    const savedBody = await saved.json();
+    assert.equal(savedBody.socialAccounts.length, 1);
+    assert.equal(savedBody.socialAccounts[0].provider, "facebook");
+    assert.equal(savedBody.socialAccounts[0].metricsSource, "self-reported");
+    assert.notEqual(savedBody.socialAccounts[0].health, "invalid");
+    assert.doesNotMatch(
+      savedBody.socialAccounts[0].healthMessage ?? "",
+      /verified/i,
+    );
+
+    cookieJar.clear();
+    await signIn(worker, env, cookieJar, {
+      email: "social-owner@example.com",
+      password: USER_PASSWORD,
+    });
+    const reloaded = await getJson(worker, env, "/api/account/profile", cookieJar);
+    assert.equal(reloaded.status, 200);
+    const reloadedBody = await reloaded.json();
+    assert.equal(reloadedBody.socialAccounts[0].url.includes("facebook.com"), true);
+    assert.equal(reloadedBody.socialAccounts[0].metricsSource, "self-reported");
+
+    const removed = await putJson(worker, env, "/api/account/profile", cookieJar, {
+      socialAccounts: [],
+    });
+    assert.equal(removed.status, 200);
+    assert.deepEqual((await removed.json()).socialAccounts, []);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("payment destinations stay on the recovered allowlist and reject unsafe values", async () => {
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("live-profile-payment");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+
+  await signUp(worker, env, {
+    name: "Payment Owner",
+    email: "payment-owner@example.com",
+    password: USER_PASSWORD,
+  });
+  await signIn(worker, env, cookieJar, {
+    email: "payment-owner@example.com",
+    password: USER_PASSWORD,
+  });
+
+  const empty = await getJson(worker, env, "/api/account/profile", cookieJar);
+  assert.equal(empty.status, 200);
+  const emptyBody = await empty.json();
+  assert.deepEqual(
+    emptyBody.allowedPaymentRails.map((rail) => rail.id),
+    ["paypal", "venmo", "cashapp", "bitcoin", "ethereum", "usdt", "bnb", "solana"],
+  );
+
+  const saved = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [
+      { rail: "paypal", destination: "seller@example.com" },
+      { rail: "venmo", destination: "@openmarkettest" },
+      { rail: "cashapp", destination: "$openmarket" },
+      { rail: "bitcoin", destination: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" },
+      { rail: "ethereum", destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0" },
+      { rail: "usdt", destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0" },
+      { rail: "bnb", destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0" },
+      { rail: "solana", destination: "So11111111111111111111111111111111111111112" },
+    ],
+  });
+  assert.equal(saved.status, 200);
+  const savedBody = await saved.json();
+  assert.equal(savedBody.paymentDestinations.length, 8);
+
+  const guessed = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [{ rail: "zelle", destination: "seller@example.com" }],
+  });
+  assert.equal(guessed.status, 400);
+
+  const unsafeScheme = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [{ rail: "paypal", destination: "javascript:alert(1)" }],
+  });
+  assert.equal(unsafeScheme.status, 400);
+
+  const privateKey = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [
+      {
+        rail: "bitcoin",
+        destination: "5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ",
+      },
+    ],
+  });
+  assert.equal(privateKey.status, 400);
+
+  const afterRejects = await getJson(worker, env, "/api/account/profile", cookieJar);
+  const afterBody = await afterRejects.json();
+  assert.equal(afterBody.paymentDestinations.length, 8);
+  assert.equal(
+    afterBody.paymentDestinations.some((item) => item.rail === "zelle"),
+    false,
+  );
+});
+
+test("one account cannot read or change another account's profile settings", async () => {
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("live-profile-isolation");
+  const env = createTestEnv(d1);
+  const ownerJar = new Map();
+  const otherJar = new Map();
+
+  await signUp(worker, env, {
+    name: "Owner User",
+    email: "owner-settings@example.com",
+    password: USER_PASSWORD,
+  });
+  await signUp(worker, env, {
+    name: "Other User",
+    email: "other-settings@example.com",
+    password: USER_PASSWORD,
+  });
+  await signIn(worker, env, ownerJar, {
+    email: "owner-settings@example.com",
+    password: USER_PASSWORD,
+  });
+  await signIn(worker, env, otherJar, {
+    email: "other-settings@example.com",
+    password: USER_PASSWORD,
+  });
+
+  const saved = await putJson(worker, env, "/api/account/profile", ownerJar, {
+    paymentDestinations: [{ rail: "paypal", destination: "owner@example.com" }],
+  });
+  assert.equal(saved.status, 200);
+
+  const otherRead = await getJson(worker, env, "/api/account/profile", otherJar);
+  assert.equal(otherRead.status, 200);
+  assert.deepEqual((await otherRead.json()).paymentDestinations, []);
+
+  const otherWrite = await putJson(worker, env, "/api/account/profile", otherJar, {
+    paymentDestinations: [{ rail: "venmo", destination: "@intruder" }],
+  });
+  assert.equal(otherWrite.status, 200);
+
+  const ownerRead = await getJson(worker, env, "/api/account/profile", ownerJar);
+  const ownerBody = await ownerRead.json();
+  assert.equal(ownerBody.paymentDestinations[0].rail, "paypal");
+  assert.equal(ownerBody.paymentDestinations[0].destination, "owner@example.com");
+});
+
+test("new listings default to saved profile social without changing seller identity", async () => {
+  const restoreFetch = installSocialFetchStub();
+  try {
+    const d1 = createMemoryD1();
+    applyMarketplaceMigrations(d1);
+    const worker = await loadWorker("live-listing-social-default");
+    const env = createTestEnv(d1);
+    const cookieJar = new Map();
+
+    const signup = await signUp(worker, env, {
+      name: "Listing Social",
+      email: "listing-social@example.com",
+      password: USER_PASSWORD,
+    });
+    const { user } = await signup.json();
+    await signIn(worker, env, cookieJar, {
+      email: "listing-social@example.com",
+      password: USER_PASSWORD,
+    });
+
+    const saved = await putJson(worker, env, "/api/account/profile", cookieJar, {
+      socialAccounts: [
+        {
+          provider: "instagram",
+          url: "https://instagram.com/openmarketplace.test",
+          accountCreatedAt: "2019-04-01",
+          connectionCount: 20,
+        },
+      ],
+    });
+    assert.equal(saved.status, 200);
+
+    const published = await postJson(worker, env, "/api/listings", cookieJar, {
+      title: "Profile default listing",
+      description: "Should copy saved social without taking attacker identity.",
+      priceCents: 1800,
+      condition: "Good",
+      category: "Furniture",
+      locationLabel: "Brooklyn, NY",
+      format: "Fixed price",
+      delivery: "Pickup",
+      sellerId: "attacker-id",
+      sellerName: "Attacker Name",
+      socialProofs: [],
+      imageManifest: [],
+    });
+    assert.equal(published.status, 201);
+    const publishedBody = await published.json();
+    assert.equal(publishedBody.listing.sellerId, user.id);
+    assert.equal(publishedBody.listing.sellerName, "Listing Social");
+    const publishedSocial = JSON.parse(publishedBody.listing.socialProofsJson ?? "[]");
+    assert.equal(publishedSocial[0]?.provider, "instagram");
+    assert.equal(publishedSocial[0]?.metricsSource, "self-reported");
+
+    const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
+    const profileBody = await profile.json();
+    assert.equal(profileBody.socialAccounts[0].provider, "instagram");
+  } finally {
+    restoreFetch();
+  }
 });

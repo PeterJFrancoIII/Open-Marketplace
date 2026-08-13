@@ -3,6 +3,49 @@
 import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "../../lib/auth-client";
+import { PAYMENT_RAILS } from "../../lib/payment-destinations";
+import type { PaymentDestination, PaymentRail, SocialProof } from "../../lib/types";
+
+type SocialDraft = {
+  provider: "facebook" | "instagram" | "tiktok";
+  url: string;
+  accountCreatedAt: string;
+  connectionCount: string;
+  health?: SocialProof["health"];
+  healthMessage?: string;
+};
+
+const emptySocialDrafts: SocialDraft[] = [
+  { provider: "facebook", url: "", accountCreatedAt: "", connectionCount: "" },
+  { provider: "instagram", url: "", accountCreatedAt: "", connectionCount: "" },
+  { provider: "tiktok", url: "", accountCreatedAt: "", connectionCount: "" },
+];
+
+function draftsFromAccounts(accounts: SocialProof[]): SocialDraft[] {
+  return emptySocialDrafts.map((draft) => {
+    const saved = accounts.find((account) => account.provider === draft.provider);
+    if (!saved) return { ...draft };
+    return {
+      ...draft,
+      url: saved.url ?? "",
+      accountCreatedAt: saved.accountCreatedAt ?? "",
+      connectionCount:
+        saved.connectionCount == null ? "" : String(saved.connectionCount),
+      health: saved.health,
+      healthMessage: saved.healthMessage,
+    };
+  });
+}
+
+function destinationsByRail(destinations: PaymentDestination[]) {
+  return Object.fromEntries(
+    PAYMENT_RAILS.map((rail) => [
+      rail.id,
+      destinations.find((destination) => destination.rail === rail.id)?.destination ??
+        "",
+    ]),
+  ) as Record<PaymentRail, string>;
+}
 
 function normalizeAuthError(error: unknown, fallback: string) {
   if (!error) return fallback;
@@ -20,20 +63,42 @@ function normalizeAuthError(error: unknown, fallback: string) {
   return fallback;
 }
 
+function healthLabel(health: SocialProof["health"]) {
+  if (health === "active") return "Link resolves";
+  if (health === "dead" || health === "invalid") return "Fix or remove";
+  if (health === "checking") return "Checking";
+  if (health === "unknown") return "Recheck blocked";
+  return "";
+}
+
+function providerName(provider: SocialDraft["provider"]) {
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
 export default function AccountSettings({
   initialName,
   email,
+  initialSocialAccounts,
+  initialPaymentDestinations,
 }: {
   initialName: string;
   email: string;
+  initialSocialAccounts: SocialProof[];
+  initialPaymentDestinations: PaymentDestination[];
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [pending, setPending] = useState<"name" | "password" | "signout" | null>(
-    null,
+  const [socialDrafts, setSocialDrafts] = useState(() =>
+    draftsFromAccounts(initialSocialAccounts),
   );
+  const [paymentDrafts, setPaymentDrafts] = useState(() =>
+    destinationsByRail(initialPaymentDestinations),
+  );
+  const [pending, setPending] = useState<
+    "name" | "password" | "signout" | "social" | "payment" | null
+  >(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -93,6 +158,109 @@ export default function AccountSettings({
     }
   }
 
+  async function saveProfile(body: Record<string, unknown>, kind: "social" | "payment") {
+    const response = await fetch("/api/account/profile", {
+      method: "PUT",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const result = (await response.json()) as {
+      error?: string;
+      account?: SocialProof;
+      socialAccounts?: SocialProof[];
+      paymentDestinations?: PaymentDestination[];
+    };
+    if (response.status === 401) {
+      window.location.assign("/login?returnTo=%2Faccount");
+      return null;
+    }
+    if (!response.ok) {
+      if (kind === "social" && result.account) {
+        setSocialDrafts((current) =>
+          current.map((account) =>
+            account.provider === result.account?.provider
+              ? {
+                  ...account,
+                  health: result.account.health,
+                  healthMessage: result.account.healthMessage,
+                }
+              : account,
+          ),
+        );
+      }
+      throw new Error(result.error ?? "Could not save settings.");
+    }
+    return result;
+  }
+
+  async function onSaveSocial(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending("social");
+    setStatus("");
+    setError("");
+    try {
+      const result = await saveProfile(
+        {
+          socialAccounts: socialDrafts
+            .filter((account) => account.url.trim())
+            .map((account) => ({
+              provider: account.provider,
+              url: account.url.trim(),
+              accountCreatedAt: account.accountCreatedAt,
+              connectionCount:
+                account.connectionCount === ""
+                  ? undefined
+                  : Number(account.connectionCount),
+              connectionLabel:
+                account.provider === "facebook" ? "friends" : "followers",
+              metricsSource: "self-reported",
+            })),
+        },
+        "social",
+      );
+      if (!result) return;
+      setSocialDrafts(draftsFromAccounts(result.socialAccounts ?? []));
+      setStatus("Social media links saved. A resolving URL is not a verified identity.");
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Could not save social media links.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function onSavePayments(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending("payment");
+    setStatus("");
+    setError("");
+    try {
+      const result = await saveProfile(
+        {
+          paymentDestinations: PAYMENT_RAILS.flatMap((rail) => {
+            const destination = paymentDrafts[rail.id].trim();
+            return destination ? [{ rail: rail.id, destination }] : [];
+          }),
+        },
+        "payment",
+      );
+      if (!result) return;
+      setPaymentDrafts(destinationsByRail(result.paymentDestinations ?? []));
+      setStatus("Payment destinations saved. These are public handles, not a checkout.");
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Could not save payment destinations.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
   async function onSignOut() {
     setPending("signout");
     setStatus("");
@@ -119,8 +287,9 @@ export default function AccountSettings({
     >
       <h2 id="account-settings-title">Account settings</h2>
       <p className="portal-lead">
-        Update your display name or password. Email stays read-only until
-        verification delivery is available.
+        Update your display name, password, public social links, and public
+        payment destinations. Email stays read-only until verification delivery
+        is available.
       </p>
 
       <form className="portal-form" onSubmit={onUpdateName}>
@@ -184,6 +353,186 @@ export default function AccountSettings({
           disabled={pending !== null}
         >
           {pending === "password" ? "Updating…" : "Change password"}
+        </button>
+      </form>
+
+      <form
+        className="portal-form"
+        id="social-media-settings"
+        onSubmit={onSaveSocial}
+        aria-labelledby="social-media-title"
+      >
+        <div>
+          <h3 id="social-media-title">Social media</h3>
+          <p className="portal-lead">
+            Link Facebook, Instagram, and TikTok profile URLs. A resolving URL
+            is link-health evidence only. It does not verify identity.
+          </p>
+        </div>
+        {socialDrafts.map((account, index) => (
+          <div className="portal-settings-row" key={account.provider}>
+            <div className="portal-settings-row-head">
+              <strong>{providerName(account.provider)}</strong>
+              {account.health ? (
+                <span className="portal-settings-health">
+                  {healthLabel(account.health)}
+                </span>
+              ) : null}
+            </div>
+            <label className="portal-field">
+              <span>Profile URL</span>
+              <input
+                type="url"
+                value={account.url}
+                onChange={(event) =>
+                  setSocialDrafts((current) =>
+                    current.map((row, rowIndex) =>
+                      rowIndex === index
+                        ? {
+                            ...row,
+                            url: event.target.value,
+                            health: undefined,
+                            healthMessage: undefined,
+                          }
+                        : row,
+                    ),
+                  )
+                }
+                placeholder={`https://${account.provider}.com/your-profile`}
+                disabled={pending !== null}
+              />
+            </label>
+            <div className="portal-settings-inline">
+              <label className="portal-field">
+                <span>Account created</span>
+                <input
+                  type="date"
+                  value={account.accountCreatedAt}
+                  onChange={(event) =>
+                    setSocialDrafts((current) =>
+                      current.map((row, rowIndex) =>
+                        rowIndex === index
+                          ? { ...row, accountCreatedAt: event.target.value }
+                          : row,
+                      ),
+                    )
+                  }
+                  disabled={pending !== null || !account.url}
+                />
+              </label>
+              <label className="portal-field">
+                <span>{account.provider === "facebook" ? "Friends" : "Followers"}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={account.connectionCount}
+                  onChange={(event) =>
+                    setSocialDrafts((current) =>
+                      current.map((row, rowIndex) =>
+                        rowIndex === index
+                          ? { ...row, connectionCount: event.target.value }
+                          : row,
+                      ),
+                    )
+                  }
+                  disabled={pending !== null || !account.url}
+                />
+              </label>
+            </div>
+            {account.url ? (
+              <button
+                className="button button-ghost"
+                type="button"
+                onClick={() =>
+                  setSocialDrafts((current) =>
+                    current.map((row, rowIndex) =>
+                      rowIndex === index
+                        ? {
+                            ...row,
+                            url: "",
+                            accountCreatedAt: "",
+                            connectionCount: "",
+                            health: undefined,
+                            healthMessage: undefined,
+                          }
+                        : row,
+                    ),
+                  )
+                }
+                disabled={pending !== null}
+              >
+                Remove {providerName(account.provider)}
+              </button>
+            ) : null}
+            {account.healthMessage ? (
+              <p className="portal-settings-note">{account.healthMessage}</p>
+            ) : null}
+          </div>
+        ))}
+        <button
+          className="button button-dark"
+          type="submit"
+          disabled={pending !== null}
+        >
+          {pending === "social" ? "Saving…" : "Save social media"}
+        </button>
+      </form>
+
+      <form
+        className="portal-form"
+        id="payment-options-settings"
+        onSubmit={onSavePayments}
+        aria-labelledby="payment-options-title"
+      >
+        <div>
+          <h3 id="payment-options-title">Payment options</h3>
+          <p className="portal-lead">
+            Public destinations only: PayPal, Venmo, Cash App, Bitcoin, Ethereum,
+            Tether (USDT), BNB, and Solana. Do not paste private keys, seed
+            phrases, bank details, or card numbers.
+          </p>
+        </div>
+        {PAYMENT_RAILS.map((rail) => (
+          <div className="portal-settings-row" key={rail.id}>
+            <div className="portal-settings-row-head">
+              <strong>{rail.label}</strong>
+              {paymentDrafts[rail.id] ? (
+                <button
+                  className="button button-ghost"
+                  type="button"
+                  onClick={() =>
+                    setPaymentDrafts((current) => ({ ...current, [rail.id]: "" }))
+                  }
+                  disabled={pending !== null}
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+            <label className="portal-field">
+              <span>{rail.hint}</span>
+              <input
+                value={paymentDrafts[rail.id]}
+                onChange={(event) =>
+                  setPaymentDrafts((current) => ({
+                    ...current,
+                    [rail.id]: event.target.value,
+                  }))
+                }
+                autoComplete="off"
+                spellCheck={false}
+                disabled={pending !== null}
+              />
+            </label>
+          </div>
+        ))}
+        <button
+          className="button button-dark"
+          type="submit"
+          disabled={pending !== null}
+        >
+          {pending === "payment" ? "Saving…" : "Save payment options"}
         </button>
       </form>
 

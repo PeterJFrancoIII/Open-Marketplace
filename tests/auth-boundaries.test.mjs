@@ -127,6 +127,44 @@ test("keeps public listing reads available without a session", async () => {
   assert.ok(payload);
 });
 
+test("rejects unauthenticated account profile reads and writes", async () => {
+  const worker = await loadWorker("profile-write-boundary");
+  const read = await worker.fetch(
+    new Request("http://localhost/api/account/profile", {
+      headers: { accept: "application/json" },
+    }),
+    {
+      ASSETS: emptyAssets,
+      DB: undefined,
+    },
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+    },
+  );
+  assert.equal(read.status, 401);
+
+  const write = await worker.fetch(
+    new Request("http://localhost/api/account/profile", {
+      method: "PUT",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ socialAccounts: [] }),
+    }),
+    {
+      ASSETS: emptyAssets,
+      DB: undefined,
+    },
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+    },
+  );
+  assert.equal(write.status, 401);
+});
+
 test("does not expose authentication configuration errors", async () => {
   const worker = await loadWorker("auth-error-boundary");
   const response = await worker.fetch(

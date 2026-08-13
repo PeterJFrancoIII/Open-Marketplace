@@ -12,6 +12,7 @@ const migrationFiles = [
   "drizzle/0000_ambitious_blockbuster.sql",
   "drizzle/0001_rapid_leper_queen.sql",
   "drizzle/0002_married_wolverine.sql",
+  "drizzle/0003_ambitious_hawkeye.sql",
 ];
 
 function findLocalD1Files() {

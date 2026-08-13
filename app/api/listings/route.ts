@@ -12,6 +12,7 @@ import {
 import { getDb } from "../../../db";
 import { listings, profiles } from "../../../db/schema";
 import { getMarketplaceSession } from "../../../lib/auth";
+import { parseSocialAccountsJson } from "../../../lib/profile-settings";
 import { checkSocialAccounts } from "../../../lib/social-health";
 import type { SocialProof } from "../../../lib/types";
 
@@ -105,6 +106,7 @@ export async function GET(request: Request) {
         sellerName: profile?.displayName ?? listing.sellerName,
         socialProofsJson:
           profile?.socialAccountsJson ?? listing.socialProofsJson,
+        paymentDestinationsJson: profile?.paymentDestinationsJson ?? "[]",
         itemsSold: profile?.itemsSold ?? 0,
         sellerRating: profile?.sellerRating ?? null,
         sellerRatingCount: profile?.sellerRatingCount ?? 0,
@@ -140,8 +142,11 @@ export async function POST(request: Request) {
     const condition = String(payload.condition ?? "");
     const format = String(payload.format ?? "");
     const delivery = String(payload.delivery ?? "");
-    const socialProofs = Array.isArray(payload.socialProofs)
-      ? (payload.socialProofs.slice(0, 3) as SocialProof[])
+    const incomingSocialProofs = Array.isArray(payload.socialProofs)
+      ? (payload.socialProofs as SocialProof[])
+          .filter((account) => typeof account?.url === "string" && account.url.trim())
+          .slice(0, 3)
+          .map((account) => ({ ...account, metricsSource: "self-reported" as const }))
       : [];
     const imageManifest = Array.isArray(payload.imageManifest)
       ? payload.imageManifest.slice(0, 6)
@@ -173,7 +178,24 @@ export async function POST(request: Request) {
       return Response.json({ error: "This instance does not accept restricted items." }, { status: 422 });
     }
 
-    const checkedSocialProofs = await checkSocialAccounts(socialProofs);
+    const db = await getDb();
+    const [existingProfile] = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, sellerId))
+      .limit(1);
+    const storedSocialProofs = parseSocialAccountsJson(
+      existingProfile?.socialAccountsJson,
+    );
+    const socialSource = incomingSocialProofs.length
+      ? incomingSocialProofs
+      : storedSocialProofs;
+    const checkedSocialProofs = socialSource.length
+      ? (await checkSocialAccounts(socialSource)).map((account) => ({
+          ...account,
+          metricsSource: "self-reported" as const,
+        }))
+      : [];
     const brokenAccount = checkedSocialProofs.find(
       (account) => account.health === "dead" || account.health === "invalid",
     );
@@ -188,21 +210,26 @@ export async function POST(request: Request) {
     }
 
     const id = crypto.randomUUID();
-    const db = await getDb();
     const updatedAt = new Date().toISOString();
+    const socialAccountsJson = JSON.stringify(
+      incomingSocialProofs.length ? checkedSocialProofs : storedSocialProofs,
+    );
+    const paymentDestinationsJson =
+      existingProfile?.paymentDestinationsJson ?? "[]";
     await db
       .insert(profiles)
       .values({
         id: sellerId,
         displayName: sellerName,
-        socialAccountsJson: JSON.stringify(checkedSocialProofs),
+        socialAccountsJson,
+        paymentDestinationsJson,
         updatedAt,
       })
       .onConflictDoUpdate({
         target: profiles.id,
         set: {
           displayName: sellerName,
-          socialAccountsJson: JSON.stringify(checkedSocialProofs),
+          ...(incomingSocialProofs.length ? { socialAccountsJson } : {}),
           updatedAt,
         },
       });

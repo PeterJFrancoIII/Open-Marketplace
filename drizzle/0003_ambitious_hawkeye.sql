@@ -1,0 +1,1 @@
+ALTER TABLE `profiles` ADD `payment_destinations_json` text DEFAULT '[]' NOT NULL;

@@ -106,6 +106,9 @@ export const profiles = sqliteTable("profiles", {
   id: text("id").primaryKey(),
   displayName: text("display_name").notNull(),
   socialAccountsJson: text("social_accounts_json").notNull().default("[]"),
+  paymentDestinationsJson: text("payment_destinations_json")
+    .notNull()
+    .default("[]"),
   itemsSold: integer("items_sold").notNull().default(0),
   sellerRating: real("seller_rating"),
   sellerRatingCount: integer("seller_rating_count").notNull().default(0),

@@ -1832,6 +1832,40 @@ a {
   outline: 0;
 }
 
+.portal-panel h3 {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
+}
+
+.portal-settings-row {
+  background: #f7f6f2;
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.portal-settings-row-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.portal-settings-health,
+.portal-settings-note {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.portal-settings-inline {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .portal-signout {
   margin-top: 18px;
 }
@@ -1877,6 +1911,10 @@ a {
   }
 
   .portal-stat-row {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-settings-inline {
     grid-template-columns: 1fr;
   }
 

@@ -329,9 +329,16 @@ test("signed-in users can open /account", async () => {
   assert.match(html, /Instagram/i);
   assert.match(html, /TikTok/i);
   assert.match(html, /Payment options/i);
+  assert.match(html, /Payment methods/i);
   assert.match(html, /PayPal/i);
   assert.match(html, /Venmo/i);
   assert.match(html, /Cash App/i);
+  assert.match(html, /Zelle/i);
+  assert.match(html, /Apple Cash/i);
+  assert.match(html, /public payment contact information/i);
+  assert.match(html, /never filled from your login/i);
+  assert.match(html, /Confirm the recipient independently/i);
+  assert.match(html, /does not execute, insure, escrow, reverse, or protect/i);
   assert.match(html, /Bitcoin/i);
   assert.match(html, /Ethereum/i);
   assert.match(html, /Tether \(USDT\)/i);
@@ -343,8 +350,12 @@ test("signed-in users can open /account", async () => {
   assert.match(html, /Tether \(USDT\) · Ethereum Mainnet \(ERC-20\)/i);
   assert.match(html, /BNB · BNB Smart Chain Mainnet/i);
   assert.match(html, /USDC · Ethereum Mainnet \(ERC-20\)/i);
+  assert.equal(
+    [...html.matchAll(/value="user@example.com"/g)].length,
+    1,
+  );
   assert.doesNotMatch(html, /Solana/i);
-  assert.doesNotMatch(html, /Zelle|Apple Pay|Stripe|Plaid/i);
+  assert.doesNotMatch(html, /Apple Pay|Stripe|Plaid/i);
 });
 
 test("account totals cover every owned listing and preserve cent prices", async () => {
@@ -710,12 +721,21 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
   const empty = await getJson(worker, env, "/api/account/profile", cookieJar);
   assert.equal(empty.status, 200);
   const emptyBody = await empty.json();
+  assert.deepEqual(emptyBody.paymentDestinations, []);
+  assert.equal(
+    emptyBody.paymentDestinations.some(
+      (item) => item.destination === "payment-owner@example.com",
+    ),
+    false,
+  );
   assert.deepEqual(
     emptyBody.allowedPaymentRails.map((rail) => rail.id),
     [
       "paypal",
       "venmo",
       "cashapp",
+      "zelle",
+      "apple_cash",
       "bitcoin_mainnet",
       "ethereum_mainnet",
       "usdt_ethereum",
@@ -726,6 +746,8 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
   assert.deepEqual(
     emptyBody.allowedPaymentRails.map((rail) => rail.networkLabel),
     [
+      null,
+      null,
       null,
       null,
       null,
@@ -742,6 +764,8 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
       { rail: "paypal", destination: "seller@example.com" },
       { rail: "venmo", destination: "@openmarkettest" },
       { rail: "cashapp", destination: "$openmarket" },
+      { rail: "zelle", destination: "zelle.public@example.com" },
+      { rail: "apple_cash", destination: "(415) 555-2671" },
       {
         rail: "bitcoin_mainnet",
         destination: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
@@ -766,7 +790,17 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
   });
   assert.equal(saved.status, 200);
   const savedBody = await saved.json();
-  assert.equal(savedBody.paymentDestinations.length, 8);
+  assert.equal(savedBody.paymentDestinations.length, 10);
+  assert.equal(
+    savedBody.paymentDestinations.find((item) => item.rail === "zelle")
+      ?.destination,
+    "zelle.public@example.com",
+  );
+  assert.equal(
+    savedBody.paymentDestinations.find((item) => item.rail === "apple_cash")
+      ?.destination,
+    "+14155552671",
+  );
   assert.deepEqual(
     savedBody.paymentDestinations.map((item) => ({
       rail: item.rail,
@@ -789,6 +823,18 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
       },
       {
         rail: "cashapp",
+        asset: null,
+        networkId: null,
+        networkLabel: null,
+      },
+      {
+        rail: "zelle",
+        asset: null,
+        networkId: null,
+        networkLabel: null,
+      },
+      {
+        rail: "apple_cash",
         asset: null,
         networkId: null,
         networkLabel: null,
@@ -844,6 +890,8 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
   const restored = await putJson(worker, env, "/api/account/profile", cookieJar, {
     paymentDestinations: [
       { rail: "paypal", destination: "seller@example.com" },
+      { rail: "zelle", destination: "415-555-2671" },
+      { rail: "apple_cash", destination: "apple.public@example.com" },
       {
         rail: "usdc_ethereum",
         destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
@@ -851,11 +899,65 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
     ],
   });
   assert.equal(restored.status, 200);
+  const restoredBody = await restored.json();
+  assert.deepEqual(
+    restoredBody.paymentDestinations.map((item) => ({
+      rail: item.rail,
+      destination: item.destination,
+    })),
+    [
+      { rail: "paypal", destination: "seller@example.com" },
+      { rail: "zelle", destination: "+14155552671" },
+      { rail: "apple_cash", destination: "apple.public@example.com" },
+      {
+        rail: "usdc_ethereum",
+        destination: "0x742d35cc6634c0532925a3b844bc9e7595f0beb0",
+      },
+    ],
+  );
+
+  const contactsRemoved = await putJson(
+    worker,
+    env,
+    "/api/account/profile",
+    cookieJar,
+    {
+      paymentDestinations: [
+        { rail: "paypal", destination: "seller@example.com" },
+        {
+          rail: "usdc_ethereum",
+          destination: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0",
+        },
+      ],
+    },
+  );
+  assert.equal(contactsRemoved.status, 200);
+  assert.deepEqual(
+    (await contactsRemoved.json()).paymentDestinations.map((item) => item.rail),
+    ["paypal", "usdc_ethereum"],
+  );
 
   const guessed = await putJson(worker, env, "/api/account/profile", cookieJar, {
-    paymentDestinations: [{ rail: "zelle", destination: "seller@example.com" }],
+    paymentDestinations: [{ rail: "apple_pay", destination: "seller@example.com" }],
   });
   assert.equal(guessed.status, 400);
+
+  const zelleForeign = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [{ rail: "zelle", destination: "+447911123456" }],
+  });
+  assert.equal(zelleForeign.status, 400);
+
+  const appleMalformed = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [{ rail: "apple_cash", destination: "not-a-contact" }],
+  });
+  assert.equal(appleMalformed.status, 400);
+
+  const zelleSecret = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [
+      { rail: "zelle", destination: "seed phrase apple banana cherry date elder fig grape honey iris jade kiwi lemon" },
+    ],
+  });
+  assert.equal(zelleSecret.status, 400);
 
   const solana = await putJson(worker, env, "/api/account/profile", cookieJar, {
     paymentDestinations: [

@@ -47,6 +47,9 @@ function destinationsByRail(destinations: PaymentDestination[]) {
   ) as Record<PaymentRail, string>;
 }
 
+const MANUAL_PAYMENT_RAILS = PAYMENT_RAILS.filter((rail) => rail.networkId == null);
+const CRYPTO_PAYMENT_RAILS = PAYMENT_RAILS.filter((rail) => rail.networkId != null);
+
 function normalizeAuthError(error: unknown, fallback: string) {
   if (!error) return fallback;
   if (typeof error === "object" && error !== null && "message" in error) {
@@ -260,7 +263,9 @@ export default function AccountSettings({
       );
       if (!result) return;
       setPaymentDrafts(destinationsByRail(result.paymentDestinations ?? []));
-      setStatus("Payment destinations saved. These are public handles, not a checkout.");
+      setStatus(
+        "Payment destinations saved. These are public contacts, not a checkout.",
+      );
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -499,14 +504,57 @@ export default function AccountSettings({
         <div>
           <h3 id="payment-options-title">Payment options</h3>
           <p className="portal-lead">
-            Public destinations only: PayPal, Venmo, Cash App, Bitcoin on Bitcoin
-            Mainnet, Ethereum on Ethereum Mainnet, Tether (USDT) on Ethereum
-            Mainnet (ERC-20), BNB on BNB Smart Chain Mainnet, and USDC on
-            Ethereum Mainnet (ERC-20). Do not paste private keys, seed phrases,
-            bank details, or card numbers.
+            Public payment methods: PayPal, Venmo, Cash App, Zelle, and Apple
+            Cash. Crypto: Bitcoin on Bitcoin Mainnet, Ethereum on Ethereum
+            Mainnet, Tether (USDT) on Ethereum Mainnet (ERC-20), BNB on BNB
+            Smart Chain Mainnet, and USDC on Ethereum Mainnet (ERC-20). Do not
+            paste private keys, seed phrases, bank details, or card numbers.
+          </p>
+          <p className="portal-settings-note">
+            Zelle and Apple Cash are public payment contact information. Type an
+            email or U.S. mobile number yourself; these fields are never filled
+            from your login. Confirm the recipient independently before sending.
+            This marketplace does not execute, insure, escrow, reverse, or
+            protect the transfer.
           </p>
         </div>
-        {PAYMENT_RAILS.map((rail) => (
+        <h3 id="payment-methods-title">Payment methods</h3>
+        {MANUAL_PAYMENT_RAILS.map((rail) => (
+          <div className="portal-settings-row" key={rail.id}>
+            <div className="portal-settings-row-head">
+              <strong>{rail.label}</strong>
+              {paymentDrafts[rail.id] ? (
+                <button
+                  className="button button-ghost"
+                  type="button"
+                  onClick={() =>
+                    setPaymentDrafts((current) => ({ ...current, [rail.id]: "" }))
+                  }
+                  disabled={pending !== null}
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+            <label className="portal-field">
+              <span>{rail.hint}</span>
+              <input
+                value={paymentDrafts[rail.id]}
+                onChange={(event) =>
+                  setPaymentDrafts((current) => ({
+                    ...current,
+                    [rail.id]: event.target.value,
+                  }))
+                }
+                autoComplete="off"
+                spellCheck={false}
+                disabled={pending !== null}
+              />
+            </label>
+          </div>
+        ))}
+        <h3 id="crypto-payment-title">Crypto</h3>
+        {CRYPTO_PAYMENT_RAILS.map((rail) => (
           <div className="portal-settings-row" key={rail.id}>
             <div className="portal-settings-row-head">
               <strong>{rail.networkLabel ? `${rail.label} · ${rail.networkLabel}` : rail.label}</strong>

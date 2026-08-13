@@ -42,9 +42,11 @@ records, stop and report the conflict; do not follow stale text.
 - Account creation/login, `/account` management console, and read-only `/admin`
   overview for allowlisted administrators.
 - Persistent Facebook, Instagram, and TikTok links plus public PayPal, Venmo,
-  Cash App, Bitcoin (Bitcoin Mainnet), Ethereum (Ethereum Mainnet), USDT
-  (Ethereum Mainnet ERC-20), BNB (BNB Smart Chain Mainnet), and USDC (Ethereum
-  Mainnet ERC-20) destinations in account settings. New listings default to the
+  Cash App, Zelle, and Apple Cash destinations, and Bitcoin (Bitcoin Mainnet),
+  Ethereum (Ethereum Mainnet), USDT (Ethereum Mainnet ERC-20), BNB (BNB Smart
+  Chain Mainnet), and USDC (Ethereum Mainnet ERC-20) destinations in account
+  settings. Zelle and Apple Cash are typed public email or U.S. mobile numbers
+  and are never filled from the login email. New listings default to the
   signed-in profile's saved social links.
 - Clickable Facebook, Instagram, and TikTok account links.
 - Visible social-account creation dates and friend/follower counts.

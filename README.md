@@ -19,10 +19,12 @@ This repository is an MVP framework, not a promise that a browser can serve phot
 - Server-session ownership for listing writes; browser-supplied seller identity is ignored.
 - Standard `/account` console and read-only `/admin` overview for exact allowlisted emails.
 - Authenticated account settings for Facebook, Instagram, and TikTok profile links
-  plus public PayPal, Venmo, Cash App, Bitcoin (Bitcoin Mainnet), Ethereum
-  (Ethereum Mainnet), USDT (Ethereum Mainnet ERC-20), BNB (BNB Smart Chain
-  Mainnet), and USDC (Ethereum Mainnet ERC-20) destinations. These are public
-  handles/URLs/addresses, not OAuth, checkout, or custody.
+  plus public PayPal, Venmo, Cash App, Zelle, and Apple Cash destinations, and
+  Bitcoin (Bitcoin Mainnet), Ethereum (Ethereum Mainnet), USDT (Ethereum Mainnet
+  ERC-20), BNB (BNB Smart Chain Mainnet), and USDC (Ethereum Mainnet ERC-20)
+  destinations. These are public handles/URLs/addresses/contact identifiers, not
+  OAuth, checkout, or custody. Zelle and Apple Cash are typed email or U.S.
+  mobile numbers and are never filled from the login email.
 - Clickable Facebook, Instagram, and TikTok profiles with visible account age,
   friend/follower counts, check status, and last-check timestamps.
 - Live allowlisted link checks on page load, manual recheck, and publication;

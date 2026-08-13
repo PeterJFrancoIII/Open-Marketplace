@@ -63,13 +63,16 @@ The UI accepts public profile URLs so the information architecture can be tested
 Never ask users to paste social passwords, cookies, access tokens, or private profile exports into the app.
 
 Public payment destinations are account-level contact metadata for the launch
-rails: PayPal, Venmo, Cash App, Bitcoin on Bitcoin Mainnet, Ethereum on
-Ethereum Mainnet, Tether (USDT) on Ethereum Mainnet (ERC-20), BNB on BNB Smart
-Chain Mainnet, and USDC on Ethereum Mainnet (ERC-20). Crypto destinations are
-asset-and-network bound; ambiguous rails such as bare USDT or Solana are not
-stored. Store only public emails, handles, URLs, or addresses. Never store
-private keys, seed phrases, bank/card credentials, or provider tokens. A saved
-destination is not checkout, custody, or a verified payment identity.
+set: PayPal, Venmo, Cash App, Zelle, and Apple Cash, plus Bitcoin on Bitcoin
+Mainnet, Ethereum on Ethereum Mainnet, Tether (USDT) on Ethereum Mainnet
+(ERC-20), BNB on BNB Smart Chain Mainnet, and USDC on Ethereum Mainnet
+(ERC-20). Zelle and Apple Cash store only a deliberately typed email or U.S.
+mobile number; they are never auto-filled from the account login. Crypto
+destinations are asset-and-network bound; ambiguous rails such as bare USDT or
+Solana are not stored. Store only public emails, handles, URLs, addresses, or
+contact identifiers. Never store private keys, seed phrases, bank/card
+credentials, or provider tokens. A saved destination is not checkout, custody,
+or a verified payment identity.
 
 The live-link checker accepts only allowlisted HTTPS Facebook, Instagram, and
 TikTok profile hosts. It follows only allowlisted redirects, caps response

@@ -1,6 +1,6 @@
 import type { PaymentDestination, PaymentRail } from "./types";
 
-type RailKind = "fiat" | "bitcoin" | "evm";
+type RailKind = "fiat" | "us_contact" | "bitcoin" | "evm";
 
 type PaymentRailDefinition = {
   id: PaymentRail;
@@ -39,6 +39,24 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
     networkId: null,
     networkLabel: null,
     kind: "fiat",
+  },
+  {
+    id: "zelle",
+    label: "Zelle",
+    hint: "Public Zelle email or U.S. mobile number. Type it yourself; this is not filled from your login.",
+    asset: null,
+    networkId: null,
+    networkLabel: null,
+    kind: "us_contact",
+  },
+  {
+    id: "apple_cash",
+    label: "Apple Cash",
+    hint: "Public Apple Cash email or U.S. mobile number. Type it yourself; this is not filled from your login.",
+    asset: null,
+    networkId: null,
+    networkLabel: null,
+    kind: "us_contact",
   },
   {
     id: "bitcoin_mainnet",
@@ -184,6 +202,23 @@ function normalizeEvm(value: string): string | null {
   return `0x${value.slice(-40).toLowerCase()}`;
 }
 
+function normalizeUsMobile(value: string): string | null {
+  if (/[a-z]/i.test(value)) return null;
+  const digits = value.replace(/\D/g, "");
+  let national = "";
+  if (digits.length === 10) national = digits;
+  else if (digits.length === 11 && digits.startsWith("1")) national = digits.slice(1);
+  else return null;
+  if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(national)) return null;
+  return `+1${national}`;
+}
+
+function normalizeUsContact(value: string): string | null {
+  if (/^(javascript|data|file|about|blob|mailto|tel):/i.test(value)) return null;
+  if (EMAIL.test(value)) return value.toLowerCase();
+  return normalizeUsMobile(value);
+}
+
 function resolveRailId(value: unknown): PaymentRail | null {
   if (typeof value !== "string") return null;
   if (ALLOWED_RAILS.has(value as PaymentRail)) return value as PaymentRail;
@@ -214,6 +249,8 @@ function normalizeDestination(rail: PaymentRailDefinition, raw: string): string 
       if (rail.id === "venmo") return normalizeVenmo(value);
       if (rail.id === "cashapp") return normalizeCashApp(value);
       return null;
+    case "us_contact":
+      return normalizeUsContact(value);
     case "bitcoin":
       return normalizeBitcoin(value);
     case "evm":

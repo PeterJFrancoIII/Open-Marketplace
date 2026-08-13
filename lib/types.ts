@@ -22,6 +22,8 @@ export type PaymentRail =
   | "paypal"
   | "venmo"
   | "cashapp"
+  | "zelle"
+  | "apple_cash"
   | "bitcoin_mainnet"
   | "ethereum_mainnet"
   | "usdt_ethereum"

@@ -545,6 +545,7 @@ function healthLabel(health: SocialProof["health"]) {
 }
 
 function providerName(provider: SocialProof["provider"]) {
+  if (provider === "tiktok") return "TikTok";
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 

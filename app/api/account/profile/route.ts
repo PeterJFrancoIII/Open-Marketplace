@@ -1,13 +1,17 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { profiles } from "../../../../db/schema";
-import { getMarketplaceSession } from "../../../../lib/auth";
+import {
+  getFacebookConnection,
+  getMarketplaceSession,
+} from "../../../../lib/auth";
 import {
   PAYMENT_RAILS,
   normalizePaymentDestinations,
   parsePaymentDestinationsJson,
 } from "../../../../lib/payment-destinations";
 import {
+  mergeSocialAccountsForSave,
   normalizeSocialAccountsForProfile,
   parseSocialAccountsJson,
 } from "../../../../lib/profile-settings";
@@ -40,7 +44,8 @@ async function requireSession(request: Request) {
   return { session, response: null };
 }
 
-function profilePayload(
+async function profilePayload(
+  request: Request,
   socialAccountsJson: string | null | undefined,
   paymentDestinationsJson: string | null | undefined,
 ) {
@@ -48,6 +53,7 @@ function profilePayload(
     socialAccounts: parseSocialAccountsJson(socialAccountsJson),
     paymentDestinations: parsePaymentDestinationsJson(paymentDestinationsJson),
     allowedPaymentRails: PAYMENT_RAILS,
+    facebookConnection: await getFacebookConnection(request),
   };
 }
 
@@ -63,10 +69,13 @@ export async function GET(request: Request) {
       .where(eq(profiles.id, session.user.id))
       .limit(1);
 
-    return Response.json(profilePayload(
-      profile?.socialAccountsJson,
-      profile?.paymentDestinationsJson,
-    ));
+    return Response.json(
+      await profilePayload(
+        request,
+        profile?.socialAccountsJson,
+        profile?.paymentDestinationsJson,
+      ),
+    );
   } catch (error) {
     return registryError(error);
   }
@@ -90,6 +99,13 @@ export async function PUT(request: Request) {
       );
     }
 
+    const db = await getDb();
+    const [existing] = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, session.user.id))
+      .limit(1);
+
     let nextSocialJson: string | undefined;
     let nextSocialAccounts;
     if (hasSocial) {
@@ -100,8 +116,12 @@ export async function PUT(request: Request) {
           { status: 422 },
         );
       }
-      nextSocialAccounts = normalized.accounts;
-      nextSocialJson = JSON.stringify(normalized.accounts);
+      const existingSocial = parseSocialAccountsJson(existing?.socialAccountsJson);
+      nextSocialAccounts = mergeSocialAccountsForSave(
+        normalized.accounts,
+        existingSocial,
+      );
+      nextSocialJson = JSON.stringify(nextSocialAccounts);
     }
 
     let nextPaymentJson: string | undefined;
@@ -114,13 +134,6 @@ export async function PUT(request: Request) {
       nextPaymentDestinations = normalized.destinations;
       nextPaymentJson = JSON.stringify(normalized.destinations);
     }
-
-    const db = await getDb();
-    const [existing] = await db
-      .select()
-      .from(profiles)
-      .where(eq(profiles.id, session.user.id))
-      .limit(1);
     const updatedAt = new Date().toISOString();
     const socialAccountsJson =
       nextSocialJson ?? existing?.socialAccountsJson ?? "[]";
@@ -153,6 +166,7 @@ export async function PUT(request: Request) {
         nextPaymentDestinations ??
         parsePaymentDestinationsJson(existing?.paymentDestinationsJson),
       allowedPaymentRails: PAYMENT_RAILS,
+      facebookConnection: await getFacebookConnection(request),
     });
   } catch (error) {
     return registryError(error);

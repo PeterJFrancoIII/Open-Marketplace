@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { headers as nextHeaders } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "../db";
@@ -11,6 +11,9 @@ import {
   authUsers,
   authVerifications,
 } from "../db/schema";
+import type { FacebookConnection } from "./types";
+
+export const FACEBOOK_PUBLIC_PROFILE_SCOPE = "public_profile";
 
 const PRODUCTION_BASE_URL = "https://open-marketplace-demo.pages.dev";
 
@@ -92,6 +95,8 @@ function requestFromHeaders(headerBag: Headers): Request | undefined {
 type CloudflareEnv = {
   BETTER_AUTH_SECRET?: string;
   MARKETPLACE_ADMIN_EMAILS?: string;
+  FACEBOOK_CLIENT_ID?: string;
+  FACEBOOK_CLIENT_SECRET?: string;
 };
 
 async function readWorkerEnv(): Promise<CloudflareEnv> {
@@ -120,11 +125,72 @@ export async function getMarketplaceAuth(request?: Request) {
   }
 
   const db = await getDb();
+  const facebookClientId = env.FACEBOOK_CLIENT_ID?.trim();
+  const facebookClientSecret = env.FACEBOOK_CLIENT_SECRET?.trim();
+  const facebookConnectEnabled = Boolean(
+    facebookClientId && facebookClientSecret,
+  );
+
   return betterAuth({
     appName: "Open Marketplace",
     secret,
     baseURL: resolveBaseURL(request),
     trustedOrigins: trustedOriginsFor(request),
+    socialProviders: facebookConnectEnabled
+      ? {
+          facebook: {
+            clientId: facebookClientId!,
+            clientSecret: facebookClientSecret!,
+            disableDefaultScope: true,
+            scope: [FACEBOOK_PUBLIC_PROFILE_SCOPE],
+            disableSignUp: true,
+            disableImplicitSignUp: true,
+            disableIdTokenSignIn: true,
+            fields: ["id", "name", "picture"],
+            mapProfileToUser: async (profile) => ({
+              name: profile.name,
+              image: profile.picture?.data?.url,
+            }),
+          },
+        }
+      : {},
+    account: {
+      accountLinking: {
+        enabled: true,
+        disableImplicitLinking: true,
+        allowDifferentEmails: true,
+        updateUserInfoOnLink: false,
+        trustedProviders: ["facebook"],
+      },
+    },
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        const path = String(ctx.path ?? "");
+        const body =
+          ctx.body && typeof ctx.body === "object"
+            ? (ctx.body as { provider?: unknown; providerId?: unknown })
+            : {};
+        if (
+          (path === "/sign-in/social" || path.endsWith("/sign-in/social")) &&
+          body.provider === "facebook"
+        ) {
+          throw new APIError("BAD_REQUEST", {
+            message:
+              "Facebook is an account connector only. Sign in with email.",
+          });
+        }
+        if (
+          path === "/get-access-token" ||
+          path.endsWith("/get-access-token") ||
+          path === "/refresh-token" ||
+          path.endsWith("/refresh-token")
+        ) {
+          throw new APIError("BAD_REQUEST", {
+            message: "Facebook tokens stay on the server.",
+          });
+        }
+      }),
+    },
     database: drizzleAdapter(db, {
       provider: "sqlite",
       schema: {
@@ -220,4 +286,91 @@ export async function requireMarketplaceSession(
 export async function getMarketplaceAdminEmails() {
   const env = await readWorkerEnv();
   return env.MARKETPLACE_ADMIN_EMAILS ?? "";
+}
+
+export async function getFacebookConnectAvailability() {
+  const env = await readWorkerEnv();
+  return Boolean(env.FACEBOOK_CLIENT_ID?.trim() && env.FACEBOOK_CLIENT_SECRET?.trim());
+}
+
+function publicFacebookImageUrl(value?: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    if (
+      url.protocol === "https:" &&
+      (host === "graph.facebook.com" ||
+        host.endsWith(".facebook.com") ||
+        host.endsWith(".fbcdn.net") ||
+        host.endsWith(".fbsbx.com"))
+    ) {
+      return url.toString();
+    }
+  } catch {
+    // Provider-supplied picture URLs that are not HTTPS Facebook hosts are dropped.
+  }
+  return null;
+}
+
+function publicFacebookConnection(
+  available: boolean,
+  connected: boolean,
+  name?: string | null,
+  imageUrl?: string | null,
+): FacebookConnection {
+  const displayName = name?.trim() || null;
+  return {
+    available,
+    connected,
+    name: connected && displayName && displayName.length <= 80 ? displayName : null,
+    imageUrl: connected ? publicFacebookImageUrl(imageUrl) : null,
+  };
+}
+
+export async function getFacebookConnection(
+  requestOrHeaders?:
+    | Request
+    | Headers
+    | Awaited<ReturnType<typeof nextHeaders>>,
+): Promise<FacebookConnection> {
+  const available = await getFacebookConnectAvailability();
+  if (!available) {
+    return publicFacebookConnection(false, false);
+  }
+
+  try {
+    const headerBag = asHeaders(
+      requestOrHeaders instanceof Request
+        ? requestOrHeaders.headers
+        : (requestOrHeaders ?? (await nextHeaders())),
+    );
+    const request =
+      requestOrHeaders instanceof Request
+        ? requestOrHeaders
+        : requestFromHeaders(headerBag);
+    const auth = await getMarketplaceAuth(request);
+    const accounts = await auth.api.listUserAccounts({ headers: headerBag });
+    const facebook = accounts.find((account) => account.providerId === "facebook");
+    if (!facebook) {
+      return publicFacebookConnection(true, false);
+    }
+
+    let name: string | null = null;
+    let imageUrl: string | null = null;
+    try {
+      const info = await auth.api.accountInfo({
+        query: { providerId: "facebook" },
+        headers: headerBag,
+      });
+      name = info?.user?.name ?? null;
+      imageUrl = info?.user?.image ?? null;
+    } catch {
+      // The Better Auth account row is enough to show Connected.
+    }
+
+    return publicFacebookConnection(true, true, name, imageUrl);
+  } catch {
+    return publicFacebookConnection(true, false);
+  }
 }

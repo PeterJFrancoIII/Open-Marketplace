@@ -100,3 +100,19 @@ export async function normalizeSocialAccountsForProfile(input: unknown): Promise
   }
   return { ok: true, accounts: checked };
 }
+
+export function mergeSocialAccountsForSave(
+  incoming: SocialProof[],
+  existing: SocialProof[],
+): SocialProof[] {
+  const incomingHasFacebook = incoming.some(
+    (account) => account.provider === "facebook",
+  );
+  const facebook = (
+    incomingHasFacebook
+      ? incoming.filter((account) => account.provider === "facebook")
+      : existing.filter((account) => account.provider === "facebook")
+  ).map(asSelfReported);
+  const others = incoming.filter((account) => account.provider !== "facebook");
+  return [...facebook, ...others];
+}

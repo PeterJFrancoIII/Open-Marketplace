@@ -1,13 +1,18 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "../../lib/auth-client";
 import { PAYMENT_RAILS } from "../../lib/payment-destinations";
-import type { PaymentDestination, PaymentRail, SocialProof } from "../../lib/types";
+import type {
+  FacebookConnection,
+  PaymentDestination,
+  PaymentRail,
+  SocialProof,
+} from "../../lib/types";
 
 type SocialDraft = {
-  provider: "facebook" | "instagram" | "tiktok";
+  provider: "instagram" | "tiktok";
   url: string;
   accountCreatedAt: string;
   connectionCount: string;
@@ -16,7 +21,6 @@ type SocialDraft = {
 };
 
 const emptySocialDrafts: SocialDraft[] = [
-  { provider: "facebook", url: "", accountCreatedAt: "", connectionCount: "" },
   { provider: "instagram", url: "", accountCreatedAt: "", connectionCount: "" },
   { provider: "tiktok", url: "", accountCreatedAt: "", connectionCount: "" },
 ];
@@ -79,16 +83,37 @@ function providerName(provider: SocialDraft["provider"]) {
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
+function facebookOauthErrorSubscribe() {
+  return () => {};
+}
+
+function readFacebookOauthError() {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("error")
+    ? "Facebook Connect did not complete. Try again."
+    : "";
+}
+
+const FACEBOOK_PUBLIC_PROFILE_SCOPE = "public_profile";
+const emptyFacebookConnection: FacebookConnection = {
+  available: false,
+  connected: false,
+  name: null,
+  imageUrl: null,
+};
+
 export default function AccountSettings({
   initialName,
   email,
   initialSocialAccounts,
   initialPaymentDestinations,
+  initialFacebookConnection,
 }: {
   initialName: string;
   email: string;
   initialSocialAccounts: SocialProof[];
   initialPaymentDestinations: PaymentDestination[];
+  initialFacebookConnection: FacebookConnection;
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
@@ -100,11 +125,38 @@ export default function AccountSettings({
   const [paymentDrafts, setPaymentDrafts] = useState(() =>
     destinationsByRail(initialPaymentDestinations),
   );
+  const [facebookConnection, setFacebookConnection] = useState(
+    initialFacebookConnection ?? emptyFacebookConnection,
+  );
   const [pending, setPending] = useState<
-    "name" | "password" | "signout" | "social" | "payment" | null
+    | "name"
+    | "password"
+    | "signout"
+    | "social"
+    | "payment"
+    | "facebook-connect"
+    | "facebook-disconnect"
+    | null
   >(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const oauthError = useSyncExternalStore(
+    facebookOauthErrorSubscribe,
+    readFacebookOauthError,
+    () => "",
+  );
+  const visibleError = error || oauthError;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get("error")) return;
+    params.delete("error");
+    params.delete("error_description");
+    const next = `${window.location.pathname}${
+      params.toString() ? `?${params.toString()}` : ""
+    }#account-settings`;
+    window.history.replaceState(null, "", next);
+  }, []);
 
   async function onUpdateName(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -173,7 +225,11 @@ export default function AccountSettings({
       account?: SocialProof;
       socialAccounts?: SocialProof[];
       paymentDestinations?: PaymentDestination[];
+      facebookConnection?: FacebookConnection;
     };
+    if (result.facebookConnection) {
+      setFacebookConnection(result.facebookConnection);
+    }
     if (response.status === 401) {
       window.location.assign("/login?returnTo=%2Faccount");
       return null;
@@ -215,8 +271,7 @@ export default function AccountSettings({
                 account.connectionCount === ""
                   ? undefined
                   : Number(account.connectionCount),
-              connectionLabel:
-                account.provider === "facebook" ? "friends" : "followers",
+              connectionLabel: "followers",
               metricsSource: "self-reported",
             })),
         },
@@ -277,6 +332,63 @@ export default function AccountSettings({
     }
   }
 
+  async function onConnectFacebook() {
+    setPending("facebook-connect");
+    setStatus("");
+    setError("");
+    try {
+      const result = await authClient.linkSocial({
+        provider: "facebook",
+        callbackURL: "/account",
+        errorCallbackURL: "/account",
+        scopes: [FACEBOOK_PUBLIC_PROFILE_SCOPE],
+      });
+      if (result.error) {
+        setError(
+          normalizeAuthError(result.error, "Could not start Facebook Connect."),
+        );
+        return;
+      }
+    } catch (submitError) {
+      setError(
+        normalizeAuthError(submitError, "Could not start Facebook Connect."),
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function onDisconnectFacebook() {
+    setPending("facebook-disconnect");
+    setStatus("");
+    setError("");
+    try {
+      const result = await authClient.unlinkAccount({
+        providerId: "facebook",
+      });
+      if (result.error) {
+        setError(
+          normalizeAuthError(result.error, "Could not disconnect Facebook."),
+        );
+        return;
+      }
+      setFacebookConnection({
+        available: facebookConnection.available,
+        connected: false,
+        name: null,
+        imageUrl: null,
+      });
+      setStatus("Facebook disconnected. Your Open Marketplace account is unchanged.");
+      router.refresh();
+    } catch (submitError) {
+      setError(
+        normalizeAuthError(submitError, "Could not disconnect Facebook."),
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
   async function onSignOut() {
     setPending("signout");
     setStatus("");
@@ -303,9 +415,9 @@ export default function AccountSettings({
     >
       <h2 id="account-settings-title">Account settings</h2>
       <p className="portal-lead">
-        Update your display name, password, public social links, and public
-        payment destinations. Email stays read-only until verification delivery
-        is available.
+        Update your display name, password, Facebook Connect, public social
+        links, and public payment destinations. Email stays read-only until
+        verification delivery is available.
       </p>
 
       <form className="portal-form" onSubmit={onUpdateName}>
@@ -372,6 +484,72 @@ export default function AccountSettings({
         </button>
       </form>
 
+      <div
+        className="portal-form"
+        id="facebook-connect-settings"
+        aria-labelledby="facebook-connect-title"
+      >
+        <div>
+          <h3 id="facebook-connect-title">Facebook</h3>
+          <p className="portal-lead">
+            Connect your Facebook account to prove you control it. This uses
+            consumer Facebook Login and public_profile only. It does not sign
+            you in, import listings, or make you Facebook verified.
+          </p>
+        </div>
+        <div className="portal-settings-row">
+          <div className="portal-settings-row-head">
+            <strong>Facebook</strong>
+            {facebookConnection.connected ? (
+              <span className="portal-settings-health">Connected</span>
+            ) : null}
+          </div>
+          {facebookConnection.connected ? (
+            <>
+              {facebookConnection.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={facebookConnection.imageUrl}
+                  alt=""
+                  width={48}
+                  height={48}
+                />
+              ) : null}
+              <p>
+                {facebookConnection.name
+                  ? facebookConnection.name
+                  : "Facebook account connected."}
+              </p>
+              <button
+                className="button button-ghost"
+                type="button"
+                onClick={onDisconnectFacebook}
+                disabled={pending !== null}
+              >
+                {pending === "facebook-disconnect"
+                  ? "Disconnecting…"
+                  : "Disconnect"}
+              </button>
+            </>
+          ) : facebookConnection.available ? (
+            <button
+              className="button button-dark"
+              type="button"
+              onClick={onConnectFacebook}
+              disabled={pending !== null}
+            >
+              {pending === "facebook-connect"
+                ? "Connecting…"
+                : "Connect Facebook"}
+            </button>
+          ) : (
+            <p className="portal-settings-note">
+              Facebook Connect is not configured in this environment.
+            </p>
+          )}
+        </div>
+      </div>
+
       <form
         className="portal-form"
         id="social-media-settings"
@@ -381,8 +559,9 @@ export default function AccountSettings({
         <div>
           <h3 id="social-media-title">Social media</h3>
           <p className="portal-lead">
-            Link Facebook, Instagram, and TikTok profile URLs. A resolving URL
-            is link-health evidence only. It does not verify identity.
+            Instagram and TikTok still use typed profile URLs. A resolving URL
+            is link-health evidence only. It does not verify identity or count
+            as a provider-connected Facebook account.
           </p>
         </div>
         {socialDrafts.map((account, index) => (
@@ -437,7 +616,7 @@ export default function AccountSettings({
                 />
               </label>
               <label className="portal-field">
-                <span>{account.provider === "facebook" ? "Friends" : "Followers"}</span>
+                <span>Followers</span>
                 <input
                   type="number"
                   min="0"
@@ -610,7 +789,7 @@ export default function AccountSettings({
 
       <div className="portal-status" role="status" aria-live="polite">
         {status && <p className="auth-success">{status}</p>}
-        {error && <p className="auth-error">{error}</p>}
+        {visibleError && <p className="auth-error">{visibleError}</p>}
       </div>
     </section>
   );

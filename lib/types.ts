@@ -5,6 +5,13 @@ export type MediaManifest = {
   type: string;
 };
 
+export type FacebookConnection = {
+  available: boolean;
+  connected: boolean;
+  name: string | null;
+  imageUrl: string | null;
+};
+
 export type SocialProof = {
   provider: "facebook" | "instagram" | "tiktok" | "other";
   url: string;

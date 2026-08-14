@@ -91,4 +91,5 @@ test("renders the login and account-creation page", async () => {
   assert.match(html, /Log in to Open Marketplace/i);
   assert.match(html, /Create account/i);
   assert.match(html, /12 characters/i);
+  assert.doesNotMatch(html, /Continue with Facebook|Sign in with Facebook|Connect Facebook/i);
 });

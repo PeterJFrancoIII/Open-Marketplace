@@ -677,6 +677,8 @@ test("authenticated owners persist and remove social settings without oauth veri
       savedBody.socialAccounts[0].healthMessage ?? "",
       /verified/i,
     );
+    assert.equal(savedBody.facebookConnection.connected, false);
+    assert.equal(savedBody.facebookConnection.available, false);
 
     cookieJar.clear();
     await signIn(worker, env, cookieJar, {
@@ -688,12 +690,17 @@ test("authenticated owners persist and remove social settings without oauth veri
     const reloadedBody = await reloaded.json();
     assert.equal(reloadedBody.socialAccounts[0].url.includes("facebook.com"), true);
     assert.equal(reloadedBody.socialAccounts[0].metricsSource, "self-reported");
+    assert.equal(reloadedBody.facebookConnection.connected, false);
 
     const removed = await putJson(worker, env, "/api/account/profile", cookieJar, {
       socialAccounts: [],
     });
     assert.equal(removed.status, 200);
-    assert.deepEqual((await removed.json()).socialAccounts, []);
+    const removedBody = await removed.json();
+    assert.equal(removedBody.socialAccounts.length, 1);
+    assert.equal(removedBody.socialAccounts[0].provider, "facebook");
+    assert.equal(removedBody.socialAccounts[0].metricsSource, "self-reported");
+    assert.equal(removedBody.facebookConnection.connected, false);
   } finally {
     restoreFetch();
   }

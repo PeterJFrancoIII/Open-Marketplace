@@ -66,6 +66,8 @@ jobs:
           BETTER_AUTH_SECRET: ${{ secrets.PAGES_PREVIEW_BETTER_AUTH_SECRET }}
           MARKETPLACE_ADMIN_EMAILS: ${{ vars.PAGES_PREVIEW_ADMIN_EMAILS }}
           PREVIEW_D1_DATABASE_ID: 8ddff0ae-f810-4d71-955e-4aab40a00e27
+          FACEBOOK_CLIENT_ID: ${{ vars.PAGES_PREVIEW_FACEBOOK_CLIENT_ID }}
+          FACEBOOK_CLIENT_SECRET: ${{ secrets.PAGES_PREVIEW_FACEBOOK_CLIENT_SECRET }}
         run: node scripts/configure-pages-preview.mjs
 
       - name: Deploy to Cloudflare Pages

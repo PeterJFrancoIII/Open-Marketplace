@@ -2,93 +2,137 @@
  * Configure Cloudflare Pages *preview* bindings only.
  * Never writes production URL, production D1, or secrets to Git.
  */
-const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
-const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+import { pathToFileURL } from "node:url";
+
 const PROJECT = "open-marketplace-demo";
-const PREVIEW_D1_DATABASE_ID =
-  process.env.PREVIEW_D1_DATABASE_ID ||
-  "8ddff0ae-f810-4d71-955e-4aab40a00e27";
-const AUTH_SECRET = process.env.BETTER_AUTH_SECRET?.trim();
-const ADMIN_EMAILS = (
-  process.env.MARKETPLACE_ADMIN_EMAILS || "preview-admin@example.com"
-).trim();
+const PRODUCTION_D1_DATABASE_ID = "6ceb8dfc-4a92-4d4d-832f-ff1a54847326";
+const DEFAULT_PREVIEW_D1_DATABASE_ID = "8ddff0ae-f810-4d71-955e-4aab40a00e27";
 
-if (!ACCOUNT_ID || !API_TOKEN) {
-  console.error("CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are required.");
-  process.exit(1);
-}
-if (!AUTH_SECRET) {
-  console.error("BETTER_AUTH_SECRET is required for preview configuration.");
-  process.exit(1);
-}
-
-const response = await fetch(
-  `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/pages/projects/${PROJECT}`,
-  {
-    method: "PATCH",
-    headers: {
-      authorization: `Bearer ${API_TOKEN}`,
-      "content-type": "application/json",
+export function buildPagesPreviewDeploymentConfigs({
+  previewD1DatabaseId,
+  authSecret,
+  adminEmails,
+  facebookClientId,
+  facebookClientSecret,
+}) {
+  const previewEnvVars = {
+    RELEASE_MODE: { type: "plain_text", value: "demo" },
+    BETTER_AUTH_SECRET: { type: "secret_text", value: authSecret },
+    MARKETPLACE_ADMIN_EMAILS: {
+      type: "plain_text",
+      value: adminEmails,
     },
-    body: JSON.stringify({
-      deployment_configs: {
-        preview: {
-          env_vars: {
-            RELEASE_MODE: { type: "plain_text", value: "demo" },
-            BETTER_AUTH_SECRET: { type: "secret_text", value: AUTH_SECRET },
-            MARKETPLACE_ADMIN_EMAILS: {
-              type: "plain_text",
-              value: ADMIN_EMAILS,
-            },
-          },
-          d1_databases: {
-            DB: { id: PREVIEW_D1_DATABASE_ID },
-          },
-          fail_open: true,
-          always_use_latest_compatibility_date: false,
-          compatibility_date: "2026-05-15",
-          compatibility_flags: ["nodejs_compat"],
-          build_image_major_version: 3,
-          usage_model: "standard",
-        },
-        production: {
-          env_vars: {
-            RELEASE_MODE: { type: "plain_text", value: "demo" },
-          },
-          d1_databases: {
-            DB: { id: "6ceb8dfc-4a92-4d4d-832f-ff1a54847326" },
-          },
-          fail_open: true,
-          always_use_latest_compatibility_date: false,
-          compatibility_date: "2026-05-15",
-          compatibility_flags: ["nodejs_compat"],
-          build_image_major_version: 3,
-          usage_model: "standard",
-        },
+  };
+  const facebookId = facebookClientId?.trim();
+  const facebookSecret = facebookClientSecret?.trim();
+  if (facebookId && facebookSecret) {
+    previewEnvVars.FACEBOOK_CLIENT_ID = {
+      type: "plain_text",
+      value: facebookId,
+    };
+    previewEnvVars.FACEBOOK_CLIENT_SECRET = {
+      type: "secret_text",
+      value: facebookSecret,
+    };
+  }
+
+  return {
+    preview: {
+      env_vars: previewEnvVars,
+      d1_databases: {
+        DB: { id: previewD1DatabaseId },
       },
-    }),
-  },
-);
-
-const payload = await response.json();
-if (!response.ok || payload.success === false) {
-  console.error("Failed to configure Pages preview bindings.");
-  console.error(JSON.stringify(payload.errors || payload, null, 2));
-  process.exit(1);
+      fail_open: true,
+      always_use_latest_compatibility_date: false,
+      compatibility_date: "2026-05-15",
+      compatibility_flags: ["nodejs_compat"],
+      build_image_major_version: 3,
+      usage_model: "standard",
+    },
+    production: {
+      env_vars: {
+        RELEASE_MODE: { type: "plain_text", value: "demo" },
+      },
+      d1_databases: {
+        DB: { id: PRODUCTION_D1_DATABASE_ID },
+      },
+      fail_open: true,
+      always_use_latest_compatibility_date: false,
+      compatibility_date: "2026-05-15",
+      compatibility_flags: ["nodejs_compat"],
+      build_image_major_version: 3,
+      usage_model: "standard",
+    },
+  };
 }
 
-const preview = payload.result?.deployment_configs?.preview || {};
-const production = payload.result?.deployment_configs?.production || {};
-console.log(
-  JSON.stringify(
+async function configurePagesPreview() {
+  const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+  const PREVIEW_D1_DATABASE_ID =
+    process.env.PREVIEW_D1_DATABASE_ID || DEFAULT_PREVIEW_D1_DATABASE_ID;
+  const AUTH_SECRET = process.env.BETTER_AUTH_SECRET?.trim();
+  const ADMIN_EMAILS = (
+    process.env.MARKETPLACE_ADMIN_EMAILS || "preview-admin@example.com"
+  ).trim();
+
+  if (!ACCOUNT_ID || !API_TOKEN) {
+    console.error("CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are required.");
+    process.exit(1);
+  }
+  if (!AUTH_SECRET) {
+    console.error("BETTER_AUTH_SECRET is required for preview configuration.");
+    process.exit(1);
+  }
+
+  const deployment_configs = buildPagesPreviewDeploymentConfigs({
+    previewD1DatabaseId: PREVIEW_D1_DATABASE_ID,
+    authSecret: AUTH_SECRET,
+    adminEmails: ADMIN_EMAILS,
+    facebookClientId: process.env.FACEBOOK_CLIENT_ID,
+    facebookClientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+  });
+
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/pages/projects/${PROJECT}`,
     {
-      project: PROJECT,
-      preview_d1: preview.d1_databases?.DB?.id || null,
-      preview_env_keys: Object.keys(preview.env_vars || {}),
-      production_d1: production.d1_databases?.DB?.id || null,
-      production_env_keys: Object.keys(production.env_vars || {}),
+      method: "PATCH",
+      headers: {
+        authorization: `Bearer ${API_TOKEN}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ deployment_configs }),
     },
-    null,
-    2,
-  ),
-);
+  );
+
+  const payload = await response.json();
+  if (!response.ok || payload.success === false) {
+    console.error("Failed to configure Pages preview bindings.");
+    console.error(JSON.stringify(payload.errors || payload, null, 2));
+    process.exit(1);
+  }
+
+  const preview = payload.result?.deployment_configs?.preview || {};
+  const production = payload.result?.deployment_configs?.production || {};
+  console.log(
+    JSON.stringify(
+      {
+        project: PROJECT,
+        preview_d1: preview.d1_databases?.DB?.id || null,
+        preview_env_keys: Object.keys(preview.env_vars || {}),
+        production_d1: production.d1_databases?.DB?.id || null,
+        production_env_keys: Object.keys(production.env_vars || {}),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+const isDirectRun =
+  Boolean(process.argv[1]) &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectRun) {
+  await configurePagesPreview();
+}

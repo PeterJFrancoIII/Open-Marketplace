@@ -5,6 +5,7 @@ import { listings, profiles } from "../../db/schema";
 import { parsePaymentDestinationsJson } from "../../lib/payment-destinations";
 import { parseSocialAccountsJson } from "../../lib/profile-settings";
 import {
+  getFacebookConnection,
   getMarketplaceAdminEmails,
   requireMarketplaceSession,
 } from "../../lib/auth";
@@ -152,6 +153,7 @@ export default async function AccountPage() {
         initialPaymentDestinations={parsePaymentDestinationsJson(
           profile?.paymentDestinationsJson,
         )}
+        initialFacebookConnection={await getFacebookConnection(requestHeaders)}
       />
     </PortalShell>
   );

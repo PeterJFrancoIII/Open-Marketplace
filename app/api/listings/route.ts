@@ -63,9 +63,11 @@ export async function GET(request: Request) {
     const minimum = Number(url.searchParams.get("minPriceCents"));
     const maximum = Number(url.searchParams.get("maxPriceCents"));
     const sort = url.searchParams.get("sort") ?? "newest";
+    const listingId = url.searchParams.get("id")?.trim() ?? "";
     const limit = boundedInteger(url.searchParams.get("limit"), 40, 100);
 
     const filters: SQL[] = [eq(listings.status, "active")];
+    if (listingId) filters.push(eq(listings.id, listingId.slice(0, 80)));
     if (query) {
       const pattern = `%${query.slice(0, 80)}%`;
       const searchFilter = or(

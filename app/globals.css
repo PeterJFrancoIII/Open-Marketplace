@@ -1944,3 +1944,78 @@ a {
     grid-column: 1 / -1;
   }
 }
+
+.privacy-skip {
+  background: var(--brand);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 750;
+  left: 12px;
+  padding: 8px 12px;
+  position: absolute;
+  text-decoration: none;
+  top: 12px;
+  transform: translateY(-160%);
+  z-index: 50;
+}
+
+.privacy-skip:focus {
+  transform: none;
+}
+
+.privacy-doc {
+  display: grid;
+  gap: 22px;
+  max-width: 760px;
+  padding-bottom: 48px;
+  width: min(100%, 760px);
+}
+
+.privacy-doc .portal-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.privacy-doc p,
+.privacy-doc li {
+  color: var(--ink);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.privacy-doc ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.privacy-toc {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.privacy-toc a,
+.privacy-home {
+  color: var(--brand-dark);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.privacy-skip:focus-visible,
+.privacy-toc a:focus-visible,
+.privacy-home:focus-visible,
+.privacy-doc a:focus-visible {
+  outline: 3px solid var(--brand-soft);
+  outline-offset: 2px;
+}
+
+.privacy-effective {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0;
+}

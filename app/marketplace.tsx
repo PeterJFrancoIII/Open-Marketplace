@@ -10,6 +10,17 @@ import {
   useState,
 } from "react";
 import { authClient } from "../lib/auth-client";
+import {
+  LISTING_PHOTO_LIMIT,
+  appendPhotoFiles,
+  manifestsFromPhotoDrafts,
+  movePhotoDraft,
+  photoDraftsFromExisting,
+  photoDraftsFromManifest,
+  removePhotoDraft,
+  revokePhotoDraft,
+  type PhotoDraft,
+} from "../lib/listing-photos";
 import { getLocalMediaUrl, storeMedia } from "../lib/media-store";
 import { paymentLinksFor } from "../lib/payment-links";
 import { parsePaymentDestinationsJson } from "../lib/payment-destinations";
@@ -624,8 +635,7 @@ export default function Marketplace() {
   const [modal, setModal] = useState<ModalName>(null);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [filePreviews, setFilePreviews] = useState<string[]>([]);
+  const [photoDrafts, setPhotoDrafts] = useState<PhotoDraft[]>([]);
   const [localMedia, setLocalMedia] = useState<Record<string, string>>({});
   const [toast, setToast] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -657,6 +667,7 @@ export default function Marketplace() {
       setComposeOpened(true);
       setEditingListingId(null);
       setComposeSeed(null);
+      setPhotoDrafts([]);
       setModal("create");
     });
     return () => window.cancelAnimationFrame(frame);
@@ -677,18 +688,26 @@ export default function Marketplace() {
     const listing = listings.find((item) => item.id === listingId);
     if (!listing || listing.sellerId !== session?.user.id) return;
 
+    let cancelled = false;
     const frame = window.requestAnimationFrame(() => {
       setEditOpened(true);
       setEditingListingId(listing.id);
       setComposeSeed(composeSeedFromListing(listing));
       setComposeDelivery(listing.delivery);
       setSocialDrafts(draftsFromSocialProofs(listing.socialProofs));
-      setSelectedFiles([]);
-      setFilePreviews([]);
+      setPhotoDrafts(photoDraftsFromManifest(listing.imageManifest));
       setSelectedListing(listing);
       setModal("create");
+      void photoDraftsFromExisting(listing.imageManifest, getLocalMediaUrl).then(
+        (drafts) => {
+          if (!cancelled) setPhotoDrafts(drafts);
+        },
+      );
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
   }, [editOpened, listings, session?.user.id, sessionPending, signedIn]);
 
   useEffect(() => {
@@ -934,8 +953,8 @@ export default function Marketplace() {
     setComposeSeed(null);
     setComposeDelivery("Pickup");
     setSocialDrafts(profileSocialDrafts.map((account) => ({ ...account })));
-    setSelectedFiles([]);
-    setFilePreviews([]);
+    photoDrafts.forEach(revokePhotoDraft);
+    setPhotoDrafts([]);
     setShippingQuotes([]);
     setShippingQuoteMessage("");
     setModal("create");
@@ -957,12 +976,13 @@ export default function Marketplace() {
     setComposeSeed(composeSeedFromListing(listing));
     setComposeDelivery(listing.delivery);
     setSocialDrafts(draftsFromSocialProofs(listing.socialProofs));
-    setSelectedFiles([]);
-    setFilePreviews([]);
+    photoDrafts.forEach(revokePhotoDraft);
+    setPhotoDrafts(photoDraftsFromManifest(listing.imageManifest));
     setShippingQuotes([]);
     setShippingQuoteMessage("");
     setSelectedListing(listing);
     setModal("create");
+    void photoDraftsFromExisting(listing.imageManifest, getLocalMediaUrl).then(setPhotoDrafts);
   }
 
   function handleCardKey(event: KeyboardEvent<HTMLElement>, listing: Listing) {
@@ -973,9 +993,21 @@ export default function Marketplace() {
   }
 
   function handleFiles(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []).slice(0, 6);
-    setSelectedFiles(files);
-    setFilePreviews(files.map((file) => URL.createObjectURL(file)));
+    const files = Array.from(event.target.files ?? []);
+    setPhotoDrafts((current) => appendPhotoFiles(current, files, URL.createObjectURL));
+    event.target.value = "";
+  }
+
+  function handleRemovePhoto(index: number) {
+    setPhotoDrafts((current) => {
+      const draft = current[index];
+      if (draft) revokePhotoDraft(draft);
+      return removePhotoDraft(current, index);
+    });
+  }
+
+  function handleMovePhoto(from: number, to: number) {
+    setPhotoDrafts((current) => movePhotoDraft(current, from, to));
   }
 
   function updateSocialDraft(
@@ -1064,13 +1096,7 @@ export default function Marketplace() {
         return;
       }
 
-      const imageManifest = selectedFiles.length
-        ? await storeMedia(selectedFiles)
-        : editingListingId
-          ? (selectedListing?.id === editingListingId
-              ? selectedListing.imageManifest
-              : [])
-          : [];
+      const imageManifest = await manifestsFromPhotoDrafts(photoDrafts, storeMedia);
 
       const payload = {
         ...(editingListingId ? { id: editingListingId } : {}),
@@ -1167,11 +1193,10 @@ export default function Marketplace() {
           : [listing, ...current],
       );
       setSelectedListing(listing);
-      if (filePreviews[0]) {
-        setLocalMedia((current) => ({ ...current, [listing.id]: filePreviews[0] }));
+      if (photoDrafts[0]?.previewUrl) {
+        setLocalMedia((current) => ({ ...current, [listing.id]: photoDrafts[0].previewUrl as string }));
       }
-      setSelectedFiles([]);
-      setFilePreviews([]);
+      setPhotoDrafts([]);
       setSocialDrafts(profileSocialDrafts.map((account) => ({ ...account })));
       setEditingListingId(null);
       setComposeSeed(null);
@@ -1743,21 +1768,61 @@ export default function Marketplace() {
                   </div>
                   <div className="field field-full">
                     <label>Photos held on this device</label>
-                    <label className="upload-box">
-                      <span className="upload-symbol" aria-hidden="true">⌁</span>
-                      <span className="upload-copy">
-                        <strong>Choose up to six images</strong>
-                        <span>Hashed locally · never uploaded to the registry</span>
-                      </span>
-                      <input type="file" accept="image/*" multiple onChange={handleFiles} />
-                    </label>
-                    {filePreviews.length > 0 && (
-                      <div className="preview-strip">
-                        {filePreviews.map((url, index) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={url} alt={`Local preview ${index + 1}`} key={url} />
+                    {photoDrafts.length > 0 && (
+                      <div className="photo-editor">
+                        {photoDrafts.map((photo, index) => (
+                          <div className="photo-draft" key={photo.key}>
+                            {photo.previewUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={photo.previewUrl} alt={photo.name || `Photo ${index + 1}`} />
+                            ) : (
+                              <div className="photo-draft-missing">
+                                <strong>{photo.name || `Photo ${index + 1}`}</strong>
+                                <span>Not on this device</span>
+                              </div>
+                            )}
+                            <div className="photo-draft-actions">
+                              <button
+                                type="button"
+                                disabled={index === 0}
+                                aria-label="Move photo left"
+                                onClick={() => handleMovePhoto(index, index - 1)}
+                              >
+                                ←
+                              </button>
+                              <button
+                                type="button"
+                                disabled={index === photoDrafts.length - 1}
+                                aria-label="Move photo right"
+                                onClick={() => handleMovePhoto(index, index + 1)}
+                              >
+                                →
+                              </button>
+                              <button
+                                type="button"
+                                aria-label="Remove photo"
+                                onClick={() => handleRemovePhoto(index)}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
                         ))}
                       </div>
+                    )}
+                    {photoDrafts.length < LISTING_PHOTO_LIMIT ? (
+                      <label className="upload-box">
+                        <span className="upload-symbol" aria-hidden="true">⌁</span>
+                        <span className="upload-copy">
+                          <strong>Add photos</strong>
+                          <span>
+                            {photoDrafts.length} of {LISTING_PHOTO_LIMIT} · hashed locally · never uploaded to the registry
+                          </span>
+                        </span>
+                        <input type="file" accept="image/*" multiple onChange={handleFiles} />
+                      </label>
+                    ) : (
+                      <p className="form-note">Six photos assigned. Remove one to add another.</p>
                     )}
                   </div>
                   <div className="field field-full">

@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { APIError, createAuthMiddleware } from "better-auth/api";
@@ -14,6 +15,16 @@ import {
 import type { FacebookConnection } from "./types";
 
 export const FACEBOOK_PUBLIC_PROFILE_SCOPE = "public_profile";
+export const FACEBOOK_GRAPH_FIELDS = [
+  "id",
+  "first_name",
+  "last_name",
+  "middle_name",
+  "name",
+  "name_format",
+  "short_name",
+  "picture.type(large)",
+] as const;
 
 const PRODUCTION_BASE_URL = "https://open-marketplace-demo.pages.dev";
 
@@ -146,11 +157,25 @@ export async function getMarketplaceAuth(request?: Request) {
             disableSignUp: true,
             disableImplicitSignUp: true,
             disableIdTokenSignIn: true,
-            fields: ["id", "name", "picture"],
-            mapProfileToUser: async (profile) => ({
-              name: profile.name,
-              image: profile.picture?.data?.url,
-            }),
+            getUserInfo: async (token) => {
+              const accessToken = token.accessToken;
+              if (!accessToken) return null;
+              const profile = await readFacebookPublicProfile(
+                accessToken,
+                facebookClientId!,
+                facebookClientSecret!,
+              );
+              if (!profile) return null;
+              return {
+                user: {
+                  id: profile.id,
+                  name: profile.name,
+                  image: profile.image,
+                  emailVerified: false,
+                },
+                data: profile,
+              };
+            },
           },
         }
       : {},
@@ -313,18 +338,142 @@ function publicFacebookImageUrl(value?: string | null) {
   return null;
 }
 
+type FacebookPublicProfile = {
+  id?: string;
+  first_name?: string;
+  last_name?: string;
+  middle_name?: string;
+  name?: string;
+  name_format?: string;
+  short_name?: string;
+  picture?: { data?: { url?: string } };
+};
+
+function trimFacebookName(value?: string | null) {
+  const name = value?.trim() ?? "";
+  return name && name.length <= 80 ? name : null;
+}
+
+function displayNameFromFacebook(profile: {
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}) {
+  return (
+    trimFacebookName(profile.name) ??
+    trimFacebookName(
+      [profile.firstName, profile.lastName].filter(Boolean).join(" "),
+    )
+  );
+}
+
+async function readFacebookPublicProfile(
+  accessToken: string,
+  clientId: string,
+  clientSecret: string,
+) {
+  const debugUrl = new URL("https://graph.facebook.com/debug_token");
+  debugUrl.searchParams.set("input_token", accessToken);
+  debugUrl.searchParams.set("access_token", `${clientId}|${clientSecret}`);
+  const debugResponse = await fetch(debugUrl);
+  if (!debugResponse.ok) return null;
+  const debugBody = (await debugResponse.json()) as {
+    data?: { is_valid?: boolean; app_id?: string; user_id?: string };
+  };
+  const debug = debugBody.data;
+  if (debug?.is_valid !== true || debug.app_id !== clientId || !debug.user_id) {
+    return null;
+  }
+
+  const meUrl = new URL("https://graph.facebook.com/me");
+  meUrl.searchParams.set("fields", FACEBOOK_GRAPH_FIELDS.join(","));
+  const meResponse = await fetch(meUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!meResponse.ok) return null;
+  const profile = (await meResponse.json()) as FacebookPublicProfile;
+  if (!profile.id || profile.id !== debug.user_id) return null;
+
+  return {
+    id: profile.id,
+    firstName: trimFacebookName(profile.first_name),
+    lastName: trimFacebookName(profile.last_name),
+    middleName: trimFacebookName(profile.middle_name),
+    shortName: trimFacebookName(profile.short_name),
+    name: displayNameFromFacebook({
+      name: profile.name,
+      firstName: profile.first_name,
+      lastName: profile.last_name,
+    }),
+    image: publicFacebookImageUrl(profile.picture?.data?.url) ?? undefined,
+  };
+}
+
+export async function fillEmptyProfileFromFacebook(
+  userId: string,
+  current: { name?: string | null; image?: string | null },
+  facebook: FacebookConnection,
+) {
+  if (!facebook.connected) {
+    return { name: current.name ?? null, image: current.image ?? null };
+  }
+
+  const nextName = current.name?.trim()
+    ? current.name
+    : displayNameFromFacebook(facebook);
+  const nextImage = current.image?.trim()
+    ? current.image
+    : facebook.imageUrl;
+  if (nextName === current.name && nextImage === (current.image ?? null)) {
+    return { name: current.name ?? null, image: current.image ?? null };
+  }
+
+  const db = await getDb();
+  await db
+    .update(authUsers)
+    .set({
+      ...(nextName && nextName !== current.name ? { name: nextName } : {}),
+      ...(nextImage && nextImage !== current.image ? { image: nextImage } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(authUsers.id, userId));
+
+  return { name: nextName ?? current.name ?? null, image: nextImage ?? null };
+}
+
 function publicFacebookConnection(
   available: boolean,
   connected: boolean,
-  name?: string | null,
-  imageUrl?: string | null,
+  profile?: {
+    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    middleName?: string | null;
+    shortName?: string | null;
+    image?: string | null;
+  },
 ): FacebookConnection {
-  const displayName = name?.trim() || null;
+  if (!connected) {
+    return {
+      available,
+      connected: false,
+      name: null,
+      firstName: null,
+      lastName: null,
+      middleName: null,
+      shortName: null,
+      imageUrl: null,
+    };
+  }
   return {
     available,
-    connected,
-    name: connected && displayName && displayName.length <= 80 ? displayName : null,
-    imageUrl: connected ? publicFacebookImageUrl(imageUrl) : null,
+    connected: true,
+    name: displayNameFromFacebook(profile ?? {}),
+    firstName: trimFacebookName(profile?.firstName),
+    lastName: trimFacebookName(profile?.lastName),
+    middleName: trimFacebookName(profile?.middleName),
+    shortName: trimFacebookName(profile?.shortName),
+    imageUrl: publicFacebookImageUrl(profile?.image),
   };
 }
 
@@ -350,26 +499,45 @@ export async function getFacebookConnection(
         ? requestOrHeaders
         : requestFromHeaders(headerBag);
     const auth = await getMarketplaceAuth(request);
-    const accounts = await auth.api.listUserAccounts({ headers: headerBag });
-    const facebook = accounts.find((account) => account.providerId === "facebook");
+    const session = await auth.api.getSession({ headers: headerBag });
+    if (!session?.user) {
+      return publicFacebookConnection(true, false);
+    }
+
+    const db = await getDb();
+    const [facebook] = await db
+      .select({
+        accessToken: authAccounts.accessToken,
+      })
+      .from(authAccounts)
+      .where(
+        and(
+          eq(authAccounts.userId, session.user.id),
+          eq(authAccounts.providerId, "facebook"),
+        ),
+      )
+      .limit(1);
     if (!facebook) {
       return publicFacebookConnection(true, false);
     }
 
-    let name: string | null = null;
-    let imageUrl: string | null = null;
-    try {
-      const info = await auth.api.accountInfo({
-        query: { providerId: "facebook" },
-        headers: headerBag,
-      });
-      name = info?.user?.name ?? null;
-      imageUrl = info?.user?.image ?? null;
-    } catch {
-      // The Better Auth account row is enough to show Connected.
+    let profile:
+      | Awaited<ReturnType<typeof readFacebookPublicProfile>>
+      | null = null;
+    const env = await readWorkerEnv();
+    const clientId = env.FACEBOOK_CLIENT_ID?.trim();
+    const clientSecret = env.FACEBOOK_CLIENT_SECRET?.trim();
+    if (facebook.accessToken && clientId && clientSecret) {
+      profile = await readFacebookPublicProfile(
+        facebook.accessToken,
+        clientId,
+        clientSecret,
+      );
     }
 
-    return publicFacebookConnection(true, true, name, imageUrl);
+    const connection = publicFacebookConnection(true, true, profile ?? undefined);
+    await fillEmptyProfileFromFacebook(session.user.id, session.user, connection);
+    return connection;
   } catch {
     return publicFacebookConnection(true, false);
   }

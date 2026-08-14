@@ -99,6 +99,10 @@ const emptyFacebookConnection: FacebookConnection = {
   available: false,
   connected: false,
   name: null,
+  firstName: null,
+  lastName: null,
+  middleName: null,
+  shortName: null,
   imageUrl: null,
 };
 
@@ -493,8 +497,13 @@ export default function AccountSettings({
           <h3 id="facebook-connect-title">Facebook</h3>
           <p className="portal-lead">
             Connect your Facebook account to prove you control it. This uses
-            consumer Facebook Login and public_profile only. It does not sign
-            you in, import listings, or make you Facebook verified.
+            consumer Facebook Login and public_profile only, and reads every
+            field Facebook returns on that permission: name, first name, last
+            name, middle name, short name, and a large profile photo. If those
+            marketplace fields are empty, they are filled from Facebook.
+            Address, date of birth, phone, and email are not available from
+            Facebook Login. It does not sign you in, import listings, or make
+            you Facebook verified.
           </p>
         </div>
         <div className="portal-settings-row">
@@ -520,6 +529,17 @@ export default function AccountSettings({
                   ? facebookConnection.name
                   : "Facebook account connected."}
               </p>
+              {facebookConnection.firstName || facebookConnection.lastName ? (
+                <p>
+                  {[
+                    facebookConnection.firstName,
+                    facebookConnection.middleName,
+                    facebookConnection.lastName,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                </p>
+              ) : null}
               <button
                 className="button button-ghost"
                 type="button"
@@ -560,8 +580,9 @@ export default function AccountSettings({
           <h3 id="social-media-title">Social media</h3>
           <p className="portal-lead">
             Instagram and TikTok still use typed profile URLs. A resolving URL
-            is link-health evidence only. It does not verify identity or count
-            as a provider-connected Facebook account.
+            is link-health evidence only. Those connectors cannot supply a
+            photo, name, address, date of birth, or phone. It does not verify
+            identity or count as a provider-connected Facebook account.
           </p>
         </div>
         {socialDrafts.map((account, index) => (

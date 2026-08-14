@@ -150,6 +150,63 @@ async function getJson(worker, env, path, cookieJar) {
   });
 }
 
+function installFacebookProfileStub({ id, name, pictureUrl }) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input instanceof Request
+            ? input.url
+            : String(input);
+    const parsed = new URL(url);
+    if (parsed.hostname === "graph.facebook.com" && parsed.pathname === "/debug_token") {
+      return new Response(
+        JSON.stringify({
+          data: {
+            is_valid: true,
+            app_id: FACEBOOK_CLIENT_ID,
+            user_id: id,
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (parsed.hostname === "graph.facebook.com" && parsed.pathname === "/me") {
+      const fields = (parsed.searchParams.get("fields") ?? "").split(",");
+      assert.equal(fields.includes("email"), false);
+      assert.equal(fields.includes("birthday"), false);
+      assert.equal(fields.includes("location"), false);
+      assert.ok(fields.includes("id"));
+      assert.ok(fields.includes("first_name"));
+      assert.ok(fields.includes("last_name"));
+      assert.ok(fields.includes("middle_name"));
+      assert.ok(fields.includes("name"));
+      assert.ok(fields.includes("short_name"));
+      assert.ok(fields.some((field) => field.startsWith("picture")));
+      return new Response(
+        JSON.stringify({
+          id,
+          name,
+          first_name: name.split(" ")[0] ?? name,
+          last_name: name.split(" ").slice(1).join(" ") || null,
+          middle_name: null,
+          short_name: name.split(" ")[0] ?? name,
+          name_format: "{first} {last}",
+          picture: { data: { url: pictureUrl, width: 720, height: 720, is_silhouette: false } },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return originalFetch.call(globalThis, input, init);
+  };
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
+
 function installSocialFetchStub() {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
@@ -474,6 +531,87 @@ test("Disconnect removes a linked Facebook account without deleting the marketpl
     ),
     0,
   );
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("Facebook Graph fields stay public_profile only and never request email", async () => {
+  const authSource = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
+  assert.match(authSource, /FACEBOOK_GRAPH_FIELDS = \[/);
+  assert.match(authSource, /first_name/);
+  assert.match(authSource, /last_name/);
+  assert.match(authSource, /picture\.type\(large\)/);
+  assert.match(authSource, /getUserInfo:/);
+  assert.doesNotMatch(authSource, /fields:\s*\[[^\]]*email/);
+  assert.doesNotMatch(authSource, /user_birthday|user_location|user_hometown|user_mobile_phone/);
+  assert.match(authSource, /fillEmptyProfileFromFacebook/);
+});
+
+test("empty profile photo is filled from Facebook without replacing a typed name", async () => {
+  const photoUrl = "https://graph.facebook.com/v24.0/me/picture";
+  const restoreFetch = installFacebookProfileStub({
+    id: "facebook-app-scoped-id",
+    name: "Peter Franco",
+    pictureUrl: photoUrl,
+  });
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("facebook-fill-empty-photo");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+  try {
+    const signup = await signUp(worker, env, {
+      name: "Keep This Name",
+      email: "keep-name@example.com",
+      password: USER_PASSWORD,
+    });
+    const { user } = await signup.json();
+    await signIn(worker, env, cookieJar, {
+      email: "keep-name@example.com",
+      password: USER_PASSWORD,
+    });
+
+    const now = Date.now();
+    d1.__sqlite
+      .prepare(
+        `INSERT INTO auth_accounts (
+          id, user_id, account_id, provider_id, access_token, refresh_token,
+          access_token_expires_at, refresh_token_expires_at, scope, id_token,
+          password, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "facebook-fill-row",
+        user.id,
+        "facebook-app-scoped-id",
+        "facebook",
+        FACEBOOK_ACCESS_TOKEN,
+        null,
+        now + 60_000,
+        null,
+        "public_profile",
+        null,
+        null,
+        now,
+        now,
+      );
+
+    const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
+    assert.equal(profile.status, 200);
+    const body = await profile.json();
+    assert.equal(body.facebookConnection.connected, true);
+    assert.equal(body.facebookConnection.name, "Peter Franco");
+    assert.equal(body.facebookConnection.firstName, "Peter");
+    assert.equal(body.facebookConnection.lastName, "Franco");
+    assert.equal(body.facebookConnection.imageUrl, photoUrl);
+    assertNoSecrets(body);
+
+    const row = d1.__sqlite
+      .prepare("select name, image from auth_users where id = ?")
+      .get(user.id);
+    assert.equal(row.name, "Keep This Name");
+    assert.equal(row.image, photoUrl);
   } finally {
     restoreFetch();
   }

@@ -5,6 +5,7 @@ export type PortalUser = {
   id: string;
   name: string;
   email: string;
+  image?: string | null;
 };
 
 export type PortalSection =
@@ -54,6 +55,16 @@ export default function PortalShell({
         </Link>
         <div className="portal-topbar-actions">
           <p className="portal-user-chip">
+            {user.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                className="portal-user-photo"
+                src={user.image}
+                alt=""
+                width={32}
+                height={32}
+              />
+            ) : null}
             <span className="portal-user-name">{user.name}</span>
             <span className="portal-user-email">{user.email}</span>
           </p>

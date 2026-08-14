@@ -9,6 +9,10 @@ export type FacebookConnection = {
   available: boolean;
   connected: boolean;
   name: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  middleName: string | null;
+  shortName: string | null;
   imageUrl: string | null;
 };
 

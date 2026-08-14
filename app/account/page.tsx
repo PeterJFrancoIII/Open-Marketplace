@@ -5,6 +5,7 @@ import { listings, profiles } from "../../db/schema";
 import { parsePaymentDestinationsJson } from "../../lib/payment-destinations";
 import { parseSocialAccountsJson } from "../../lib/profile-settings";
 import {
+  fillEmptyProfileFromFacebook,
   getFacebookConnection,
   getMarketplaceAdminEmails,
   requireMarketplaceSession,
@@ -49,6 +50,12 @@ export default async function AccountPage() {
       .limit(1),
   ]);
   const profile = profileRows[0];
+  const facebookConnection = await getFacebookConnection(requestHeaders);
+  const identity = await fillEmptyProfileFromFacebook(
+    session.user.id,
+    session.user,
+    facebookConnection,
+  );
 
   const counts = {
     active: 0,
@@ -65,8 +72,9 @@ export default async function AccountPage() {
     <PortalShell
       user={{
         id: session.user.id,
-        name: session.user.name,
+        name: identity.name ?? session.user.name,
         email: session.user.email,
+        image: identity.image,
       }}
       activeSection="overview"
       isAdmin={isAdmin}
@@ -135,9 +143,23 @@ export default async function AccountPage() {
       <section className="portal-panel" aria-labelledby="account-profile-title">
         <h2 id="account-profile-title">Profile</h2>
         <dl className="portal-definition-list">
+          {identity.image ? (
+            <div>
+              <dt>Photo</dt>
+              <dd>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={identity.image}
+                  alt=""
+                  width={48}
+                  height={48}
+                />
+              </dd>
+            </div>
+          ) : null}
           <div>
             <dt>Name</dt>
-            <dd>{session.user.name}</dd>
+            <dd>{identity.name ?? session.user.name}</dd>
           </div>
           <div>
             <dt>Email</dt>
@@ -147,13 +169,13 @@ export default async function AccountPage() {
       </section>
 
       <AccountSettings
-        initialName={session.user.name}
+        initialName={identity.name ?? session.user.name}
         email={session.user.email}
         initialSocialAccounts={parseSocialAccountsJson(profile?.socialAccountsJson)}
         initialPaymentDestinations={parsePaymentDestinationsJson(
           profile?.paymentDestinationsJson,
         )}
-        initialFacebookConnection={await getFacebookConnection(requestHeaders)}
+        initialFacebookConnection={facebookConnection}
       />
     </PortalShell>
   );

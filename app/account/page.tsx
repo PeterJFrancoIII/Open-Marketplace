@@ -1,5 +1,4 @@
 import { count, desc, eq } from "drizzle-orm";
-import Link from "next/link";
 import { headers } from "next/headers";
 import { getDb } from "../../db";
 import { listings, profiles } from "../../db/schema";
@@ -131,12 +130,12 @@ export default async function AccountPage() {
                 {recent.map((listing) => (
                   <tr key={listing.id}>
                     <td>
-                      <Link
+                      <a
                         className="portal-listing-link"
                         href={`/?listing=${encodeURIComponent(listing.id)}`}
                       >
                         {listing.title}
-                      </Link>
+                      </a>
                     </td>
                     <td>{listing.status}</td>
                     <td>{formatPrice(listing.priceCents)}</td>

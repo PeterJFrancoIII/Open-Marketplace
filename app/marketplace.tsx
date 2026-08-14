@@ -696,8 +696,10 @@ export default function Marketplace() {
         const response = await fetch("/api/listings?limit=80", {
           headers: { accept: "application/json" },
         });
-        if (!response.ok) return;
-        const payload = (await response.json()) as { listings?: RegistryRow[] };
+        if (!response.ok && !listingId) return;
+        const payload = response.ok
+          ? ((await response.json()) as { listings?: RegistryRow[] })
+          : { listings: [] };
         if (cancelled) return;
         let registryListings = (payload.listings ?? []).map(normalizeRegistryListing);
         if (

@@ -6,6 +6,7 @@ type PaymentRailDefinition = {
   id: PaymentRail;
   label: string;
   hint: string;
+  connectUrl: string;
   asset: PaymentDestination["asset"];
   networkId: string | null;
   networkLabel: string | null;
@@ -17,6 +18,7 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
     id: "paypal",
     label: "PayPal",
     hint: "PayPal email or paypal.me / paypal.com link",
+    connectUrl: "https://www.paypal.com",
     asset: null,
     networkId: null,
     networkLabel: null,
@@ -26,6 +28,7 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
     id: "venmo",
     label: "Venmo",
     hint: "Venmo username or venmo.com link",
+    connectUrl: "https://venmo.com",
     asset: null,
     networkId: null,
     networkLabel: null,
@@ -35,6 +38,7 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
     id: "cashapp",
     label: "Cash App",
     hint: "Cashtag or cash.app link",
+    connectUrl: "https://cash.app",
     asset: null,
     networkId: null,
     networkLabel: null,
@@ -44,6 +48,7 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
     id: "zelle",
     label: "Zelle",
     hint: "Public Zelle email or U.S. mobile number. Type it yourself; this is not filled from your login.",
+    connectUrl: "https://www.zellepay.com",
     asset: null,
     networkId: null,
     networkLabel: null,
@@ -53,6 +58,7 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
     id: "apple_cash",
     label: "Apple Cash",
     hint: "Public Apple Cash email or U.S. mobile number. Type it yourself; this is not filled from your login.",
+    connectUrl: "https://www.apple.com/apple-cash/",
     asset: null,
     networkId: null,
     networkLabel: null,
@@ -62,6 +68,7 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
     id: "bitcoin_mainnet",
     label: "Bitcoin",
     hint: "Public Bitcoin Mainnet address only. Never paste a private key.",
+    connectUrl: "https://bitcoin.org",
     asset: "BTC",
     networkId: "bitcoin_mainnet",
     networkLabel: "Bitcoin Mainnet",
@@ -71,6 +78,7 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
     id: "ethereum_mainnet",
     label: "Ethereum",
     hint: "Public Ethereum Mainnet address (0x…). Never paste a private key.",
+    connectUrl: "https://ethereum.org",
     asset: "ETH",
     networkId: "ethereum_mainnet",
     networkLabel: "Ethereum Mainnet",
@@ -80,6 +88,7 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
     id: "usdt_ethereum",
     label: "Tether (USDT)",
     hint: "Public USDT address on Ethereum Mainnet (ERC-20). Never paste a private key.",
+    connectUrl: "https://tether.to",
     asset: "USDT",
     networkId: "usdt_ethereum",
     networkLabel: "Ethereum Mainnet (ERC-20)",
@@ -89,6 +98,7 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
     id: "bnb_bsc",
     label: "BNB",
     hint: "Public BNB address on BNB Smart Chain Mainnet. Never paste a private key.",
+    connectUrl: "https://www.bnbchain.org",
     asset: "BNB",
     networkId: "bnb_bsc",
     networkLabel: "BNB Smart Chain Mainnet",
@@ -98,6 +108,7 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
     id: "usdc_ethereum",
     label: "USDC",
     hint: "Public USDC address on Ethereum Mainnet (ERC-20). Never paste a private key.",
+    connectUrl: "https://www.circle.com/usdc",
     asset: "USDC",
     networkId: "usdc_ethereum",
     networkLabel: "Ethereum Mainnet (ERC-20)",
@@ -274,9 +285,16 @@ export function parsePaymentDestinationsJson(
   if (!value) return [];
   try {
     const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
+    const list = Array.isArray(parsed)
+      ? parsed
+      : parsed &&
+          typeof parsed === "object" &&
+          Array.isArray((parsed as { destinations?: unknown }).destinations)
+        ? (parsed as { destinations: unknown[] }).destinations
+        : [];
+    if (!Array.isArray(list)) return [];
     const byRail = new Map<PaymentRail, PaymentDestination>();
-    for (const entry of parsed) {
+    for (const entry of list) {
       if (!entry || typeof entry !== "object") continue;
       const railId = resolveRailId((entry as { rail?: unknown }).rail);
       const destination = (entry as { destination?: unknown }).destination;

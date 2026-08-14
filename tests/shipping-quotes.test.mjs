@@ -392,3 +392,65 @@ test("published listings expose pay-to rails and hide the package trailer", asyn
     SAMPLE_PACKAGE,
   );
 });
+
+test("shipping broker connectors stay on official hosts and persist without a new column", async () => {
+  const [settings, brokers] = await Promise.all([
+    readFile(new URL("../app/account/account-settings.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/shipping-brokers.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(settings, /Shipping connectors/);
+  assert.match(settings, /Connect \{broker\.label\}/);
+  assert.match(brokers, /https:\/\/www\.pirateship\.com\/ship/);
+  assert.match(brokers, /https:\/\/www\.parcelmonkey\.com\/shipping-calculator/);
+  assert.match(brokers, /https:\/\/www\.usps\.com\/ship\//);
+  assert.doesNotMatch(brokers, /pirateship-api|CreateShipment|easypost|shippo/i);
+
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("shipping-broker-profile");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+
+  await signUp(worker, env, {
+    name: "Broker Owner",
+    email: "broker-owner@example.com",
+    password: USER_PASSWORD,
+  });
+  await signIn(worker, env, cookieJar, {
+    email: "broker-owner@example.com",
+    password: USER_PASSWORD,
+  });
+
+  const savedPayments = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [{ rail: "paypal", destination: "seller@example.com" }],
+  });
+  assert.equal(savedPayments.status, 200);
+
+  const savedBrokers = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    shippingBrokers: [
+      { id: "pirate_ship", account: null },
+      { id: "parcel_monkey", account: "shipper@example.com" },
+    ],
+  });
+  assert.equal(savedBrokers.status, 200);
+  const savedBody = await savedBrokers.json();
+  assert.equal(savedBody.paymentDestinations[0].rail, "paypal");
+  assert.deepEqual(
+    savedBody.shippingBrokers.map((item) => item.id),
+    ["pirate_ship", "parcel_monkey"],
+  );
+  assert.equal(savedBody.shippingBrokers[1].account, "shipper@example.com");
+  assertNoSecrets(savedBody);
+
+  const stored = d1.__sqlite
+    .prepare("select payment_destinations_json from profiles where id is not null")
+    .get();
+  const bundle = JSON.parse(stored.payment_destinations_json);
+  assert.equal(bundle.v, 2);
+  assert.equal(bundle.destinations[0].rail, "paypal");
+
+  const rejected = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    shippingBrokers: [{ id: "parcel_monkey", account: PARCEL_TOKEN }],
+  });
+  assert.equal(rejected.status, 400);
+});

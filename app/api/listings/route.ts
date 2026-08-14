@@ -13,6 +13,11 @@ import { getDb } from "../../../db";
 import { listings, profiles } from "../../../db/schema";
 import { getMarketplaceSession } from "../../../lib/auth";
 import { parsePaymentDestinationsJson } from "../../../lib/payment-destinations";
+import {
+  attachPackageToDescription,
+  normalizeShippingPackage,
+  stripPackageFromDescription,
+} from "../../../lib/shipping-package";
 import { parseSocialAccountsJson } from "../../../lib/profile-settings";
 import { checkSocialAccounts } from "../../../lib/social-health";
 import type { SocialProof } from "../../../lib/types";
@@ -102,20 +107,28 @@ export async function GET(request: Request) {
       .limit(limit);
 
     return Response.json({
-      listings: rows.map(({ listing, profile }) => ({
-        ...listing,
-        sellerName: profile?.displayName ?? listing.sellerName,
-        socialProofsJson:
-          profile?.socialAccountsJson ?? listing.socialProofsJson,
-        paymentDestinationsJson: JSON.stringify(
-          parsePaymentDestinationsJson(profile?.paymentDestinationsJson),
-        ),
-        itemsSold: profile?.itemsSold ?? 0,
-        sellerRating: profile?.sellerRating ?? null,
-        sellerRatingCount: profile?.sellerRatingCount ?? 0,
-        buyerRating: profile?.buyerRating ?? null,
-        buyerRatingCount: profile?.buyerRatingCount ?? 0,
-      })),
+      listings: rows.map(({ listing, profile }) => {
+        const unpacked = stripPackageFromDescription(listing.description);
+        return {
+          ...listing,
+          description: unpacked.description,
+          shippingPackage: unpacked.package,
+          sellerName: profile?.displayName ?? listing.sellerName,
+          socialProofsJson:
+            profile?.socialAccountsJson ?? listing.socialProofsJson,
+          paymentDestinationsJson: JSON.stringify(
+            parsePaymentDestinationsJson(profile?.paymentDestinationsJson),
+          ),
+          paymentDestinations: parsePaymentDestinationsJson(
+            profile?.paymentDestinationsJson,
+          ),
+          itemsSold: profile?.itemsSold ?? 0,
+          sellerRating: profile?.sellerRating ?? null,
+          sellerRatingCount: profile?.sellerRatingCount ?? 0,
+          buyerRating: profile?.buyerRating ?? null,
+          buyerRatingCount: profile?.buyerRatingCount ?? 0,
+        };
+      }),
     });
   } catch (error) {
     return registryError(error);
@@ -176,6 +189,17 @@ export async function POST(request: Request) {
     if (!deliveryMethods.includes(delivery as (typeof deliveryMethods)[number])) {
       return Response.json({ error: "Unsupported fulfillment method." }, { status: 400 });
     }
+    let shippingPackage = null;
+    if (delivery === "Shipping" || delivery === "Both") {
+      if (payload.shippingPackage != null) {
+        const normalizedPackage = normalizeShippingPackage(payload.shippingPackage);
+        if (!normalizedPackage.ok) {
+          return Response.json({ error: normalizedPackage.error }, { status: 400 });
+        }
+        shippingPackage = normalizedPackage.package;
+      }
+    }
+    const storedDescription = attachPackageToDescription(description, shippingPackage);
     const policyText = `${title} ${description}`.toLowerCase();
     if (restrictedTerms.some((term) => policyText.includes(term))) {
       return Response.json({ error: "This instance does not accept restricted items." }, { status: 422 });
@@ -243,7 +267,7 @@ export async function POST(request: Request) {
       .values({
         id,
         title,
-        description,
+        description: storedDescription,
         priceCents,
         currency: payload.currency === "USD" ? "USD" : "USD",
         condition,
@@ -260,10 +284,16 @@ export async function POST(request: Request) {
       })
       .returning();
 
+    const unpacked = stripPackageFromDescription(listing.description);
     return Response.json(
       {
         listing: {
           ...listing,
+          description: unpacked.description,
+          shippingPackage: unpacked.package,
+          paymentDestinations: parsePaymentDestinationsJson(
+            existingProfile?.paymentDestinationsJson,
+          ),
           itemsSold: 0,
           sellerRating: null,
           sellerRatingCount: 0,

@@ -14,6 +14,8 @@ export function buildPagesPreviewDeploymentConfigs({
   adminEmails,
   facebookClientId,
   facebookClientSecret,
+  parcelMonkeyUserId,
+  parcelMonkeyApiToken,
 }) {
   const previewEnvVars = {
     RELEASE_MODE: { type: "plain_text", value: "demo" },
@@ -33,6 +35,18 @@ export function buildPagesPreviewDeploymentConfigs({
     previewEnvVars.FACEBOOK_CLIENT_SECRET = {
       type: "secret_text",
       value: facebookSecret,
+    };
+  }
+  const parcelUser = parcelMonkeyUserId?.trim();
+  const parcelToken = parcelMonkeyApiToken?.trim();
+  if (parcelUser && parcelToken) {
+    previewEnvVars.PARCEL_MONKEY_USER_ID = {
+      type: "plain_text",
+      value: parcelUser,
+    };
+    previewEnvVars.PARCEL_MONKEY_API_TOKEN = {
+      type: "secret_text",
+      value: parcelToken,
     };
   }
 
@@ -91,6 +105,8 @@ async function configurePagesPreview() {
     adminEmails: ADMIN_EMAILS,
     facebookClientId: process.env.FACEBOOK_CLIENT_ID,
     facebookClientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+    parcelMonkeyUserId: process.env.PARCEL_MONKEY_USER_ID,
+    parcelMonkeyApiToken: process.env.PARCEL_MONKEY_API_TOKEN,
   });
 
   const response = await fetch(

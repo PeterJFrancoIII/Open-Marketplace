@@ -277,6 +277,8 @@ export async function getMarketplaceAuth(request?: Request) {
             await persistFacebookProfileLink(
               account.userId,
               user?.name ?? "Facebook",
+              undefined,
+              account.accessToken,
             );
           },
         },
@@ -291,6 +293,8 @@ export async function getMarketplaceAuth(request?: Request) {
             await persistFacebookProfileLink(
               account.userId,
               user?.name ?? "Facebook",
+              undefined,
+              account.accessToken,
             );
           },
         },
@@ -496,6 +500,7 @@ export async function persistFacebookProfileLink(
   userId: string,
   displayName: string,
   knownLink?: string | null,
+  accessToken?: string | null,
 ) {
   const db = await getDb();
   const [facebook] = await db
@@ -514,12 +519,12 @@ export async function persistFacebookProfileLink(
     .where(eq(profiles.id, userId))
     .limit(1);
   const current = parseSocialAccountsJson(profileRow?.socialAccountsJson);
+  const token = accessToken || facebook?.accessToken;
   const fetchedLink =
-    knownLink ??
-    (facebook
-      ? await readStoredFacebookProfileUrl(facebook.accessToken)
-      : "");
-  const next = facebook
+    publicFacebookProfileUrl(knownLink) ||
+    (token ? await readStoredFacebookProfileUrl(token) : "");
+  const connected = Boolean(facebook || token);
+  const next = connected
     ? publicFacebookProfileUrl(fetchedLink)
       ? upsertConnectedFacebookAccount(current, displayName, fetchedLink)
       : current

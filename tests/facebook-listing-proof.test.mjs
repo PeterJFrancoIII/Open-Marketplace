@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   connectedFacebookSocialProof,
+  expandSocialProfileInput,
   mergeConnectedFacebookProof,
+  publicFacebookProfileUrl,
 } from "../lib/facebook-listing-proof.ts";
 import { checkSocialAccount } from "../lib/social-health.ts";
 
@@ -59,6 +61,31 @@ test("connected Facebook replaces typed Facebook and keeps other profiles", () =
   assert.equal(withOfficialLink[0].url, "https://www.facebook.com/openmarketplace.seller");
   assert.equal(withOfficialLink[0].metricsSource, "oauth");
   assert.doesNotMatch(withOfficialLink[0].url, /typed\.seller/);
+});
+
+test("social connect completes a username into the official profile URL", () => {
+  assert.equal(
+    expandSocialProfileInput("facebook", "openmarketplace.seller"),
+    "https://www.facebook.com/openmarketplace.seller",
+  );
+  assert.equal(
+    expandSocialProfileInput("instagram", "openmarketplace.test"),
+    "https://www.instagram.com/openmarketplace.test",
+  );
+  assert.equal(
+    expandSocialProfileInput("tiktok", "@openmarketplace"),
+    "https://www.tiktok.com/@openmarketplace",
+  );
+  assert.equal(
+    expandSocialProfileInput("facebook", "facebook.com/openmarketplace.seller"),
+    "https://facebook.com/openmarketplace.seller",
+  );
+  assert.equal(
+    publicFacebookProfileUrl("https://www.facebook.com/profile.php?id=61500000000000"),
+    "https://www.facebook.com/profile.php?id=61500000000000",
+  );
+  assert.equal(publicFacebookProfileUrl("https://facebook.com"), "");
+  assert.equal(expandSocialProfileInput("facebook", ""), "");
 });
 
 test("listings without a Facebook Login row keep typed social only", () => {

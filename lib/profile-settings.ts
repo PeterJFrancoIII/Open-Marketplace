@@ -1,9 +1,12 @@
 import {
+  expandSocialProfileInput,
   isConnectedFacebookProof,
   publicFacebookProfileUrl,
 } from "./facebook-listing-proof";
 import { checkSocialAccounts } from "./social-health";
 import type { SocialProof } from "./types";
+
+export { expandSocialProfileInput };
 
 const SOCIAL_PROVIDERS = ["facebook", "instagram", "tiktok"] as const;
 type SupportedSocialProvider = (typeof SOCIAL_PROVIDERS)[number];
@@ -90,7 +93,7 @@ export async function normalizeSocialAccountsForProfile(input: unknown): Promise
       asSelfReported({
         ...(entry as SocialProof),
         provider,
-        url: url.trim(),
+        url: expandSocialProfileInput(provider, url),
       }),
     );
   }

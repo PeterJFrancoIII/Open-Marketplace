@@ -750,6 +750,8 @@ test("account settings source offers Connect, Connected, and Disconnect only", a
   assert.match(source, /Open Facebook profile/);
   assert.match(source, /Save Facebook profile/);
   assert.match(source, /Connect social media/);
+  assert.match(source, /expandSocialProfileInput/);
+  assert.match(source, /fills the public profile URL|fills this URL/);
   assert.doesNotMatch(source, /government verified/i);
   assert.doesNotMatch(source, /user_friends|Marketplace Platform/i);
   assert.match(source, /does not sign[\s\S]*you in[\s\S]*import listings[\s\S]*Facebook verified/);

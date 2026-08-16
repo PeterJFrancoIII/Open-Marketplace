@@ -27,6 +27,37 @@ function hostMatches(hostname: string, suffix: string) {
   return hostname === suffix || hostname.endsWith(`.${suffix}`);
 }
 
+const SOCIAL_HANDLE = /^@?[A-Za-z0-9._]{2,64}$/;
+
+export function expandSocialProfileInput(
+  provider: "facebook" | "instagram" | "tiktok",
+  value: string,
+): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  if (/^https?:\/\//i.test(trimmed) || /[\/]/.test(trimmed) || /\.(com|net|org)\b/i.test(trimmed)) {
+    const candidate = /^https?:\/\//i.test(trimmed)
+      ? trimmed
+      : `https://${trimmed.replace(/^\/+/, "")}`;
+    try {
+      const url = new URL(candidate);
+      if (provider === "facebook") {
+        return publicFacebookProfileUrl(url.toString()) || url.toString();
+      }
+      return url.toString();
+    } catch {
+      return trimmed;
+    }
+  }
+
+  if (!SOCIAL_HANDLE.test(trimmed)) return trimmed;
+  const handle = trimmed.replace(/^@/, "");
+  if (provider === "tiktok") return `https://www.tiktok.com/@${handle}`;
+  if (provider === "instagram") return `https://www.instagram.com/${handle}`;
+  return `https://www.facebook.com/${handle}`;
+}
+
 export function publicFacebookProfileUrl(value?: string | null): string {
   if (!value?.trim()) return "";
   try {
@@ -38,6 +69,14 @@ export function publicFacebookProfileUrl(value?: string | null): string {
       return "";
     }
     const first = url.pathname.split("/").filter(Boolean)[0]?.toLowerCase() ?? "";
+    const queryId = url.searchParams.get("id")?.trim() ?? "";
+    if (first === "profile.php" || (!first && queryId)) {
+      if (!queryId || !/^[A-Za-z0-9.]+$/.test(queryId)) return "";
+      url.hash = "";
+      url.pathname = "/profile.php";
+      url.search = `?id=${queryId}`;
+      return url.toString();
+    }
     if (!first || BLOCKED_FACEBOOK_PATHS.has(first)) return "";
     url.hash = "";
     return url.toString();

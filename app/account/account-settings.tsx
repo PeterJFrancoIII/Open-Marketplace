@@ -21,6 +21,7 @@ import {
   type ShippingBrokerId,
 } from "../../lib/shipping-brokers";
 import { FACEBOOK_CONNECT_SCOPES } from "../../lib/facebook-listing-proof";
+import { expandSocialProfileInput } from "../../lib/profile-settings";
 import type {
   FacebookConnection,
   PayPalConnection,
@@ -227,6 +228,22 @@ export default function AccountSettings({
   );
   const visibleError = error || oauthError;
 
+  function fillSocialProfileUrl(
+    provider: SocialDraft["provider"],
+    raw: string,
+  ) {
+    const expanded = expandSocialProfileInput(provider, raw);
+    if (provider === "facebook") {
+      setFacebookProfileDraft(expanded);
+    }
+    setSocialDrafts((current) =>
+      current.map((row) =>
+        row.provider === provider ? { ...row, url: expanded } : row,
+      ),
+    );
+    return expanded;
+  }
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (!params.get("error")) return;
@@ -355,10 +372,12 @@ export default function AccountSettings({
           socialAccounts: socialDrafts
             .map((account) => ({
               ...account,
-              url:
+              url: expandSocialProfileInput(
+                account.provider,
                 account.provider === "facebook"
                   ? facebookProfileDraft.trim() || account.url.trim()
                   : account.url.trim(),
+              ),
             }))
             .filter((account) => account.url)
             .map((account) => ({
@@ -556,13 +575,13 @@ export default function AccountSettings({
               .filter((account) => account.provider !== "facebook" && account.url.trim())
               .map((account) => ({
                 provider: account.provider,
-                url: account.url.trim(),
+                url: expandSocialProfileInput(account.provider, account.url),
                 connectionLabel: "followers" as const,
                 metricsSource: "self-reported" as const,
               })),
             {
               provider: "facebook" as const,
-              url: facebookProfileDraft.trim(),
+              url: expandSocialProfileInput("facebook", facebookProfileDraft),
             },
           ],
         },
@@ -803,13 +822,13 @@ export default function AccountSettings({
         <div>
           <h3 id="facebook-connect-title">Facebook</h3>
           <p className="portal-lead">
-            Connect your Facebook account to prove you control it. This uses
-            consumer Facebook Login with public_profile and user_link. Facebook
-            may return a public name, profile photo, and a profile link so
-            listings can open that Facebook account. Those values stay on the
-            Facebook connector and do not replace your Open Marketplace email
-            or name. It does not sign you in, import listings, or make you
-            Facebook verified.
+            Connect Facebook to prove you control the account. This uses
+            consumer Facebook Login with public_profile and user_link.
+            Facebook Login fills the public profile URL when Facebook sends
+            one. You can also type a username and we complete the facebook.com
+            URL. Those values stay on the Facebook connector and do not
+            replace your Open Marketplace email or name. It does not sign you in,
+            import listings, or make you Facebook verified.
           </p>
         </div>
         <div className="portal-settings-row">
@@ -851,14 +870,16 @@ export default function AccountSettings({
                       ),
                     );
                   }}
-                  placeholder="https://facebook.com/your-profile"
+                  placeholder="username or https://facebook.com/your-profile"
+                  onBlur={() =>
+                    fillSocialProfileUrl("facebook", facebookProfileDraft)
+                  }
                   disabled={pending !== null || Boolean(facebookConnection.profileUrl)}
                 />
               </label>
               <p className="portal-settings-note">
-                Listings open this Facebook profile so people can see the
-                account exists. Facebook Login does not always return a public
-                profile link.
+                Connect Facebook fills this URL when Facebook sends a profile
+                link. Otherwise type your username and we complete the URL.
               </p>
               <div className="portal-connector-actions">
                 {facebookConnection.profileUrl || facebookProfileDraft ? (
@@ -927,10 +948,10 @@ export default function AccountSettings({
         <div>
           <h3 id="social-media-title">Social media</h3>
           <p className="portal-lead">
-            Paste the public Facebook, Instagram, and TikTok pages buyers
-            should open from your listings. Connect Facebook Login above to
-            mark Facebook as Connected. A resolving URL is not a verified
-            identity.
+            Type a username or paste a profile URL. Connect social media
+            completes the official Facebook, Instagram, or TikTok URL and
+            puts it on your listings. Connect Facebook Login above to mark
+            Facebook as Connected. A resolving URL is not a verified identity.
           </p>
         </div>
         {socialDrafts.map((account, index) => (
@@ -972,8 +993,16 @@ export default function AccountSettings({
                 }}
                 placeholder={
                   account.provider === "tiktok"
-                    ? "https://tiktok.com/@your-profile"
-                    : `https://${account.provider}.com/your-profile`
+                    ? "@username or https://tiktok.com/@your-profile"
+                    : `username or https://${account.provider}.com/your-profile`
+                }
+                onBlur={() =>
+                  fillSocialProfileUrl(
+                    account.provider,
+                    account.provider === "facebook"
+                      ? facebookProfileDraft
+                      : account.url,
+                  )
                 }
                 disabled={
                   pending !== null ||
@@ -984,8 +1013,8 @@ export default function AccountSettings({
             </label>
             {account.provider === "facebook" ? (
               <p className="portal-settings-note">
-                Buyers click Facebook on your listing to open this page. Use
-                your profile, not facebook.com.
+                Connect Facebook fills this URL when Facebook sends a profile
+                link. A username is completed into facebook.com/your-profile.
               </p>
             ) : null}
             <div className="portal-settings-inline">

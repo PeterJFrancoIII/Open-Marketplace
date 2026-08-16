@@ -124,7 +124,6 @@ export default async function AccountPage() {
                   <th scope="col">Status</th>
                   <th scope="col">Price</th>
                   <th scope="col">Updated</th>
-                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -141,14 +140,6 @@ export default async function AccountPage() {
                     <td>{listing.status}</td>
                     <td>{formatPrice(listing.priceCents)}</td>
                     <td>{listing.updatedAt}</td>
-                    <td>
-                      <a
-                        className="portal-edit-link"
-                        href={`/?listing=${encodeURIComponent(listing.id)}&edit=1`}
-                      >
-                        Edit
-                      </a>
-                    </td>
                   </tr>
                 ))}
               </tbody>

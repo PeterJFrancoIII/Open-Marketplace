@@ -149,18 +149,6 @@ async function putJson(worker, env, path, cookieJar, body) {
   });
 }
 
-async function patchJson(worker, env, path, cookieJar, body) {
-  return workerFetch(worker, env, path, {
-    method: "PATCH",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-    },
-    cookieJar,
-    body: JSON.stringify(body),
-  });
-}
-
 async function getJson(worker, env, path, cookieJar) {
   return workerFetch(worker, env, path, {
     headers: { accept: "application/json" },
@@ -449,13 +437,7 @@ test("account totals cover every owned listing and preserve cent prices", async 
   assert.match(html, /\$0\.10/);
   assert.match(html, /href=["']\/\?listing=owned-active-51["']/);
   assert.match(html, /href=["']\/\?listing=owned-sold["']/);
-  assert.match(html, /href=["']\/\?listing=owned-active-51(?:&amp;|&|\\u0026)edit=1["']/);
-  assert.match(html, />Edit</);
-  const listingHrefs = [...html.matchAll(/href=["']\/\?listing=([^"']+)["']/g)].map(
-    (match) => match[1],
-  );
-  assert.equal(listingHrefs.filter((href) => !href.includes("edit")).length, 55);
-  assert.equal(listingHrefs.filter((href) => href.includes("edit")).length, 55);
+  assert.equal([...html.matchAll(/href=["']\/\?listing=/g)].length, 55);
   assert.doesNotMatch(html, /Other seller item/i);
   assert.doesNotMatch(html, /listing=other-seller/);
 });
@@ -701,99 +683,6 @@ test("GET listings returns published rows and opens an id lookup", async () => {
   assert.equal(one.status, 200);
   const oneBody = await one.json();
   assert.equal(oneBody.listings?.[0]?.id, publishedBody.listing.id);
-});
-
-test("listing owners can edit their listing and other accounts cannot", async () => {
-  const d1 = createMemoryD1();
-  applyMarketplaceMigrations(d1);
-  const worker = await loadWorker("live-listing-edit");
-  const env = createTestEnv(d1);
-  const ownerJar = new Map();
-  const otherJar = new Map();
-
-  await signUp(worker, env, {
-    name: "Owner Editor",
-    email: "owner-editor@example.com",
-    password: USER_PASSWORD,
-  });
-  await signIn(worker, env, ownerJar, {
-    email: "owner-editor@example.com",
-    password: USER_PASSWORD,
-  });
-  const published = await postJson(worker, env, "/api/listings", ownerJar, {
-    title: "Editable lamp",
-    description: "Original description.",
-    priceCents: 1800,
-    condition: "Good",
-    category: "Furniture",
-    locationLabel: "Brooklyn, NY",
-    format: "Fixed price",
-    delivery: "Pickup",
-    socialProofs: [],
-    imageManifest: [],
-  });
-  assert.equal(published.status, 201);
-  const publishedBody = await published.json();
-
-  await signUp(worker, env, {
-    name: "Other Editor",
-    email: "other-editor@example.com",
-    password: USER_PASSWORD,
-  });
-  await signIn(worker, env, otherJar, {
-    email: "other-editor@example.com",
-    password: USER_PASSWORD,
-  });
-  const stolen = await patchJson(worker, env, "/api/listings", otherJar, {
-    id: publishedBody.listing.id,
-    title: "Stolen lamp",
-    description: "Should stay with the owner.",
-    priceCents: 9999,
-    condition: "New",
-    category: "Electronics",
-    locationLabel: "Queens, NY",
-    format: "Auction",
-    delivery: "Shipping",
-    sellerId: "attacker-id",
-    sellerName: "Attacker",
-    socialProofs: [],
-    imageManifest: [],
-  });
-  assert.equal(stolen.status, 403);
-
-  const edited = await patchJson(worker, env, "/api/listings", ownerJar, {
-    id: publishedBody.listing.id,
-    title: "Edited lamp",
-    description: "Updated description.",
-    priceCents: 2400,
-    condition: "Like new",
-    category: "Home",
-    locationLabel: "Haverford, PA",
-    format: "Fixed price",
-    delivery: "Both",
-    sellerId: "attacker-id",
-    sellerName: "Attacker",
-    socialProofs: [],
-    imageManifest: [],
-  });
-  assert.equal(edited.status, 200);
-  const editedBody = await edited.json();
-  assert.equal(editedBody.listing.id, publishedBody.listing.id);
-  assert.equal(editedBody.listing.title, "Edited lamp");
-  assert.equal(editedBody.listing.description, "Updated description.");
-  assert.equal(editedBody.listing.priceCents, 2400);
-  assert.equal(editedBody.listing.sellerId, publishedBody.listing.sellerId);
-  assert.equal(editedBody.listing.sellerName, "Owner Editor");
-  assert.notEqual(editedBody.listing.sellerId, "attacker-id");
-
-  const listed = await getJson(
-    worker,
-    env,
-    `/api/listings?id=${publishedBody.listing.id}&limit=1`,
-  );
-  const listedBody = await listed.json();
-  assert.equal(listedBody.listings?.[0]?.title, "Edited lamp");
-  assert.equal(listedBody.listings?.[0]?.priceCents, 2400);
 });
 
 test("unsigned profile settings requests are rejected", async () => {

@@ -58,110 +58,6 @@ function optionalPriceCents(value: string | null) {
   return Number(value);
 }
 
-function parseListingWrite(payload: Record<string, unknown>) {
-  const title = typeof payload.title === "string" ? payload.title.trim() : "";
-  const description =
-    typeof payload.description === "string" ? payload.description.trim() : "";
-  const category = typeof payload.category === "string" ? payload.category.trim() : "";
-  const locationLabel =
-    typeof payload.locationLabel === "string" ? payload.locationLabel.trim() : "";
-  const priceCents = Number(payload.priceCents);
-  const condition = String(payload.condition ?? "");
-  const format = String(payload.format ?? "");
-  const delivery = String(payload.delivery ?? "");
-  const incomingSocialProofs = Array.isArray(payload.socialProofs)
-    ? (payload.socialProofs as SocialProof[])
-        .filter((account) => typeof account?.url === "string" && account.url.trim())
-        .slice(0, 3)
-        .map((account) => ({ ...account, metricsSource: "self-reported" as const }))
-    : [];
-  const imageManifest = Array.isArray(payload.imageManifest)
-    ? payload.imageManifest.slice(0, 6)
-    : [];
-
-  if (!title || title.length > 90) {
-    return {
-      ok: false as const,
-      response: Response.json({ error: "A title of 1–90 characters is required." }, { status: 400 }),
-    };
-  }
-  if (!description || description.length > 1400) {
-    return {
-      ok: false as const,
-      response: Response.json({ error: "A description of 1–1400 characters is required." }, { status: 400 }),
-    };
-  }
-  if (!Number.isSafeInteger(priceCents) || priceCents < 0 || priceCents > 1_000_000_000) {
-    return {
-      ok: false as const,
-      response: Response.json({ error: "A valid price is required." }, { status: 400 }),
-    };
-  }
-  if (!category || !locationLabel) {
-    return {
-      ok: false as const,
-      response: Response.json({ error: "Category, area, and seller identity are required." }, { status: 400 }),
-    };
-  }
-  if (!conditions.includes(condition as (typeof conditions)[number])) {
-    return {
-      ok: false as const,
-      response: Response.json({ error: "Unsupported condition." }, { status: 400 }),
-    };
-  }
-  if (!formats.includes(format as (typeof formats)[number])) {
-    return {
-      ok: false as const,
-      response: Response.json({ error: "Unsupported buying format." }, { status: 400 }),
-    };
-  }
-  if (!deliveryMethods.includes(delivery as (typeof deliveryMethods)[number])) {
-    return {
-      ok: false as const,
-      response: Response.json({ error: "Unsupported fulfillment method." }, { status: 400 }),
-    };
-  }
-  let shippingPackage = null;
-  if (delivery === "Shipping" || delivery === "Both") {
-    if (payload.shippingPackage != null) {
-      const normalizedPackage = normalizeShippingPackage(payload.shippingPackage);
-      if (!normalizedPackage.ok) {
-        return {
-          ok: false as const,
-          response: Response.json({ error: normalizedPackage.error }, { status: 400 }),
-        };
-      }
-      shippingPackage = normalizedPackage.package;
-    }
-  }
-  const policyText = `${title} ${description}`.toLowerCase();
-  if (restrictedTerms.some((term) => policyText.includes(term))) {
-    return {
-      ok: false as const,
-      response: Response.json(
-        { error: "This instance does not accept restricted items." },
-        { status: 422 },
-      ),
-    };
-  }
-
-  return {
-    ok: true as const,
-    title,
-    description,
-    category,
-    locationLabel,
-    priceCents,
-    condition,
-    format,
-    delivery,
-    incomingSocialProofs,
-    imageManifest,
-    shippingPackage,
-    endingAt: typeof payload.endingAt === "string" ? payload.endingAt : null,
-  };
-}
-
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
@@ -268,27 +164,63 @@ export async function POST(request: Request) {
 
     const sellerId = session.user.id;
     const sellerName = session.user.name;
-    if (!sellerId || !sellerName) {
+    const payload = (await request.json()) as Record<string, unknown>;
+    const title = typeof payload.title === "string" ? payload.title.trim() : "";
+    const description =
+      typeof payload.description === "string" ? payload.description.trim() : "";
+    const category = typeof payload.category === "string" ? payload.category.trim() : "";
+    const locationLabel =
+      typeof payload.locationLabel === "string" ? payload.locationLabel.trim() : "";
+    const priceCents = Number(payload.priceCents);
+    const condition = String(payload.condition ?? "");
+    const format = String(payload.format ?? "");
+    const delivery = String(payload.delivery ?? "");
+    const incomingSocialProofs = Array.isArray(payload.socialProofs)
+      ? (payload.socialProofs as SocialProof[])
+          .filter((account) => typeof account?.url === "string" && account.url.trim())
+          .slice(0, 3)
+          .map((account) => ({ ...account, metricsSource: "self-reported" as const }))
+      : [];
+    const imageManifest = Array.isArray(payload.imageManifest)
+      ? payload.imageManifest.slice(0, 6)
+      : [];
+
+    if (!title || title.length > 90) {
+      return Response.json({ error: "A title of 1–90 characters is required." }, { status: 400 });
+    }
+    if (!description || description.length > 1400) {
+      return Response.json({ error: "A description of 1–1400 characters is required." }, { status: 400 });
+    }
+    if (!Number.isSafeInteger(priceCents) || priceCents < 0 || priceCents > 1_000_000_000) {
+      return Response.json({ error: "A valid price is required." }, { status: 400 });
+    }
+    if (!category || !locationLabel || !sellerId || !sellerName) {
       return Response.json({ error: "Category, area, and seller identity are required." }, { status: 400 });
     }
-    const payload = (await request.json()) as Record<string, unknown>;
-    const parsed = parseListingWrite(payload);
-    if (!parsed.ok) return parsed.response;
-    const {
-      title,
-      description,
-      category,
-      locationLabel,
-      priceCents,
-      condition,
-      format,
-      delivery,
-      incomingSocialProofs,
-      imageManifest,
-      shippingPackage,
-      endingAt,
-    } = parsed;
+    if (!conditions.includes(condition as (typeof conditions)[number])) {
+      return Response.json({ error: "Unsupported condition." }, { status: 400 });
+    }
+    if (!formats.includes(format as (typeof formats)[number])) {
+      return Response.json({ error: "Unsupported buying format." }, { status: 400 });
+    }
+    if (!deliveryMethods.includes(delivery as (typeof deliveryMethods)[number])) {
+      return Response.json({ error: "Unsupported fulfillment method." }, { status: 400 });
+    }
+    let shippingPackage = null;
+    if (delivery === "Shipping" || delivery === "Both") {
+      if (payload.shippingPackage != null) {
+        const normalizedPackage = normalizeShippingPackage(payload.shippingPackage);
+        if (!normalizedPackage.ok) {
+          return Response.json({ error: normalizedPackage.error }, { status: 400 });
+        }
+        shippingPackage = normalizedPackage.package;
+      }
+    }
     const storedDescription = attachPackageToDescription(description, shippingPackage);
+    const policyText = `${title} ${description}`.toLowerCase();
+    if (restrictedTerms.some((term) => policyText.includes(term))) {
+      return Response.json({ error: "This instance does not accept restricted items." }, { status: 422 });
+    }
 
     const db = await getDb();
     const [existingProfile] = await db
@@ -365,7 +297,7 @@ export async function POST(request: Request) {
         sellerName,
         socialProofsJson: JSON.stringify(checkedSocialProofs),
         imageManifestJson: JSON.stringify(imageManifest),
-        endingAt,
+        endingAt: typeof payload.endingAt === "string" ? payload.endingAt : null,
       })
       .returning();
 
@@ -388,131 +320,6 @@ export async function POST(request: Request) {
       },
       { status: 201 },
     );
-  } catch (error) {
-    return registryError(error);
-  }
-}
-
-export async function PATCH(request: Request) {
-  try {
-    const session = await getMarketplaceSession(request);
-    if (!session) {
-      return Response.json(
-        { error: "Log in to edit this listing." },
-        { status: 401 },
-      );
-    }
-
-    const sellerId = session.user.id;
-    const sellerName = session.user.name;
-    const payload = (await request.json()) as Record<string, unknown>;
-    const listingId =
-      typeof payload.id === "string" ? payload.id.trim().slice(0, 80) : "";
-    if (!listingId) {
-      return Response.json({ error: "A listing id is required." }, { status: 400 });
-    }
-
-    const parsed = parseListingWrite(payload);
-    if (!parsed.ok) return parsed.response;
-    const {
-      title,
-      description,
-      category,
-      locationLabel,
-      priceCents,
-      condition,
-      format,
-      delivery,
-      incomingSocialProofs,
-      imageManifest,
-      shippingPackage,
-      endingAt,
-    } = parsed;
-    const storedDescription = attachPackageToDescription(description, shippingPackage);
-
-    const db = await getDb();
-    const [existing] = await db
-      .select()
-      .from(listings)
-      .where(eq(listings.id, listingId))
-      .limit(1);
-    if (!existing) {
-      return Response.json({ error: "Listing not found." }, { status: 404 });
-    }
-    if (existing.sellerId !== sellerId) {
-      return Response.json({ error: "Only the listing owner can edit this item." }, { status: 403 });
-    }
-
-    const [existingProfile] = await db
-      .select()
-      .from(profiles)
-      .where(eq(profiles.id, sellerId))
-      .limit(1);
-    const storedSocialProofs = parseSocialAccountsJson(
-      existingProfile?.socialAccountsJson,
-    );
-    const socialSource = incomingSocialProofs.length
-      ? incomingSocialProofs
-      : storedSocialProofs;
-    const checkedSocialProofs = socialSource.length
-      ? (await checkSocialAccounts(socialSource)).map((account) => ({
-          ...account,
-          metricsSource: "self-reported" as const,
-        }))
-      : [];
-    const brokenAccount = checkedSocialProofs.find(
-      (account) => account.health === "dead" || account.health === "invalid",
-    );
-    if (brokenAccount) {
-      return Response.json(
-        {
-          error: "Fix or remove the unavailable social profile before saving.",
-          account: brokenAccount,
-        },
-        { status: 422 },
-      );
-    }
-
-    const updatedAt = new Date().toISOString();
-    const [listing] = await db
-      .update(listings)
-      .set({
-        title,
-        description: storedDescription,
-        priceCents,
-        condition,
-        category,
-        locationLabel,
-        format,
-        delivery,
-        sellerName,
-        socialProofsJson: JSON.stringify(checkedSocialProofs),
-        imageManifestJson: JSON.stringify(imageManifest),
-        endingAt,
-        updatedAt,
-      })
-      .where(and(eq(listings.id, listingId), eq(listings.sellerId, sellerId)))
-      .returning();
-    if (!listing) {
-      return Response.json({ error: "Listing not found." }, { status: 404 });
-    }
-
-    const unpacked = stripPackageFromDescription(listing.description);
-    return Response.json({
-      listing: {
-        ...listing,
-        description: unpacked.description,
-        shippingPackage: unpacked.package,
-        paymentDestinations: parsePaymentDestinationsJson(
-          existingProfile?.paymentDestinationsJson,
-        ),
-        itemsSold: existingProfile?.itemsSold ?? 0,
-        sellerRating: existingProfile?.sellerRating ?? null,
-        sellerRatingCount: existingProfile?.sellerRatingCount ?? 0,
-        buyerRating: existingProfile?.buyerRating ?? null,
-        buyerRatingCount: existingProfile?.buyerRatingCount ?? 0,
-      },
-    });
   } catch (error) {
     return registryError(error);
   }

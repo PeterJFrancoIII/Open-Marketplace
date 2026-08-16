@@ -26,8 +26,5 @@ test("pay-to links stay on public rails and official hosts", async () => {
   assert.match(marketplace, /does not send, hold, escrow, convert, or protect/);
   assert.match(marketplace, /paymentLinksFor/);
   assert.match(marketplace, /URLSearchParams\(window\.location\.search\)\.get\("listing"\)/);
-  assert.match(marketplace, /get\("edit"\)/);
-  assert.match(marketplace, /Edit listing/);
-  assert.match(marketplace, /method: editingListingId \? "PATCH" : "POST"/);
   assert.doesNotMatch(marketplace, /coinbase|binance|kraken/i);
 });

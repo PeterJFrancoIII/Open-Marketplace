@@ -101,46 +101,6 @@ test("rejects unauthenticated listing publication", async () => {
   });
 });
 
-test("rejects unauthenticated listing edits", async () => {
-  const worker = await loadWorker("listing-edit-boundary");
-  const response = await worker.fetch(
-    new Request("http://localhost/api/listings", {
-      method: "PATCH",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        id: "owned-active-1",
-        title: "Unauthorized edit",
-        description: "Should not edit without a session.",
-        priceCents: 1000,
-        condition: "Good",
-        category: "Furniture",
-        locationLabel: "Brooklyn, NY",
-        format: "Fixed price",
-        delivery: "Pickup",
-        sellerId: "browser-supplied",
-        socialProofs: [],
-        imageManifest: [],
-      }),
-    }),
-    {
-      ASSETS: emptyAssets,
-      DB: undefined,
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
-
-  assert.equal(response.status, 401);
-  assert.deepEqual(await response.json(), {
-    error: "Log in to edit this listing.",
-  });
-});
-
 test("keeps public listing reads available without a session", async () => {
   const worker = await loadWorker("listing-read-boundary");
   const response = await worker.fetch(

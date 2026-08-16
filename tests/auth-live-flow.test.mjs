@@ -636,6 +636,55 @@ test("listing POST ignores browser-supplied seller identity", async () => {
   assert.notEqual(body.listing.sellerName, "Attacker Name");
 });
 
+test("GET listings returns published rows and opens an id lookup", async () => {
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("live-listing-get");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+
+  await signUp(worker, env, {
+    name: "Visible Seller",
+    email: "visible-seller@example.com",
+    password: USER_PASSWORD,
+  });
+  await signIn(worker, env, cookieJar, {
+    email: "visible-seller@example.com",
+    password: USER_PASSWORD,
+  });
+
+  const published = await postJson(worker, env, "/api/listings", cookieJar, {
+    title: "Visible lamp",
+    description: "Should appear on the public registry.",
+    priceCents: 1800,
+    condition: "Good",
+    category: "Furniture",
+    locationLabel: "Brooklyn, NY",
+    format: "Fixed price",
+    delivery: "Pickup",
+    socialProofs: [],
+    imageManifest: [],
+  });
+  assert.equal(published.status, 201);
+  const publishedBody = await published.json();
+
+  const listed = await getJson(worker, env, "/api/listings?limit=80");
+  assert.equal(listed.status, 200);
+  const listedBody = await listed.json();
+  assert.equal(listedBody.listings?.length, 1);
+  assert.equal(listedBody.listings[0].id, publishedBody.listing.id);
+  assert.equal(listedBody.listings[0].title, "Visible lamp");
+
+  const one = await getJson(
+    worker,
+    env,
+    `/api/listings?id=${publishedBody.listing.id}&limit=1`,
+  );
+  assert.equal(one.status, 200);
+  const oneBody = await one.json();
+  assert.equal(oneBody.listings?.[0]?.id, publishedBody.listing.id);
+});
+
 test("unsigned profile settings requests are rejected", async () => {
   const d1 = createMemoryD1();
   applyMarketplaceMigrations(d1);

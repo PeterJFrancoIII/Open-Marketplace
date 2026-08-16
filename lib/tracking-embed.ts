@@ -1,8 +1,14 @@
-import { normalizeTrackingNumber } from "./sale-evidence.ts";
+import {
+  compactTracking,
+  detectTrackingCarrier,
+  normalizeTrackingNumber,
+  requireActualTrackingNumber,
+  type TrackingCarrier,
+} from "./tracking-number.ts";
 
 export const TRACKING_EMBED_SCRIPT = "https://www.17track.net/externalcall.js";
-
-export type TrackingCarrier = "ups" | "usps" | "fedex" | "dhl" | "unknown";
+export type { TrackingCarrier };
+export { requireActualTrackingNumber };
 
 export type SaleTrackingDetails = {
   number: string;
@@ -22,21 +28,6 @@ const OFFICIAL_HOSTS = new Set([
   "www.aftership.com",
   "t.17track.net",
 ]);
-
-function compactTracking(value: string) {
-  return value.replace(/[\s-]/g, "").toUpperCase();
-}
-
-function detectCarrier(compact: string): TrackingCarrier {
-  if (/^1Z[0-9A-Z]{16}$/.test(compact)) return "ups";
-  if (/^(94|93|92|95|91|90)[0-9]{18,22}$/.test(compact)) return "usps";
-  if (/^[A-Z]{2}[0-9]{9}[A-Z]{2}$/.test(compact)) return "usps";
-  if (/^96[0-9]{18}$/.test(compact) || /^[0-9]{15}$/.test(compact) || /^[0-9]{12}$/.test(compact)) {
-    return "fedex";
-  }
-  if (/^[0-9]{10}$/.test(compact)) return "dhl";
-  return "unknown";
-}
 
 function officialHref(carrier: TrackingCarrier, compact: string) {
   const encoded = encodeURIComponent(compact);
@@ -89,7 +80,7 @@ export function saleTrackingDetails(value: unknown): SaleTrackingDetails | null 
   }
   const compact = compactTracking(number);
   if (compact.length < 8) return null;
-  const carrier = detectCarrier(compact);
+  const carrier = detectTrackingCarrier(compact);
   const encoded = encodeURIComponent(compact);
   return {
     number,

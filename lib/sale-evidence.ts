@@ -1,8 +1,13 @@
 import { sanitizeImageManifest } from "./image-manifest.ts";
+import {
+  TRACKING_MAX,
+  TRACKING_MIN,
+  normalizeTrackingNumber,
+  requireActualTrackingNumber,
+} from "./tracking-number.ts";
 import type { MediaManifest } from "./types";
 
-export const TRACKING_MIN = 4;
-export const TRACKING_MAX = 80;
+export { TRACKING_MAX, TRACKING_MIN, normalizeTrackingNumber };
 
 const SALE_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -18,16 +23,12 @@ const RECEIPT_TYPES = new Set([...SALE_IMAGE_TYPES, "application/pdf"]);
 
 export type SaleEvidenceRole = "buyer" | "seller";
 
-export type SalePhotoKind = "paymentReceipt" | "receivedItem" | "receivedPackaging";
-
-export function normalizeTrackingNumber(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.replace(/\s+/g, " ").trim();
-  if (trimmed.length < TRACKING_MIN || trimmed.length > TRACKING_MAX) return null;
-  if (/https?:|javascript:|data:|<|>/i.test(trimmed)) return null;
-  if (!/^[A-Za-z0-9][A-Za-z0-9 -]*[A-Za-z0-9]$/.test(trimmed)) return null;
-  return trimmed;
-}
+export type SalePhotoKind =
+  | "paymentReceipt"
+  | "receivedItem"
+  | "receivedPackaging"
+  | "shippedItem"
+  | "shippedPackaging";
 
 export function sanitizeSalePhoto(
   value: unknown,
@@ -71,17 +72,22 @@ export function saleEvidenceMissing(
     paymentReceipt?: MediaManifest | null;
     receivedItem?: MediaManifest | null;
     receivedPackaging?: MediaManifest | null;
+    shippedItem?: MediaManifest | null;
+    shippedPackaging?: MediaManifest | null;
   },
 ): string | null {
   if (status === "pending") return null;
   if (role === "seller") {
-    if (!evidence.trackingNumber) {
-      return "Add the tracking number before marking In-Transfer or Complete.";
+    if (!requireActualTrackingNumber(evidence.trackingNumber)) {
+      return "Enter the actual UPS, USPS, FedEx, or DHL tracking number for this item.";
+    }
+    if (!evidence.shippedItem || !evidence.shippedPackaging) {
+      return "Upload a photo of the item and the shipping box before marking In-Transfer.";
     }
     return null;
   }
-  if (status === "in_transfer" && !evidence.paymentReceipt) {
-    return "Upload a copy of the payment receipt before marking In-Transfer.";
+  if (status === "in_transfer") {
+    return "Only the seller marks In-Transfer. Accept the shipping evidence instead.";
   }
   if (status === "complete") {
     if (!evidence.paymentReceipt) {

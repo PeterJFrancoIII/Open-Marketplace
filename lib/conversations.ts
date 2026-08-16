@@ -10,6 +10,8 @@ import {
   saleHistory,
 } from "../db/schema";
 import {
+  EVIDENCE_REQUEST_NOTE_MAX,
+  EVIDENCE_REQUEST_NOTE_MIN,
   MESSAGE_HOUR_LIMIT,
   MESSAGE_MAX_LENGTH,
   RATING_NOTE_MAX,
@@ -20,15 +22,17 @@ import {
 import { parsePaymentDestinationsJson } from "./payment-destinations";
 import { paypalPayHref } from "./paypal-pay-link";
 import {
-  normalizeTrackingNumber,
   parseSalePhotoJson,
   saleEvidenceMissing,
   sanitizeSalePhoto,
   serializeSalePhoto,
 } from "./sale-evidence";
+import { requireActualTrackingNumber } from "./tracking-number";
 import { computeSocialCreditScore } from "./social-credit";
 
 export {
+  EVIDENCE_REQUEST_NOTE_MAX,
+  EVIDENCE_REQUEST_NOTE_MIN,
   MESSAGE_HOUR_LIMIT,
   MESSAGE_MAX_LENGTH,
   RATING_NOTE_MAX,
@@ -274,6 +278,8 @@ export type SaleEvidenceInput = {
   paymentReceipt?: unknown;
   receivedItem?: unknown;
   receivedPackaging?: unknown;
+  shippedItem?: unknown;
+  shippedPackaging?: unknown;
 };
 
 function evidenceFromRow(row: {
@@ -281,6 +287,10 @@ function evidenceFromRow(row: {
   paymentReceiptJson?: string | null;
   receivedItemJson?: string | null;
   receivedPackagingJson?: string | null;
+  shippedItemJson?: string | null;
+  shippedPackagingJson?: string | null;
+  evidenceRequestNote?: string | null;
+  evidenceRequestedAt?: string | null;
 }) {
   return {
     trackingNumber: row.trackingNumber?.trim() || null,
@@ -290,7 +300,22 @@ function evidenceFromRow(row: {
       row.receivedPackagingJson,
       "receivedPackaging",
     ),
+    shippedItem: parseSalePhotoJson(row.shippedItemJson, "shippedItem"),
+    shippedPackaging: parseSalePhotoJson(
+      row.shippedPackagingJson,
+      "shippedPackaging",
+    ),
+    evidenceRequestNote: row.evidenceRequestNote?.trim() || null,
+    evidenceRequestedAt: row.evidenceRequestedAt || null,
   };
+}
+
+function isShippingEvidencePatch(patch: Record<string, string | null>) {
+  return (
+    "trackingNumber" in patch ||
+    "shippedItemJson" in patch ||
+    "shippedPackagingJson" in patch
+  );
 }
 
 function readEvidencePatch(
@@ -309,22 +334,45 @@ function readEvidencePatch(
         error: "Only the seller can add the tracking number.",
       };
     }
-    const trackingNumber = normalizeTrackingNumber(input.trackingNumber);
+    const trackingNumber = requireActualTrackingNumber(input.trackingNumber);
     if (!trackingNumber) {
       return {
         ok: false,
         status: 400,
-        error: "Enter a public tracking number, or PICKUP if you handed it over.",
+        error: "Enter the actual UPS, USPS, FedEx, or DHL tracking number for this item.",
       };
     }
     patch.trackingNumber = trackingNumber;
   }
-  const photoFields = [
+  const sellerPhotoFields = [
+    ["shippedItem", "shippedItemJson", "item"],
+    ["shippedPackaging", "shippedPackagingJson", "shipping box"],
+  ] as const;
+  const buyerPhotoFields = [
     ["paymentReceipt", "paymentReceiptJson", "payment receipt"],
     ["receivedItem", "receivedItemJson", "product photo"],
     ["receivedPackaging", "receivedPackagingJson", "packaging photo"],
   ] as const;
-  for (const [key, column, label] of photoFields) {
+  for (const [key, column, label] of sellerPhotoFields) {
+    if (input[key] === undefined) continue;
+    if (role !== "seller") {
+      return {
+        ok: false,
+        status: 403,
+        error: `Only the seller can upload the ${label} photo.`,
+      };
+    }
+    const manifest = sanitizeSalePhoto(input[key], key);
+    if (!manifest) {
+      return {
+        ok: false,
+        status: 400,
+        error: `Upload a photo of the ${label}. Image bytes stay off this registry.`,
+      };
+    }
+    patch[column] = serializeSalePhoto(manifest);
+  }
+  for (const [key, column, label] of buyerPhotoFields) {
     if (input[key] === undefined) continue;
     if (role !== "buyer") {
       return {
@@ -386,9 +434,31 @@ export async function updateSaleEvidence(
       error: "Add a tracking number or a sale photo.",
     };
   }
+  const buyerAccepted =
+    partySaleStatus(row, "buyer") === "in_transfer" ||
+    partySaleStatus(row, "buyer") === "complete";
+  const requestOpen = Boolean(row.evidenceRequestedAt);
+  if (
+    role === "seller" &&
+    buyerAccepted &&
+    !requestOpen &&
+    isShippingEvidencePatch(parsed.patch)
+  ) {
+    return {
+      ok: false as const,
+      status: 409,
+      error:
+        "The buyer accepted this shipping evidence. They can ask for additional evidence if something is missing.",
+    };
+  }
+  const nextPatch: Record<string, string | null> = { ...parsed.patch };
+  if (role === "seller" && isShippingEvidencePatch(parsed.patch)) {
+    nextPatch.evidenceRequestNote = null;
+    nextPatch.evidenceRequestedAt = null;
+  }
   await db
     .update(conversations)
-    .set({ ...parsed.patch, updatedAt: new Date().toISOString() })
+    .set({ ...nextPatch, updatedAt: new Date().toISOString() })
     .where(eq(conversations.id, conversationId));
   return {
     ok: true as const,
@@ -446,6 +516,30 @@ export async function setSaleStatus(
   }
 
   const role = isBuyer ? "buyer" : "seller";
+  if (role === "buyer" && status === "in_transfer") {
+    return {
+      ok: false as const,
+      status: 403,
+      error: "Only the seller marks In-Transfer. Accept the shipping evidence instead.",
+    };
+  }
+  if (role === "buyer" && status === "complete") {
+    const sellerStatus = partySaleStatus(row, "seller");
+    if (sellerStatus !== "in_transfer" && sellerStatus !== "complete") {
+      return {
+        ok: false as const,
+        status: 409,
+        error: "Wait for the seller to submit In-Transfer shipping evidence.",
+      };
+    }
+    if (myStatus !== "in_transfer") {
+      return {
+        ok: false as const,
+        status: 400,
+        error: "Accept the shipping evidence before marking Complete.",
+      };
+    }
+  }
   const parsed = readEvidencePatch(role, evidence);
   if (!parsed.ok) {
     return { ok: false as const, status: parsed.status, error: parsed.error };
@@ -457,6 +551,10 @@ export async function setSaleStatus(
   const missing = saleEvidenceMissing(role, status, nextEvidence);
   if (missing) {
     return { ok: false as const, status: 400, error: missing };
+  }
+  if (role === "seller" && isShippingEvidencePatch(parsed.patch)) {
+    parsed.patch.evidenceRequestNote = null;
+    parsed.patch.evidenceRequestedAt = null;
   }
 
   if (myStatus === status && !Object.keys(parsed.patch).length) {
@@ -511,6 +609,144 @@ export async function setSaleStatus(
     }
   }
 
+  return {
+    ok: true as const,
+    conversation: await conversationPayload(db, conversationId, actor.id),
+  };
+}
+
+export async function acceptSaleEvidence(
+  db: Db,
+  actor: ConversationActor,
+  conversationId: string,
+  evidence?: SaleEvidenceInput,
+) {
+  const [row] = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  if (!row || (row.buyerId !== actor.id && row.sellerId !== actor.id)) {
+    return { ok: false as const, status: 404, error: "Conversation not found." };
+  }
+  if (row.buyerId !== actor.id) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: "Only the buyer can accept shipping evidence.",
+    };
+  }
+  if (conversationCompleted(row) || partySaleStatus(row, "buyer") === "complete") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "This sale is complete and the proof cannot be changed.",
+    };
+  }
+  const sellerStatus = partySaleStatus(row, "seller");
+  if (sellerStatus !== "in_transfer" && sellerStatus !== "complete") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "Wait for the seller to submit In-Transfer shipping evidence.",
+    };
+  }
+  const parsed = readEvidencePatch("buyer", evidence);
+  if (!parsed.ok) {
+    return { ok: false as const, status: parsed.status, error: parsed.error };
+  }
+  const nextEvidence = evidenceFromRow({
+    ...row,
+    ...parsed.patch,
+  });
+  const shippingMissing = saleEvidenceMissing("seller", "in_transfer", nextEvidence);
+  if (shippingMissing) {
+    return { ok: false as const, status: 409, error: shippingMissing };
+  }
+  if (!nextEvidence.paymentReceipt) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: "Upload a copy of the payment receipt before accepting this evidence.",
+    };
+  }
+
+  const now = new Date().toISOString();
+  await db
+    .update(conversations)
+    .set({
+      ...parsed.patch,
+      buyerSaleStatus: "in_transfer",
+      evidenceRequestNote: null,
+      evidenceRequestedAt: null,
+      updatedAt: now,
+    })
+    .where(eq(conversations.id, conversationId));
+  return {
+    ok: true as const,
+    conversation: await conversationPayload(db, conversationId, actor.id),
+  };
+}
+
+export async function requestAdditionalEvidence(
+  db: Db,
+  actor: ConversationActor,
+  conversationId: string,
+  rawNote: unknown,
+) {
+  const [row] = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  if (!row || (row.buyerId !== actor.id && row.sellerId !== actor.id)) {
+    return { ok: false as const, status: 404, error: "Conversation not found." };
+  }
+  if (row.buyerId !== actor.id) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: "Only the buyer can ask for additional shipping evidence.",
+    };
+  }
+  if (conversationCompleted(row) || partySaleStatus(row, "buyer") === "complete") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "This sale is complete and the proof cannot be changed.",
+    };
+  }
+  if (partySaleStatus(row, "seller") !== "in_transfer") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "Wait for the seller to submit In-Transfer shipping evidence.",
+    };
+  }
+  const note = typeof rawNote === "string" ? rawNote.trim() : "";
+  if (
+    note.length < EVIDENCE_REQUEST_NOTE_MIN ||
+    note.length > EVIDENCE_REQUEST_NOTE_MAX
+  ) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: `Explain what is missing in ${EVIDENCE_REQUEST_NOTE_MIN}–${EVIDENCE_REQUEST_NOTE_MAX} characters.`,
+    };
+  }
+  const now = new Date().toISOString();
+  await db
+    .update(conversations)
+    .set({
+      evidenceRequestNote: note,
+      evidenceRequestedAt: now,
+      buyerSaleStatus:
+        partySaleStatus(row, "buyer") === "in_transfer"
+          ? "pending"
+          : partySaleStatus(row, "buyer"),
+      updatedAt: now,
+    })
+    .where(eq(conversations.id, conversationId));
   return {
     ok: true as const,
     conversation: await conversationPayload(db, conversationId, actor.id),

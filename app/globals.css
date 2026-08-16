@@ -2103,6 +2103,27 @@ a.detail-social-account.social-connected:hover,
   margin-top: 6px;
 }
 
+.portal-shipping-evidence {
+  gap: 12px;
+}
+
+.portal-transfer-prompt {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.portal-evidence-request {
+  background: #fff6e8;
+  border: 1px solid #ead7b3;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 10px 12px;
+}
+
 .portal-tracking-updates {
   display: grid;
   gap: 8px;

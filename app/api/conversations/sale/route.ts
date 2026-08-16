@@ -37,6 +37,8 @@ export async function POST(request: Request) {
         paymentReceipt: payload.paymentReceipt,
         receivedItem: payload.receivedItem,
         receivedPackaging: payload.receivedPackaging,
+        shippedItem: payload.shippedItem,
+        shippedPackaging: payload.shippedPackaging,
       },
     );
     if (!result.ok) {

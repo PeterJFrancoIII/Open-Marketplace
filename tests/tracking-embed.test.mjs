@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   TRACKING_EMBED_SCRIPT,
   isOfficialTrackingHref,
+  requireActualTrackingNumber,
   saleTrackingDetails,
 } from "../lib/tracking-embed.ts";
 
@@ -35,6 +36,12 @@ test("sale tracking details detect official carriers and keep embeds on allowlis
   assert.equal(pickup?.kind, "pickup");
   assert.equal(pickup?.officialHref, null);
   assert.equal(pickup?.embedHref, null);
+  assert.equal(requireActualTrackingNumber("PICKUP"), null);
+  assert.equal(requireActualTrackingNumber("N/A"), null);
+  assert.equal(requireActualTrackingNumber("tracking"), null);
+  assert.equal(requireActualTrackingNumber("TBD"), null);
+  assert.equal(requireActualTrackingNumber("1Z999AA10123456784"), "1Z999AA10123456784");
+  assert.equal(requireActualTrackingNumber("9400111899223854123456"), "9400111899223854123456");
 
   assert.equal(saleTrackingDetails("https://evil.example/1Z999AA10123456784"), null);
   assert.equal(saleTrackingDetails("javascript:alert(1)"), null);

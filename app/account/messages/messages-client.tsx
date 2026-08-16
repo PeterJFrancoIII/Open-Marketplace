@@ -3,6 +3,8 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  EVIDENCE_REQUEST_NOTE_MAX,
+  EVIDENCE_REQUEST_NOTE_MIN,
   MESSAGE_MAX_LENGTH,
   RATING_NOTE_MAX,
   RATING_NOTE_MIN,
@@ -13,6 +15,7 @@ import {
 import { getLocalMediaUrl, storeMedia } from "../../../lib/media-store";
 import {
   TRACKING_EMBED_SCRIPT,
+  requireActualTrackingNumber,
   saleTrackingDetails,
 } from "../../../lib/tracking-embed";
 import type { MediaManifest } from "../../../lib/types";
@@ -51,6 +54,10 @@ type ConversationSummary = {
   paymentReceipt: MediaManifest | null;
   receivedItem: MediaManifest | null;
   receivedPackaging: MediaManifest | null;
+  shippedItem: MediaManifest | null;
+  shippedPackaging: MediaManifest | null;
+  evidenceRequestNote: string | null;
+  evidenceRequestedAt: string | null;
 };
 
 type ConversationMessage = {
@@ -237,6 +244,17 @@ function TrackingUpdates({ trackingNumber }: { trackingNumber: string }) {
   );
 }
 
+function sellerCanEditShipping(conversation: ConversationSummary) {
+  if (conversation.myRole !== "seller") return false;
+  if (conversation.completed || conversation.mySaleStatus === "complete") {
+    return false;
+  }
+  const buyerAccepted =
+    conversation.otherSaleStatus === "in_transfer" ||
+    conversation.otherSaleStatus === "complete";
+  return !buyerAccepted || Boolean(conversation.evidenceRequestedAt);
+}
+
 function formatWhen(value: string | null) {
   if (!value) return "";
   const date = new Date(value);
@@ -281,6 +299,13 @@ export default function MessagesClient({
   const [priceDirty, setPriceDirty] = useState(false);
   const [trackingDraft, setTrackingDraft] = useState("");
   const [trackingDirty, setTrackingDirty] = useState(false);
+  const [showTransferPrompt, setShowTransferPrompt] = useState(false);
+  const [evidenceRequestDraft, setEvidenceRequestDraft] = useState("");
+  const [shippedItemDraft, setShippedItemDraft] = useState<MediaManifest | null>(
+    null,
+  );
+  const [shippedPackagingDraft, setShippedPackagingDraft] =
+    useState<MediaManifest | null>(null);
   const trackingValue = trackingDirty
     ? trackingDraft
     : conversation?.trackingNumber ?? "";
@@ -343,6 +368,10 @@ export default function MessagesClient({
     setSelectedId(conversationId);
     setPriceDirty(false);
     setTrackingDirty(false);
+    setShowTransferPrompt(false);
+    setEvidenceRequestDraft("");
+    setShippedItemDraft(null);
+    setShippedPackagingDraft(null);
     router.replace(`/account/messages?id=${encodeURIComponent(conversationId)}`);
     void loadThread(conversationId);
   }
@@ -432,8 +461,14 @@ export default function MessagesClient({
   }
 
   async function uploadSalePhoto(
-    kind: "paymentReceipt" | "receivedItem" | "receivedPackaging",
+    kind:
+      | "paymentReceipt"
+      | "receivedItem"
+      | "receivedPackaging"
+      | "shippedItem"
+      | "shippedPackaging",
     file: File | undefined,
+    persist = true,
   ) {
     if (!file) return;
     setBusy("evidence");
@@ -444,7 +479,9 @@ export default function MessagesClient({
         setError("Could not store that photo on this device.");
         return;
       }
-      await persistSaleEvidence({ [kind]: manifest });
+      if (kind === "shippedItem") setShippedItemDraft(manifest);
+      if (kind === "shippedPackaging") setShippedPackagingDraft(manifest);
+      if (persist) await persistSaleEvidence({ [kind]: manifest });
     } catch {
       setError("Could not store that photo on this device.");
     } finally {
@@ -452,8 +489,11 @@ export default function MessagesClient({
     }
   }
 
-  async function setCurrentSaleStatus(status: SaleStatus) {
-    if (!selectedId) return;
+  async function setCurrentSaleStatus(
+    status: SaleStatus,
+    extra: Record<string, unknown> = {},
+  ) {
+    if (!selectedId) return false;
     setBusy("sale");
     setError("");
     try {
@@ -466,17 +506,84 @@ export default function MessagesClient({
         body: JSON.stringify({
           conversationId: selectedId,
           status,
-          ...(conversation?.myRole === "seller" && trackingValue.trim()
-            ? { trackingNumber: trackingValue }
-            : {}),
+          ...extra,
         }),
       });
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) {
         setError(payload.error ?? "Could not update this sale.");
-        return;
+        return false;
       }
       await Promise.all([loadThread(selectedId), loadInbox()]);
+      return true;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function chooseSaleStatus(status: SaleStatus) {
+    if (!conversation) return;
+    if (status === "in_transfer") {
+      if (conversation.myRole !== "seller") {
+        setError("Only the seller marks In-Transfer. Accept the shipping evidence instead.");
+        return;
+      }
+      if (conversation.completed || conversation.mySaleStatus === "complete") return;
+      setShowTransferPrompt(true);
+      return;
+    }
+    void setCurrentSaleStatus(status);
+  }
+
+  async function submitSellerInTransfer() {
+    if (!conversation) return;
+    const trackingNumber = requireActualTrackingNumber(trackingValue);
+    if (!trackingNumber) {
+      setError(
+        "Enter the actual UPS, USPS, FedEx, or DHL tracking number for this item.",
+      );
+      return;
+    }
+    const shippedItem = shippedItemDraft ?? conversation.shippedItem;
+    const shippedPackaging = shippedPackagingDraft ?? conversation.shippedPackaging;
+    if (!shippedItem || !shippedPackaging) {
+      setError(
+        "Upload a photo of the item and the shipping box before marking In-Transfer.",
+      );
+      return;
+    }
+    const ok = await setCurrentSaleStatus("in_transfer", {
+      trackingNumber,
+      shippedItem,
+      shippedPackaging,
+    });
+    if (ok) {
+      setShowTransferPrompt(false);
+      setShippedItemDraft(null);
+      setShippedPackagingDraft(null);
+    }
+  }
+
+  async function acceptCurrentEvidence() {
+    if (!selectedId) return;
+    setBusy("evidence");
+    setError("");
+    try {
+      await persistSaleEvidence({ action: "accept" });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function requestMoreEvidence() {
+    if (!selectedId) return;
+    setBusy("evidence");
+    setError("");
+    try {
+      await persistSaleEvidence({
+        action: "request",
+        note: evidenceRequestDraft,
+      });
     } finally {
       setBusy("");
     }
@@ -613,7 +720,10 @@ export default function MessagesClient({
                 <p className="portal-empty">This listing was sold in another conversation.</p>
               ) : (
                 <div className="portal-sale-status-row" role="group" aria-label="Your sale status">
-                  {SALE_STATUSES.map((status) => {
+                  {(conversation.myRole === "seller"
+                    ? SALE_STATUSES
+                    : SALE_STATUSES.filter((status) => status !== "in_transfer")
+                  ).map((status) => {
                     const locked =
                       conversation.completed ||
                       (conversation.mySaleStatus === "complete" && status !== "complete");
@@ -627,7 +737,7 @@ export default function MessagesClient({
                         }`}
                         type="button"
                         disabled={locked || busy === "sale"}
-                        onClick={() => void setCurrentSaleStatus(status)}
+                        onClick={() => chooseSaleStatus(status)}
                       >
                         {saleStatusLabel(status)}
                       </button>
@@ -635,6 +745,12 @@ export default function MessagesClient({
                   })}
                 </div>
               )}
+              {showTransferPrompt && conversation.myRole === "seller" ? (
+                <p className="portal-settings-note">
+                  Enter the actual tracking number and shipping photos in the
+                  shipping evidence window below.
+                </p>
+              ) : null}
               {conversation.completed ? (
                 <p>Both people marked Complete. The listing is archived and this record is locked.</p>
               ) : conversation.otherConfirmed ? (
@@ -644,20 +760,108 @@ export default function MessagesClient({
               ) : null}
             </div>
 
-            <div className="portal-sale-box">
-              <h3>Sale proof</h3>
+            <div className="portal-sale-box portal-shipping-evidence">
+              <h3>Shipping evidence</h3>
               <p className="portal-settings-note">
-                In-Transfer needs the seller tracking number and the buyer
-                payment receipt. Complete needs the buyer to upload a photo of
-                the product they received and a photo of the packaging. Photo
-                bytes stay off the public registry.
+                Only the seller marks In-Transfer. That prompt needs the actual
+                UPS, USPS, FedEx, or DHL tracking number plus a photo of the
+                item and the shipping box. Tracking updates stay in this same
+                window. Photo bytes stay off the public registry.
               </p>
-              {conversation.myRole === "seller" ? (
+              {conversation.evidenceRequestNote ? (
+                <p className="portal-evidence-request">
+                  Additional evidence requested
+                  {conversation.evidenceRequestedAt
+                    ? ` ${formatWhen(conversation.evidenceRequestedAt)}`
+                    : ""}
+                  : {conversation.evidenceRequestNote}
+                </p>
+              ) : null}
+              {conversation.myRole === "seller" && showTransferPrompt ? (
+                <form
+                  className="portal-form portal-transfer-prompt"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void submitSellerInTransfer();
+                  }}
+                >
+                  <p className="portal-settings-note">
+                    Enter the actual tracking number for this shipment. Stand-in
+                    values are rejected.
+                  </p>
+                  <label className="portal-field">
+                    <span>Tracking number</span>
+                    <input
+                      value={trackingValue}
+                      maxLength={80}
+                      required
+                      onChange={(event) => {
+                        setTrackingDirty(true);
+                        setTrackingDraft(event.target.value);
+                      }}
+                      placeholder="Actual UPS, USPS, FedEx, or DHL tracking number"
+                    />
+                  </label>
+                  <label className="portal-field">
+                    <span>Photo of the item</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        void uploadSalePhoto(
+                          "shippedItem",
+                          event.target.files?.[0],
+                          false,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="portal-field">
+                    <span>Photo of the shipping box</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        void uploadSalePhoto(
+                          "shippedPackaging",
+                          event.target.files?.[0],
+                          false,
+                        )
+                      }
+                    />
+                  </label>
+                  <div className="portal-sale-status-row">
+                    <button
+                      className="button button-primary"
+                      type="submit"
+                      disabled={busy === "sale" || busy === "evidence"}
+                    >
+                      {busy === "sale" ? "Saving…" : "Submit In-Transfer evidence"}
+                    </button>
+                    <button
+                      className="button button-ghost"
+                      type="button"
+                      onClick={() => setShowTransferPrompt(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : conversation.myRole === "seller" &&
+                sellerCanEditShipping(conversation) &&
+                (conversation.mySaleStatus === "in_transfer" ||
+                  Boolean(conversation.evidenceRequestedAt)) ? (
                 <form
                   className="portal-form"
                   onSubmit={(event) => {
                     event.preventDefault();
-                    void saveSaleEvidence({ trackingNumber: trackingValue });
+                    void saveSaleEvidence({
+                      trackingNumber: trackingValue,
+                      ...(shippedItemDraft ? { shippedItem: shippedItemDraft } : {}),
+                      ...(shippedPackagingDraft
+                        ? { shippedPackaging: shippedPackagingDraft }
+                        : {}),
+                    });
                   }}
                 >
                   <label className="portal-field">
@@ -669,15 +873,41 @@ export default function MessagesClient({
                         setTrackingDirty(true);
                         setTrackingDraft(event.target.value);
                       }}
-                      placeholder="Carrier tracking, or PICKUP"
+                      placeholder="Actual UPS, USPS, FedEx, or DHL tracking number"
+                    />
+                  </label>
+                  <label className="portal-field">
+                    <span>Photo of the item</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        void uploadSalePhoto(
+                          "shippedItem",
+                          event.target.files?.[0],
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="portal-field">
+                    <span>Photo of the shipping box</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        void uploadSalePhoto(
+                          "shippedPackaging",
+                          event.target.files?.[0],
+                        )
+                      }
                     />
                   </label>
                   <button
                     className="button button-primary"
                     type="submit"
-                    disabled={busy === "evidence" || conversation.mySaleStatus === "complete"}
+                    disabled={busy === "evidence"}
                   >
-                    {busy === "evidence" ? "Saving…" : "Save tracking number"}
+                    {busy === "evidence" ? "Saving…" : "Save shipping evidence"}
                   </button>
                 </form>
               ) : (
@@ -692,6 +922,71 @@ export default function MessagesClient({
                     : conversation.trackingNumber ?? ""
                 }
               />
+              <SaleProof
+                label="Item photo"
+                photo={shippedItemDraft ?? conversation.shippedItem}
+              />
+              <SaleProof
+                label="Shipping box"
+                photo={shippedPackagingDraft ?? conversation.shippedPackaging}
+              />
+              {conversation.myRole === "buyer" &&
+              !conversation.completed &&
+              conversation.mySaleStatus !== "complete" &&
+              (conversation.otherSaleStatus === "in_transfer" ||
+                conversation.otherSaleStatus === "complete") ? (
+                <div className="portal-form">
+                  {conversation.mySaleStatus !== "in_transfer" ? (
+                    <button
+                      className="button button-primary"
+                      type="button"
+                      disabled={busy === "evidence"}
+                      onClick={() => void acceptCurrentEvidence()}
+                    >
+                      {busy === "evidence" ? "Saving…" : "Accept Evidence"}
+                    </button>
+                  ) : (
+                    <p className="portal-settings-note">
+                      You accepted this shipping evidence.
+                    </p>
+                  )}
+                  {conversation.otherSaleStatus === "in_transfer" ? (
+                    <>
+                      <label className="portal-field">
+                        <span>
+                          Ask for additional evidence ({EVIDENCE_REQUEST_NOTE_MIN}–
+                          {EVIDENCE_REQUEST_NOTE_MAX} characters)
+                        </span>
+                        <textarea
+                          value={evidenceRequestDraft}
+                          minLength={EVIDENCE_REQUEST_NOTE_MIN}
+                          maxLength={EVIDENCE_REQUEST_NOTE_MAX}
+                          rows={3}
+                          onChange={(event) =>
+                            setEvidenceRequestDraft(event.target.value)
+                          }
+                        />
+                      </label>
+                      <button
+                        className="button button-ghost"
+                        type="button"
+                        disabled={busy === "evidence"}
+                        onClick={() => void requestMoreEvidence()}
+                      >
+                        Ask for additional evidence
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="portal-sale-box">
+              <h3>Delivery proof</h3>
+              <p className="portal-settings-note">
+                Accept Evidence needs the buyer payment receipt. Complete needs
+                a photo of the product received and a photo of the packaging.
+              </p>
               {conversation.myRole === "buyer" && conversation.mySaleStatus !== "complete" ? (
                 <div className="portal-form">
                   <label className="portal-field">

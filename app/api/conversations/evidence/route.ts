@@ -1,5 +1,9 @@
 import { getDb } from "../../../../db";
-import { updateSaleEvidence } from "../../../../lib/conversations";
+import {
+  acceptSaleEvidence,
+  requestAdditionalEvidence,
+  updateSaleEvidence,
+} from "../../../../lib/conversations";
 import {
   conversationError,
   readConversationId,
@@ -20,11 +24,38 @@ export async function POST(request: Request) {
       return Response.json({ error: "A conversation id is required." }, { status: 400 });
     }
 
-    const result = await updateSaleEvidence(await getDb(), actor, conversationId, {
+    const db = await getDb();
+    if (payload.action === "accept") {
+      const result = await acceptSaleEvidence(db, actor, conversationId, {
+        paymentReceipt: payload.paymentReceipt,
+        receivedItem: payload.receivedItem,
+        receivedPackaging: payload.receivedPackaging,
+      });
+      if (!result.ok) {
+        return Response.json({ error: result.error }, { status: result.status });
+      }
+      return Response.json({ conversation: result.conversation });
+    }
+    if (payload.action === "request") {
+      const result = await requestAdditionalEvidence(
+        db,
+        actor,
+        conversationId,
+        payload.note,
+      );
+      if (!result.ok) {
+        return Response.json({ error: result.error }, { status: result.status });
+      }
+      return Response.json({ conversation: result.conversation });
+    }
+
+    const result = await updateSaleEvidence(db, actor, conversationId, {
       trackingNumber: payload.trackingNumber,
       paymentReceipt: payload.paymentReceipt,
       receivedItem: payload.receivedItem,
       receivedPackaging: payload.receivedPackaging,
+      shippedItem: payload.shippedItem,
+      shippedPackaging: payload.shippedPackaging,
     });
     if (!result.ok) {
       return Response.json({ error: result.error }, { status: result.status });

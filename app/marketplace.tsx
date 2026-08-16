@@ -691,43 +691,14 @@ export default function Marketplace() {
 
     async function loadRegistry() {
       try {
-        const listingId =
-          new URLSearchParams(window.location.search).get("listing")?.trim() ?? "";
         const response = await fetch("/api/listings?limit=80", {
           headers: { accept: "application/json" },
         });
         if (!response.ok) return;
         const payload = (await response.json()) as { listings?: RegistryRow[] };
-        if (cancelled) return;
-        let registryListings = (payload.listings ?? []).map(normalizeRegistryListing);
-        if (
-          listingId &&
-          !registryListings.some((listing) => listing.id === listingId)
-        ) {
-          const one = await fetch(
-            `/api/listings?id=${encodeURIComponent(listingId)}&limit=1`,
-            { headers: { accept: "application/json" } },
-          );
-          if (one.ok) {
-            const onePayload = (await one.json()) as { listings?: RegistryRow[] };
-            const extra = onePayload.listings?.[0];
-            if (extra) {
-              registryListings = [
-                normalizeRegistryListing(extra),
-                ...registryListings,
-              ];
-            }
-          }
-        }
-        if (!registryListings.length || cancelled) return;
+        if (!payload.listings?.length || cancelled) return;
+        const registryListings = payload.listings.map(normalizeRegistryListing);
         setListings(registryListings);
-        const deepLink = listingId
-          ? registryListings.find((listing) => listing.id === listingId)
-          : null;
-        if (deepLink) {
-          setSelectedListing(deepLink);
-          setModal("detail");
-        }
         void refreshSocialHealth(registryListings);
 
         for (const listing of registryListings) {

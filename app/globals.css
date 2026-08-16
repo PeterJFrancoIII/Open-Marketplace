@@ -1797,17 +1797,6 @@ a {
   text-transform: uppercase;
 }
 
-.portal-listing-link {
-  color: var(--brand-dark);
-  font-weight: 750;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.portal-listing-link:hover {
-  color: var(--brand);
-}
-
 .portal-definition-list {
   display: grid;
   gap: 12px;

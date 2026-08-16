@@ -4,7 +4,6 @@ import {
   desc,
   eq,
   gte,
-  inArray,
   like,
   lte,
   or,
@@ -53,11 +52,6 @@ function boundedInteger(value: string | null, fallback: number, maximum: number)
   return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), maximum) : fallback;
 }
 
-function optionalPriceCents(value: string | null) {
-  if (value == null || value.trim() === "") return Number.NaN;
-  return Number(value);
-}
-
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
@@ -66,15 +60,14 @@ export async function GET(request: Request) {
     const condition = url.searchParams.get("condition")?.trim() ?? "";
     const format = url.searchParams.get("format")?.trim() ?? "";
     const delivery = url.searchParams.get("delivery")?.trim() ?? "";
-    const minimum = optionalPriceCents(url.searchParams.get("minPriceCents"));
-    const maximum = optionalPriceCents(url.searchParams.get("maxPriceCents"));
+    const minimum = Number(url.searchParams.get("minPriceCents"));
+    const maximum = Number(url.searchParams.get("maxPriceCents"));
     const sort = url.searchParams.get("sort") ?? "newest";
     const listingId = url.searchParams.get("id")?.trim() ?? "";
     const limit = boundedInteger(url.searchParams.get("limit"), 40, 100);
 
-    const filters: SQL[] = listingId
-      ? [eq(listings.id, listingId.slice(0, 80))]
-      : [eq(listings.status, "active")];
+    const filters: SQL[] = [eq(listings.status, "active")];
+    if (listingId) filters.push(eq(listings.id, listingId.slice(0, 80)));
     if (query) {
       const pattern = `%${query.slice(0, 80)}%`;
       const searchFilter = or(
@@ -108,23 +101,15 @@ export async function GET(request: Request) {
 
     const db = await getDb();
     const rows = await db
-      .select()
+      .select({ listing: listings, profile: profiles })
       .from(listings)
+      .leftJoin(profiles, eq(profiles.id, listings.sellerId))
       .where(and(...filters))
       .orderBy(order, desc(listings.id))
       .limit(limit);
-    const sellerIds = [...new Set(rows.map((listing) => listing.sellerId))];
-    const profileRows = sellerIds.length
-      ? await db
-          .select()
-          .from(profiles)
-          .where(inArray(profiles.id, sellerIds))
-      : [];
-    const profileById = new Map(profileRows.map((profile) => [profile.id, profile]));
 
     return Response.json({
-      listings: rows.map((listing) => {
-        const profile = profileById.get(listing.sellerId);
+      listings: rows.map(({ listing, profile }) => {
         const unpacked = stripPackageFromDescription(listing.description);
         return {
           ...listing,

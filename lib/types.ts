@@ -80,6 +80,10 @@ export type Listing = {
   sellerRatingCount?: number;
   buyerRating?: number;
   buyerRatingCount?: number;
+  socialCreditScore?: number;
+  status?: "active" | "draft" | "sold";
+  archive?: boolean;
+  soldAt?: string | null;
   socialProofs: SocialProof[];
   imageManifest: MediaManifest[];
   mediaAvailability: "local" | "online" | "offline";

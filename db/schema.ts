@@ -114,6 +114,7 @@ export const profiles = sqliteTable("profiles", {
   sellerRatingCount: integer("seller_rating_count").notNull().default(0),
   buyerRating: real("buyer_rating"),
   buyerRatingCount: integer("buyer_rating_count").notNull().default(0),
+  socialCreditScore: integer("social_credit_score").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
@@ -187,5 +188,68 @@ export const reputationRatings = sqliteTable(
       table.role,
     ),
     index("ratings_subject_role_idx").on(table.subjectId, table.role),
+  ],
+);
+
+export const conversations = sqliteTable(
+  "conversations",
+  {
+    id: text("id").primaryKey(),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    buyerId: text("buyer_id").notNull(),
+    sellerId: text("seller_id").notNull(),
+    lastMessageAt: text("last_message_at"),
+    buyerConfirmedAt: text("buyer_confirmed_at"),
+    sellerConfirmedAt: text("seller_confirmed_at"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex("conversations_listing_buyer_idx").on(
+      table.listingId,
+      table.buyerId,
+    ),
+    index("conversations_buyer_idx").on(table.buyerId),
+    index("conversations_seller_idx").on(table.sellerId),
+  ],
+);
+
+export const conversationMessages = sqliteTable(
+  "conversation_messages",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    senderId: text("sender_id").notNull(),
+    body: text("body").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [index("conversation_messages_thread_idx").on(table.conversationId, table.createdAt)],
+);
+
+export const saleHistory = sqliteTable(
+  "sale_history",
+  {
+    id: text("id").primaryKey(),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    buyerId: text("buyer_id").notNull(),
+    sellerId: text("seller_id").notNull(),
+    title: text("title").notNull(),
+    priceCents: integer("price_cents").notNull(),
+    currency: text("currency").notNull().default("USD"),
+    soldAt: text("sold_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sale_history_listing_idx").on(table.listingId),
+    index("sale_history_buyer_idx").on(table.buyerId),
+    index("sale_history_seller_idx").on(table.sellerId),
   ],
 );

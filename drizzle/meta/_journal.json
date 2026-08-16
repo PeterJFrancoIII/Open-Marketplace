@@ -29,6 +29,13 @@
       "when": 1786587237831,
       "tag": "0003_ambitious_hawkeye",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786890000000,
+      "tag": "0004_chat_sale_credit",
+      "breakpoints": true
     }
   ]
 }

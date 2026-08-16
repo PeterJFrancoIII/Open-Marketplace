@@ -1857,7 +1857,7 @@ a.detail-social-account.social-connected:hover,
 .portal-stat-row {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: 22px;
 }
 
@@ -1972,13 +1972,99 @@ a.detail-social-account.social-connected:hover,
   font-weight: 700;
 }
 
-.portal-field input {
+.portal-field input,
+.portal-field select,
+.portal-field textarea {
   background: #f7f6f2;
   border: 1px solid transparent;
   border-radius: 12px;
   min-height: 46px;
   padding: 0 14px;
   width: 100%;
+}
+
+.portal-field textarea {
+  min-height: 96px;
+  padding: 12px 14px;
+  resize: vertical;
+}
+
+.portal-messages {
+  display: grid;
+  gap: 18px;
+}
+
+.portal-thread-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+.portal-thread-link {
+  background: #f7f6f2;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  text-align: left;
+  width: 100%;
+}
+
+.portal-thread-link small {
+  color: var(--muted);
+}
+
+.portal-thread-link.active,
+.portal-thread-link:hover {
+  border-color: var(--brand);
+}
+
+.portal-message-list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+.portal-message {
+  background: #f7f6f2;
+  border-radius: 14px;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.portal-message.mine {
+  background: var(--brand-soft);
+}
+
+.portal-message p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.portal-message time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.portal-sale-box {
+  background: #f7f6f2;
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 16px;
+}
+
+.portal-error {
+  color: var(--danger);
+  font-weight: 700;
+  margin: 12px 0 0;
 }
 
 .portal-field input[readonly] {

@@ -43,6 +43,7 @@ export function publicListingRecord(listing: Listing): Record<string, unknown> {
     sellerRatingCount: listing.sellerRatingCount ?? 0,
     buyerRating: listing.buyerRating ?? null,
     buyerRatingCount: listing.buyerRatingCount ?? 0,
+    socialCreditScore: listing.socialCreditScore ?? 0,
     socialProofs: listing.socialProofs,
     imageManifest: listing.imageManifest,
     pinned: true,
@@ -65,6 +66,7 @@ export function publicProfileRecord(listing: Listing): Record<string, unknown> {
     sellerRatingCount: listing.sellerRatingCount ?? 0,
     buyerRating: listing.buyerRating ?? null,
     buyerRatingCount: listing.buyerRatingCount ?? 0,
+    socialCreditScore: listing.socialCreditScore ?? 0,
   };
 }
 

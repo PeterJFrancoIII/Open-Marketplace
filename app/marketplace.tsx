@@ -37,6 +37,7 @@ import {
 } from "../lib/shipping-package";
 import { isConnectedFacebookProof } from "../lib/facebook-listing-proof";
 import { isLinkCheckFresh, listingLinksNeedCheck } from "../lib/link-health";
+import { computeSocialCreditScore } from "../lib/social-credit";
 import type { Listing, PaymentDestination, SocialProof } from "../lib/types";
 
 const categories = [
@@ -425,11 +426,16 @@ function parseJsonArray<T>(value: unknown): T[] {
   }
 }
 
+function isArchiveListing(listing: Pick<Listing, "archive" | "status">) {
+  return Boolean(listing.archive) || listing.status === "sold";
+}
+
 function normalizeRegistryListing(row: RegistryRow): Listing {
+  const archive = Boolean(row.archive) || row.status === "sold";
   return {
     id: String(row.id ?? crypto.randomUUID()),
     title: String(row.title ?? "Untitled listing"),
-    description: String(row.description ?? ""),
+    description: archive ? "" : String(row.description ?? ""),
     priceCents: Number(row.priceCents ?? 0),
     currency: String(row.currency ?? "USD"),
     condition: (row.condition ?? "Good") as Listing["condition"],
@@ -454,17 +460,24 @@ function normalizeRegistryListing(row: RegistryRow): Listing {
         ? undefined
         : Number(row.buyerRating),
     buyerRatingCount: Number(row.buyerRatingCount ?? 0),
-    socialProofs: parseJsonArray<SocialProof>(
-      row.socialProofs ?? row.socialProofsJson,
-    ),
-    imageManifest: parseJsonArray<Listing["imageManifest"][number]>(
-      row.imageManifest ?? row.imageManifestJson,
-    ),
-    paymentDestinations:
-      row.paymentDestinations ??
-      parsePaymentDestinationsJson(row.paymentDestinationsJson),
-    paypalLinked: Boolean(row.paypalLinked),
-    shippingPackage: row.shippingPackage ?? null,
+    socialCreditScore: Number(row.socialCreditScore ?? 0),
+    status: row.status === "sold" || archive ? "sold" : "active",
+    archive,
+    soldAt: row.soldAt ? String(row.soldAt) : null,
+    socialProofs: archive
+      ? []
+      : parseJsonArray<SocialProof>(row.socialProofs ?? row.socialProofsJson),
+    imageManifest: archive
+      ? []
+      : parseJsonArray<Listing["imageManifest"][number]>(
+          row.imageManifest ?? row.imageManifestJson,
+        ),
+    paymentDestinations: archive
+      ? []
+      : row.paymentDestinations ??
+        parsePaymentDestinationsJson(row.paymentDestinationsJson),
+    paypalLinked: archive ? false : Boolean(row.paypalLinked),
+    shippingPackage: archive ? null : row.shippingPackage ?? null,
     mediaAvailability: "offline",
     createdAt: String(row.createdAt ?? new Date().toISOString()),
     endingAt: row.endingAt ? String(row.endingAt) : null,
@@ -509,13 +522,27 @@ function socialLabel(provider: SocialProof["provider"]): string {
 }
 
 function reputationFor(listing: Listing) {
-  const demo = demoReputation[listing.sellerId];
+  const demo = listing.source === "demo" ? demoReputation[listing.sellerId] : undefined;
+  const itemsSold = listing.itemsSold ?? demo?.itemsSold ?? 0;
+  const sellerRating = listing.sellerRating ?? demo?.sellerRating;
+  const sellerRatingCount = listing.sellerRatingCount ?? demo?.sellerRatingCount ?? 0;
+  const buyerRating = listing.buyerRating ?? demo?.buyerRating;
+  const buyerRatingCount = listing.buyerRatingCount ?? demo?.buyerRatingCount ?? 0;
   return {
-    itemsSold: listing.itemsSold ?? demo?.itemsSold ?? 0,
-    sellerRating: listing.sellerRating ?? demo?.sellerRating,
-    sellerRatingCount: listing.sellerRatingCount ?? demo?.sellerRatingCount ?? 0,
-    buyerRating: listing.buyerRating ?? demo?.buyerRating,
-    buyerRatingCount: listing.buyerRatingCount ?? demo?.buyerRatingCount ?? 0,
+    itemsSold,
+    sellerRating,
+    sellerRatingCount,
+    buyerRating,
+    buyerRatingCount,
+    socialCreditScore:
+      listing.socialCreditScore ??
+      computeSocialCreditScore({
+        sellerRating,
+        sellerRatingCount,
+        buyerRating,
+        buyerRatingCount,
+        itemsSold,
+      }),
   };
 }
 
@@ -766,6 +793,7 @@ export default function Marketplace() {
   >([]);
   const [shippingQuoteMessage, setShippingQuoteMessage] = useState("");
   const [quoting, setQuoting] = useState(false);
+  const [contacting, setContacting] = useState(false);
 
   const donationUrl = process.env.NEXT_PUBLIC_DONATION_URL ?? "";
   const signedIn = Boolean(session?.user);
@@ -864,7 +892,13 @@ export default function Marketplace() {
   }, []);
 
   useEffect(() => {
-    if (!selectedListing || selectedListing.source !== "registry") return;
+    if (
+      !selectedListing ||
+      selectedListing.source !== "registry" ||
+      isArchiveListing(selectedListing)
+    ) {
+      return;
+    }
     let stored: string | null = null;
     try {
       stored = window.localStorage.getItem(`om-link-health:${selectedListing.id}`);
@@ -937,6 +971,7 @@ export default function Marketplace() {
             // The Synology host is optional; Cloudflare D1 or demo data still works.
           }
         }
+        let archiveListing: Listing | null = null;
         if (
           listingId &&
           !registryListings.some((listing) => listing.id === listingId)
@@ -949,22 +984,27 @@ export default function Marketplace() {
             const onePayload = (await one.json()) as { listings?: RegistryRow[] };
             const extra = onePayload.listings?.[0];
             if (extra) {
-              registryListings = [
-                normalizeRegistryListing(extra),
-                ...registryListings,
-              ];
+              const normalized = normalizeRegistryListing(extra);
+              if (isArchiveListing(normalized)) {
+                archiveListing = normalized;
+              } else {
+                registryListings = [normalized, ...registryListings];
+              }
             }
           }
         }
-        if (!registryListings.length || cancelled) return;
-        setListings(registryListings);
-        const deepLink = listingId
-          ? registryListings.find((listing) => listing.id === listingId)
-          : null;
+        if (cancelled) return;
+        if (registryListings.length) setListings(registryListings);
+        const deepLink =
+          archiveListing ??
+          (listingId
+            ? registryListings.find((listing) => listing.id === listingId)
+            : null);
         if (deepLink) {
           setSelectedListing(deepLink);
           setModal("detail");
         }
+        if (!registryListings.length) return;
 
         const ownerId = session?.user.id;
         for (const listing of registryListings) {
@@ -1445,6 +1485,42 @@ export default function Marketplace() {
     }
   }
 
+  async function contactSeller(listing: Listing) {
+    if (isArchiveListing(listing) || listing.sellerId === session?.user.id) return;
+    if (!signedIn) {
+      window.location.assign(
+        `/login?returnTo=${encodeURIComponent(`/?listing=${listing.id}`)}`,
+      );
+      return;
+    }
+    setContacting(true);
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ listingId: listing.id }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        conversation?: { id?: string };
+      };
+      if (!response.ok || !payload.conversation?.id) {
+        setToast(payload.error ?? "Could not open the conversation.");
+        return;
+      }
+      window.location.assign(
+        `/account/messages?id=${encodeURIComponent(payload.conversation.id)}`,
+      );
+    } catch {
+      setToast("Could not open the conversation.");
+    } finally {
+      setContacting(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -1691,6 +1767,9 @@ export default function Marketplace() {
                       <span>★ {formatRating(reputation.sellerRating, reputation.sellerRatingCount)} seller</span>
                       <span>★ {formatRating(reputation.buyerRating, reputation.buyerRatingCount)} buyer</span>
                       <span>{reputation.itemsSold} sold</span>
+                      <span title="Not a credit-bureau score. Not a verification badge.">
+                        Social Credit {reputation.socialCreditScore}
+                      </span>
                     </div>
                     <div className="social-facts" aria-label={`${socialAccounts.length} linked social accounts`}>
                       {socialAccounts.length ? socialAccounts.map((account, index) => (
@@ -2069,10 +2148,30 @@ export default function Marketplace() {
             <div className="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="detail-title">
               <div className="modal-head">
                 <div>
-                  <span className="eyebrow">{selectedListing.category} · {selectedListing.condition}</span>
+                  <span className="eyebrow">
+                    {isArchiveListing(selectedListing)
+                      ? "Sold archive"
+                      : `${selectedListing.category} · ${selectedListing.condition}`}
+                  </span>
                 </div>
                 <button className="icon-button" aria-label="Close" onClick={() => setModal(null)}>×</button>
               </div>
+              {isArchiveListing(selectedListing) ? (
+                <div className="detail-copy">
+                  <span className="eyebrow">
+                    Sold {selectedListing.soldAt ? relativeTime(selectedListing.soldAt) : "recently"}
+                  </span>
+                  <h2 id="detail-title">{selectedListing.title}</h2>
+                  <div className="detail-price">{formatPrice(selectedListing)}</div>
+                  <div className="seller-card">
+                    <strong>Sold by {selectedListing.sellerName}</strong>
+                    <p>This public record is compressed. Photos, pay-to contacts, and messages stay off the homepage.</p>
+                  </div>
+                  <div className="modal-actions">
+                    <button className="button button-ghost" onClick={() => void shareListing(selectedListing)}>Share</button>
+                  </div>
+                </div>
+              ) : (
               <div className="detail-grid">
                 <div className={`detail-media tone-${(categoryVisuals[selectedListing.category] ?? { tone: "slate" }).tone}`}>
                   <span className="media-glyph" aria-hidden="true">
@@ -2103,6 +2202,10 @@ export default function Marketplace() {
                       <div>
                         <span>Items sold</span>
                         <strong>{reputationFor(selectedListing).itemsSold}</strong>
+                      </div>
+                      <div title="Not a credit-bureau score. Not a verification badge.">
+                        <span>Social Credit</span>
+                        <strong>{reputationFor(selectedListing).socialCreditScore}</strong>
                       </div>
                     </div>
                     <div className="detail-social-list">
@@ -2223,16 +2326,23 @@ export default function Marketplace() {
                       </button>
                     ) : null}
                     <button className="button button-ghost" onClick={() => void shareListing(selectedListing)}>Share</button>
-                    <button
-                      className="button button-primary"
-                      disabled={hasBrokenAccount(selectedListing)}
-                      onClick={() => setToast("Contact transport is the next protocol adapter to connect.")}
-                    >
-                      {hasBrokenAccount(selectedListing) ? "Seller must repair profile" : "Contact seller"}
-                    </button>
+                    {session?.user.id === selectedListing.sellerId ? null : (
+                      <button
+                        className="button button-primary"
+                        disabled={hasBrokenAccount(selectedListing) || contacting}
+                        onClick={() => void contactSeller(selectedListing)}
+                      >
+                        {hasBrokenAccount(selectedListing)
+                          ? "Seller must repair profile"
+                          : contacting
+                            ? "Opening…"
+                            : "Contact seller"}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
+              )}
             </div>
           )}
         </>

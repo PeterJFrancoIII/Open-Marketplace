@@ -12,7 +12,8 @@ const migrationFiles = [
   "drizzle/0000_ambitious_blockbuster.sql",
   "drizzle/0001_rapid_leper_queen.sql",
   "drizzle/0002_married_wolverine.sql",
-  "drizzle/0003_ambitious_hawkeye.sql",
+    "drizzle/0003_ambitious_hawkeye.sql",
+    "drizzle/0004_chat_sale_credit.sql",
 ];
 
 function findLocalD1Files() {
@@ -47,12 +48,22 @@ for (const databasePath of databasePaths) {
       "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'auth_users' LIMIT 1",
     )
     .get();
-  if (alreadyApplied) {
+  const hasConversations = db
+    .prepare(
+      "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'conversations' LIMIT 1",
+    )
+    .get();
+  const pending = alreadyApplied
+    ? hasConversations
+      ? []
+      : ["drizzle/0004_chat_sale_credit.sql"]
+    : migrationFiles;
+  if (!pending.length) {
     db.close();
     console.log(`Local D1 schema already present in ${databasePath}`);
     continue;
   }
-  for (const relativePath of migrationFiles) {
+  for (const relativePath of pending) {
     const sql = readFileSync(join(repoRoot, relativePath), "utf8");
     for (const part of sql.split(/-->\s*statement-breakpoint\s*/g)) {
       const statement = part.trim();

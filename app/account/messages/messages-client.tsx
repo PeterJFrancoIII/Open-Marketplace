@@ -1,0 +1,402 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  MESSAGE_MAX_LENGTH,
+  RATING_NOTE_MAX,
+  RATING_NOTE_MIN,
+} from "../../../lib/conversation-limits";
+
+type Rating = { score: number; note: string };
+
+type ConversationSummary = {
+  id: string;
+  listingId: string;
+  listingTitle: string;
+  listingStatus: string;
+  listingPriceCents: number;
+  listingCurrency: string;
+  soldAt: string | null;
+  buyerId: string;
+  sellerId: string;
+  buyerName: string;
+  sellerName: string;
+  lastMessageAt: string | null;
+  lastMessagePreview: string;
+  completed: boolean;
+  myRole: "buyer" | "seller";
+  myConfirmed: boolean;
+  otherConfirmed: boolean;
+  myRating: Rating | null;
+  otherRating: Rating | null;
+};
+
+type ConversationMessage = {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  body: string;
+  createdAt: string;
+};
+
+function formatMoney(cents: number, currency = "USD") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
+function formatWhen(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export default function MessagesClient({
+  userId,
+  initialConversationId,
+  initialInbox,
+  initialThread,
+}: {
+  userId: string;
+  initialConversationId: string;
+  initialInbox: ConversationSummary[];
+  initialThread: {
+    conversation: ConversationSummary;
+    messages: ConversationMessage[];
+  } | null;
+}) {
+  const router = useRouter();
+  const [inbox, setInbox] = useState<ConversationSummary[]>(initialInbox);
+  const [conversation, setConversation] = useState<ConversationSummary | null>(
+    initialThread?.conversation ?? null,
+  );
+  const [messages, setMessages] = useState<ConversationMessage[]>(
+    initialThread?.messages ?? [],
+  );
+  const [selectedId, setSelectedId] = useState(initialConversationId);
+  const [draft, setDraft] = useState("");
+  const [score, setScore] = useState(5);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
+
+  const otherName = useMemo(() => {
+    if (!conversation) return "";
+    return conversation.myRole === "buyer"
+      ? conversation.sellerName
+      : conversation.buyerName;
+  }, [conversation]);
+
+  async function loadInbox() {
+    const response = await fetch("/api/conversations", {
+      headers: { accept: "application/json" },
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      conversations?: ConversationSummary[];
+      error?: string;
+    };
+    if (!response.ok) {
+      setError(payload.error ?? "Could not load messages.");
+      return;
+    }
+    setInbox(payload.conversations ?? []);
+  }
+
+  async function loadThread(conversationId: string) {
+    const response = await fetch(
+      `/api/conversations?id=${encodeURIComponent(conversationId)}`,
+      { headers: { accept: "application/json" } },
+    );
+    const payload = (await response.json().catch(() => ({}))) as {
+      conversation?: ConversationSummary;
+      messages?: ConversationMessage[];
+      error?: string;
+    };
+    if (!response.ok || !payload.conversation) {
+      setError(payload.error ?? "Conversation not found.");
+      return;
+    }
+    setConversation(payload.conversation);
+    setMessages(payload.messages ?? []);
+    setError("");
+  }
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void loadInbox();
+      if (selectedId) void loadThread(selectedId);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [selectedId]);
+
+  function openThread(conversationId: string) {
+    setSelectedId(conversationId);
+    router.replace(`/account/messages?id=${encodeURIComponent(conversationId)}`);
+    void loadThread(conversationId);
+  }
+
+  async function sendCurrentMessage() {
+    if (!selectedId || !draft.trim()) return;
+    setBusy("send");
+    setError("");
+    try {
+      const response = await fetch("/api/conversations/messages", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ conversationId: selectedId, body: draft }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        setError(payload.error ?? "Could not send that message.");
+        return;
+      }
+      setDraft("");
+      await Promise.all([loadThread(selectedId), loadInbox()]);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function confirmCurrentSale() {
+    if (!selectedId) return;
+    setBusy("sale");
+    setError("");
+    try {
+      const response = await fetch("/api/conversations/sale", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ conversationId: selectedId }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        setError(payload.error ?? "Could not confirm this sale.");
+        return;
+      }
+      await Promise.all([loadThread(selectedId), loadInbox()]);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function submitCurrentRating() {
+    if (!selectedId) return;
+    setBusy("rating");
+    setError("");
+    try {
+      const response = await fetch("/api/conversations/rating", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          conversationId: selectedId,
+          score,
+          note,
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        setError(payload.error ?? "Could not save that rating.");
+        return;
+      }
+      setNote("");
+      await Promise.all([loadThread(selectedId), loadInbox()]);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <div className="portal-messages">
+      <section className="portal-panel" aria-labelledby="messages-inbox-title">
+        <p className="portal-eyebrow">Inbox</p>
+        <h1 id="messages-inbox-title">Messages</h1>
+        <p className="portal-lead">
+          Text only. Confirming sold or purchased is a mutual record, not
+          checkout or payment.
+        </p>
+        {inbox.length === 0 ? (
+          <p className="portal-empty">No conversations yet. Contact a seller from a live listing.</p>
+        ) : (
+          <ul className="portal-thread-list">
+            {inbox.map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className={`portal-thread-link${item.id === selectedId ? " active" : ""}`}
+                  onClick={() => openThread(item.id)}
+                >
+                  <strong>{item.listingTitle}</strong>
+                  <small>
+                    {item.myRole === "buyer" ? item.sellerName : item.buyerName}
+                    {item.lastMessagePreview ? ` · ${item.lastMessagePreview}` : ""}
+                  </small>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="portal-panel" aria-labelledby="messages-thread-title">
+        {!conversation ? (
+          <>
+            <h2 id="messages-thread-title">Thread</h2>
+            <p className="portal-empty">Choose a conversation to read and reply.</p>
+          </>
+        ) : (
+          <>
+            <p className="portal-eyebrow">
+              {conversation.myRole === "buyer" ? "Buying" : "Selling"} ·{" "}
+              {formatMoney(conversation.listingPriceCents, conversation.listingCurrency)}
+            </p>
+            <h2 id="messages-thread-title">{conversation.listingTitle}</h2>
+            <p className="portal-lead">
+              With {otherName}. Listing is {conversation.listingStatus}.
+            </p>
+
+            <ol className="portal-message-list">
+              {messages.length === 0 ? (
+                <li className="portal-empty">No messages yet. Say hello.</li>
+              ) : (
+                messages.map((message) => (
+                  <li
+                    key={message.id}
+                    className={`portal-message${message.senderId === userId ? " mine" : ""}`}
+                  >
+                    <strong>{message.senderId === userId ? "You" : otherName}</strong>
+                    <p>{message.body}</p>
+                    <time dateTime={message.createdAt}>{formatWhen(message.createdAt)}</time>
+                  </li>
+                ))
+              )}
+            </ol>
+
+            <form
+              className="portal-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void sendCurrentMessage();
+              }}
+            >
+              <label className="portal-field">
+                <span>Message</span>
+                <textarea
+                  value={draft}
+                  maxLength={MESSAGE_MAX_LENGTH}
+                  rows={3}
+                  onChange={(event) => setDraft(event.target.value)}
+                />
+              </label>
+              <button className="button button-primary" type="submit" disabled={busy === "send"}>
+                {busy === "send" ? "Sending…" : "Send"}
+              </button>
+            </form>
+
+            <div className="portal-sale-box">
+              <h3>Sale confirmation</h3>
+              <p className="portal-settings-note">
+                Both people must confirm. One-sided confirm does nothing public.
+                This does not send, hold, or execute payment.
+              </p>
+              {conversation.listingStatus === "sold" && !conversation.completed ? (
+                <p className="portal-empty">This listing was sold in another conversation.</p>
+              ) : conversation.completed ? (
+                <p>Both people confirmed. The listing is archived as sold.</p>
+              ) : (
+                <button
+                  className="button button-ghost"
+                  type="button"
+                  disabled={conversation.myConfirmed || busy === "sale"}
+                  onClick={() => void confirmCurrentSale()}
+                >
+                  {conversation.myConfirmed
+                    ? conversation.myRole === "buyer"
+                      ? "You confirmed purchased"
+                      : "You confirmed sold"
+                    : conversation.myRole === "buyer"
+                      ? "Confirm purchased"
+                      : "Confirm sold"}
+                </button>
+              )}
+              {conversation.otherConfirmed && !conversation.completed ? (
+                <p className="portal-settings-note">
+                  {otherName} already confirmed. Your confirm will complete the sale.
+                </p>
+              ) : null}
+            </div>
+
+            {conversation.completed ? (
+              <div className="portal-sale-box">
+                <h3>Rate {otherName}</h3>
+                {conversation.myRating ? (
+                  <p>
+                    You rated {conversation.myRating.score}/5. {conversation.myRating.note}
+                  </p>
+                ) : (
+                  <form
+                    className="portal-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void submitCurrentRating();
+                    }}
+                  >
+                    <label className="portal-field">
+                      <span>Score</span>
+                      <select
+                        value={score}
+                        onChange={(event) => setScore(Number(event.target.value))}
+                      >
+                        {[1, 2, 3, 4, 5].map((value) => (
+                          <option key={value} value={value}>
+                            {value}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="portal-field">
+                      <span>Why ({RATING_NOTE_MIN}–{RATING_NOTE_MAX} characters)</span>
+                      <textarea
+                        value={note}
+                        minLength={RATING_NOTE_MIN}
+                        maxLength={RATING_NOTE_MAX}
+                        rows={4}
+                        onChange={(event) => setNote(event.target.value)}
+                        required
+                      />
+                    </label>
+                    <button
+                      className="button button-primary"
+                      type="submit"
+                      disabled={busy === "rating"}
+                    >
+                      {busy === "rating" ? "Saving…" : "Save rating"}
+                    </button>
+                  </form>
+                )}
+              </div>
+            ) : null}
+
+            {error ? <p className="portal-error">{error}</p> : null}
+          </>
+        )}
+      </section>
+    </div>
+  );
+}

@@ -11,7 +11,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { authAccounts, listings, profiles } from "../../../db/schema";
+import { authAccounts, listings, profiles, saleHistory } from "../../../db/schema";
 import { getMarketplaceSession, persistFacebookProfileLink } from "../../../lib/auth";
 import {
   isConnectedFacebookProof,
@@ -128,6 +128,24 @@ async function refreshMissingFacebookProfileLinks(
     next.set(profile.id, profile);
   }
   return next;
+}
+
+function compactSoldListing(
+  listing: typeof listings.$inferSelect,
+  sellerName: string,
+  soldAt: string,
+) {
+  return {
+    archive: true,
+    id: listing.id,
+    title: listing.title,
+    priceCents: listing.priceCents,
+    currency: listing.currency,
+    status: "sold",
+    soldAt,
+    sellerName,
+    createdAt: listing.createdAt,
+  };
 }
 
 function publicSocialProofsJson(
@@ -312,12 +330,31 @@ export async function GET(request: Request) {
       new Map(profileRows.map((profile) => [profile.id, profile])),
       rows,
     );
+    const soldIds = rows
+      .filter((listing) => listing.status === "sold")
+      .map((listing) => listing.id);
+    const saleRows = soldIds.length
+      ? await db
+          .select()
+          .from(saleHistory)
+          .where(inArray(saleHistory.listingId, soldIds))
+      : [];
+    const soldAtByListing = new Map(
+      saleRows.map((sale) => [sale.listingId, sale.soldAt]),
+    );
 
     return Response.json({
       listings: rows.map((listing) => {
         const profile = profileById.get(listing.sellerId);
-        const unpacked = stripPackageFromDescription(listing.description);
         const sellerName = profile?.displayName ?? listing.sellerName;
+        if (listingId && listing.status === "sold") {
+          return compactSoldListing(
+            listing,
+            sellerName,
+            soldAtByListing.get(listing.id) ?? listing.updatedAt,
+          );
+        }
+        const unpacked = stripPackageFromDescription(listing.description);
         const paypalLinked = paypalSellerIds.has(listing.sellerId);
         const paymentDestinations = publicPaymentDestinations(
           profile?.paymentDestinationsJson,
@@ -341,6 +378,7 @@ export async function GET(request: Request) {
           sellerRatingCount: profile?.sellerRatingCount ?? 0,
           buyerRating: profile?.buyerRating ?? null,
           buyerRatingCount: profile?.buyerRatingCount ?? 0,
+          socialCreditScore: profile?.socialCreditScore ?? 0,
         };
       }),
     });
@@ -482,6 +520,7 @@ export async function POST(request: Request) {
           sellerRatingCount: 0,
           buyerRating: null,
           buyerRatingCount: 0,
+          socialCreditScore: existingProfile?.socialCreditScore ?? 0,
         },
       },
       { status: 201 },
@@ -617,6 +656,7 @@ export async function PATCH(request: Request) {
         sellerRatingCount: existingProfile?.sellerRatingCount ?? 0,
         buyerRating: existingProfile?.buyerRating ?? null,
         buyerRatingCount: existingProfile?.buyerRatingCount ?? 0,
+        socialCreditScore: existingProfile?.socialCreditScore ?? 0,
       },
     });
   } catch (error) {

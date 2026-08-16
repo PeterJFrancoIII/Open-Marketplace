@@ -97,6 +97,7 @@ export function applyMarketplaceMigrations(d1) {
     "drizzle/0001_rapid_leper_queen.sql",
     "drizzle/0002_married_wolverine.sql",
     "drizzle/0003_ambitious_hawkeye.sql",
+    "drizzle/0004_chat_sale_credit.sql",
   ];
   for (const relativePath of files) {
     const sql = readFileSync(join(repoRoot, relativePath), "utf8");

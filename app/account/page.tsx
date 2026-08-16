@@ -99,7 +99,18 @@ export default async function AccountPage() {
             <strong>{counts.sold}</strong>
             <span>Sold</span>
           </div>
+          <div
+            className="portal-stat"
+            title="Not a credit-bureau score. Not a verification badge."
+          >
+            <strong>{profile?.socialCreditScore ?? 0}</strong>
+            <span>Social Credit</span>
+          </div>
         </div>
+        <p className="portal-settings-note">
+          Social Credit is a marketplace number from ratings and completed
+          sales. It is not a credit-bureau score and not a verification badge.
+        </p>
       </section>
 
       <section

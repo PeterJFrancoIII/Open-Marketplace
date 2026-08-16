@@ -373,6 +373,32 @@ function draftsFromSocialProofs(accounts: SocialProof[]): SocialDraft[] {
   });
 }
 
+type ComposeSeed = {
+  title: string;
+  price: string;
+  category: string;
+  condition: string;
+  format: string;
+  delivery: string;
+  location: string;
+  description: string;
+  shippingPackage: Listing["shippingPackage"];
+};
+
+function composeSeedFromListing(listing: Listing): ComposeSeed {
+  return {
+    title: listing.title,
+    price: String(listing.priceCents / 100),
+    category: listing.category,
+    condition: listing.condition,
+    format: listing.format,
+    delivery: listing.delivery,
+    location: listing.locationLabel,
+    description: listing.description,
+    shippingPackage: listing.shippingPackage ?? null,
+  };
+}
+
 const demoReputation: Record<
   string,
   Pick<
@@ -610,6 +636,9 @@ export default function Marketplace() {
     emptySocialDrafts.map((account) => ({ ...account })),
   );
   const [composeOpened, setComposeOpened] = useState(false);
+  const [editOpened, setEditOpened] = useState(false);
+  const [editingListingId, setEditingListingId] = useState<string | null>(null);
+  const [composeSeed, setComposeSeed] = useState<ComposeSeed | null>(null);
   const [composeDelivery, setComposeDelivery] = useState("Pickup");
   const [shippingQuotes, setShippingQuotes] = useState<
     { carrier: string; serviceName: string; description: string; totalPrice: string }[]
@@ -626,10 +655,41 @@ export default function Marketplace() {
 
     const frame = window.requestAnimationFrame(() => {
       setComposeOpened(true);
+      setEditingListingId(null);
+      setComposeSeed(null);
       setModal("create");
     });
     return () => window.cancelAnimationFrame(frame);
   }, [composeOpened, modal, signedIn]);
+
+  useEffect(() => {
+    if (editOpened || sessionPending) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("edit") !== "1") return;
+    const listingId = params.get("listing")?.trim() ?? "";
+    if (!listingId) return;
+    if (!signedIn) {
+      window.location.assign(
+        `/login?returnTo=${encodeURIComponent(`/?listing=${listingId}&edit=1`)}`,
+      );
+      return;
+    }
+    const listing = listings.find((item) => item.id === listingId);
+    if (!listing || listing.sellerId !== session?.user.id) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      setEditOpened(true);
+      setEditingListingId(listing.id);
+      setComposeSeed(composeSeedFromListing(listing));
+      setComposeDelivery(listing.delivery);
+      setSocialDrafts(draftsFromSocialProofs(listing.socialProofs));
+      setSelectedFiles([]);
+      setFilePreviews([]);
+      setSelectedListing(listing);
+      setModal("create");
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editOpened, listings, session?.user.id, sessionPending, signedIn]);
 
   useEffect(() => {
     if (!signedIn) return;
@@ -864,6 +924,47 @@ export default function Marketplace() {
     setModal("detail");
   }
 
+  function startCreate() {
+    if (sessionPending) return;
+    if (!signedIn) {
+      window.location.assign("/login?returnTo=/%3Fcompose%3D1");
+      return;
+    }
+    setEditingListingId(null);
+    setComposeSeed(null);
+    setComposeDelivery("Pickup");
+    setSocialDrafts(profileSocialDrafts.map((account) => ({ ...account })));
+    setSelectedFiles([]);
+    setFilePreviews([]);
+    setShippingQuotes([]);
+    setShippingQuoteMessage("");
+    setModal("create");
+  }
+
+  function openEdit(listing: Listing) {
+    if (sessionPending) return;
+    if (!signedIn) {
+      window.location.assign(
+        `/login?returnTo=${encodeURIComponent(`/?listing=${listing.id}&edit=1`)}`,
+      );
+      return;
+    }
+    if (listing.sellerId !== session?.user.id) {
+      setToast("Only the listing owner can edit this item.");
+      return;
+    }
+    setEditingListingId(listing.id);
+    setComposeSeed(composeSeedFromListing(listing));
+    setComposeDelivery(listing.delivery);
+    setSocialDrafts(draftsFromSocialProofs(listing.socialProofs));
+    setSelectedFiles([]);
+    setFilePreviews([]);
+    setShippingQuotes([]);
+    setShippingQuoteMessage("");
+    setSelectedListing(listing);
+    setModal("create");
+  }
+
   function handleCardKey(event: KeyboardEvent<HTMLElement>, listing: Listing) {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -963,9 +1064,16 @@ export default function Marketplace() {
         return;
       }
 
-      const imageManifest = await storeMedia(selectedFiles);
+      const imageManifest = selectedFiles.length
+        ? await storeMedia(selectedFiles)
+        : editingListingId
+          ? (selectedListing?.id === editingListingId
+              ? selectedListing.imageManifest
+              : [])
+          : [];
 
       const payload = {
+        ...(editingListingId ? { id: editingListingId } : {}),
         title,
         description,
         priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
@@ -990,7 +1098,7 @@ export default function Marketplace() {
       let listing: Listing;
       try {
         const response = await fetch("/api/listings", {
-          method: "POST",
+          method: editingListingId ? "PATCH" : "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
         });
@@ -1001,8 +1109,20 @@ export default function Marketplace() {
         };
         if (response.status === 401) {
           setModal(null);
-          setToast("Log in to publish this listing.");
-          window.location.assign("/login?returnTo=/%3Fcompose%3D1");
+          setToast(
+            editingListingId
+              ? "Log in to edit this listing."
+              : "Log in to publish this listing.",
+          );
+          window.location.assign(
+            editingListingId
+              ? `/login?returnTo=${encodeURIComponent(`/?listing=${editingListingId}&edit=1`)}`
+              : "/login?returnTo=/%3Fcompose%3D1",
+          );
+          return;
+        }
+        if (response.status === 403) {
+          setToast(result.error ?? "Only the listing owner can edit this item.");
           return;
         }
         if (response.status === 422) {
@@ -1026,6 +1146,10 @@ export default function Marketplace() {
         listing = normalizeRegistryListing(result.listing);
         listing.mediaAvailability = imageManifest.length ? "local" : "offline";
       } catch {
+        if (editingListingId) {
+          setToast("The listing could not be saved.");
+          return;
+        }
         listing = {
           ...payload,
           sellerId: session?.user.id ?? getDeviceId(),
@@ -1037,17 +1161,26 @@ export default function Marketplace() {
         } as Listing;
       }
 
-      setListings((current) => [listing, ...current]);
+      setListings((current) =>
+        editingListingId
+          ? current.map((item) => (item.id === listing.id ? listing : item))
+          : [listing, ...current],
+      );
+      setSelectedListing(listing);
       if (filePreviews[0]) {
         setLocalMedia((current) => ({ ...current, [listing.id]: filePreviews[0] }));
       }
       setSelectedFiles([]);
       setFilePreviews([]);
       setSocialDrafts(profileSocialDrafts.map((account) => ({ ...account })));
-      setModal(null);
+      setEditingListingId(null);
+      setComposeSeed(null);
+      setModal(editingListingId ? "detail" : null);
       setToast(
         listing.source === "registry"
-          ? "Listing published. Image bytes remain on this device."
+          ? editingListingId
+            ? "Listing updated. Image bytes remain on this device."
+            : "Listing published. Image bytes remain on this device."
           : "Saved on this device; the registry is not connected in this preview.",
       );
     } catch {
@@ -1172,14 +1305,7 @@ export default function Marketplace() {
           </button>
           <button
             className="button button-primary"
-            onClick={() => {
-              if (sessionPending) return;
-              if (!signedIn) {
-                window.location.assign("/login?returnTo=/%3Fcompose%3D1");
-                return;
-              }
-              setModal("create");
-            }}
+            onClick={startCreate}
           >
             <span aria-hidden="true">＋</span>
             <span className="desktop-action">List an item</span>
@@ -1445,38 +1571,62 @@ export default function Marketplace() {
             <div className="modal modal-create" role="dialog" aria-modal="true" aria-labelledby="create-title">
               <div className="modal-head">
                 <div>
-                  <span className="eyebrow">Publish metadata only</span>
-                  <h2 id="create-title">List an item</h2>
+                  <span className="eyebrow">
+                    {editingListingId ? "Edit your listing" : "Publish metadata only"}
+                  </span>
+                  <h2 id="create-title">{editingListingId ? "Edit listing" : "List an item"}</h2>
                   <p>Your selected photos stay in this browser’s local media vault.</p>
                 </div>
-                <button className="icon-button" aria-label="Close" onClick={() => setModal(null)}>×</button>
+                <button
+                  className="icon-button"
+                  aria-label="Close"
+                  onClick={() => setModal(editingListingId && selectedListing ? "detail" : null)}
+                >
+                  ×
+                </button>
               </div>
 
-              <form onSubmit={submitListing}>
+              <form key={editingListingId ?? "new-listing"} onSubmit={submitListing}>
                 <div className="form-grid">
                   <div className="field field-full">
                     <label htmlFor="title">Title</label>
-                    <input id="title" name="title" required maxLength={90} placeholder="What are you selling?" />
+                    <input
+                      id="title"
+                      name="title"
+                      required
+                      maxLength={90}
+                      placeholder="What are you selling?"
+                      defaultValue={composeSeed?.title ?? ""}
+                    />
                   </div>
                   <div className="field">
                     <label htmlFor="price">Price</label>
-                    <input id="price" name="price" required min="0" step="1" type="number" placeholder="$0" />
+                    <input
+                      id="price"
+                      name="price"
+                      required
+                      min="0"
+                      step="1"
+                      type="number"
+                      placeholder="$0"
+                      defaultValue={composeSeed?.price ?? ""}
+                    />
                   </div>
                   <div className="field">
                     <label htmlFor="category">Category</label>
-                    <select id="category" name="category" defaultValue="Furniture">
+                    <select id="category" name="category" defaultValue={composeSeed?.category ?? "Furniture"}>
                       {categories.slice(1).map((item) => <option key={item}>{item}</option>)}
                     </select>
                   </div>
                   <div className="field">
                     <label htmlFor="condition">Condition</label>
-                    <select id="condition" name="condition" defaultValue="Good">
+                    <select id="condition" name="condition" defaultValue={composeSeed?.condition ?? "Good"}>
                       {['New', 'Like new', 'Good', 'Fair'].map((item) => <option key={item}>{item}</option>)}
                     </select>
                   </div>
                   <div className="field">
                     <label htmlFor="format">Format</label>
-                    <select id="format" name="format" defaultValue="Fixed price">
+                    <select id="format" name="format" defaultValue={composeSeed?.format ?? "Fixed price"}>
                       <option>Fixed price</option>
                       <option>Auction</option>
                     </select>
@@ -1500,7 +1650,13 @@ export default function Marketplace() {
                   </div>
                   <div className="field">
                     <label htmlFor="location">Area</label>
-                    <input id="location" name="location" required placeholder="Brooklyn, NY" />
+                    <input
+                      id="location"
+                      name="location"
+                      required
+                      placeholder="Brooklyn, NY"
+                      defaultValue={composeSeed?.location ?? ""}
+                    />
                   </div>
                   {usesShipping(composeDelivery) && (
                     <div className="field field-full">
@@ -1511,35 +1667,35 @@ export default function Marketplace() {
                       <div className="form-grid">
                         <div className="field">
                           <label htmlFor="weightLb">Weight (lb)</label>
-                          <input id="weightLb" name="weightLb" type="number" min="0.1" max="70" step="0.1" placeholder="2" />
+                          <input id="weightLb" name="weightLb" type="number" min="0.1" max="70" step="0.1" placeholder="2" defaultValue={composeSeed?.shippingPackage?.weightLb ?? ""} />
                         </div>
                         <div className="field">
                           <label htmlFor="lengthIn">Length (in)</label>
-                          <input id="lengthIn" name="lengthIn" type="number" min="1" max="80" step="0.1" placeholder="12" />
+                          <input id="lengthIn" name="lengthIn" type="number" min="1" max="80" step="0.1" placeholder="12" defaultValue={composeSeed?.shippingPackage?.lengthIn ?? ""} />
                         </div>
                         <div className="field">
                           <label htmlFor="widthIn">Width (in)</label>
-                          <input id="widthIn" name="widthIn" type="number" min="1" max="80" step="0.1" placeholder="9" />
+                          <input id="widthIn" name="widthIn" type="number" min="1" max="80" step="0.1" placeholder="9" defaultValue={composeSeed?.shippingPackage?.widthIn ?? ""} />
                         </div>
                         <div className="field">
                           <label htmlFor="heightIn">Height (in)</label>
-                          <input id="heightIn" name="heightIn" type="number" min="1" max="80" step="0.1" placeholder="6" />
+                          <input id="heightIn" name="heightIn" type="number" min="1" max="80" step="0.1" placeholder="6" defaultValue={composeSeed?.shippingPackage?.heightIn ?? ""} />
                         </div>
                         <div className="field">
                           <label htmlFor="originPostal">Origin postal</label>
-                          <input id="originPostal" name="originPostal" placeholder="11215" />
+                          <input id="originPostal" name="originPostal" placeholder="11215" defaultValue={composeSeed?.shippingPackage?.originPostal ?? ""} />
                         </div>
                         <div className="field">
                           <label htmlFor="destPostal">Destination postal</label>
-                          <input id="destPostal" name="destPostal" placeholder="10001" />
+                          <input id="destPostal" name="destPostal" placeholder="10001" defaultValue={composeSeed?.shippingPackage?.destPostal ?? ""} />
                         </div>
                         <div className="field">
                           <label htmlFor="originCountry">Origin country</label>
-                          <input id="originCountry" name="originCountry" defaultValue="US" maxLength={2} />
+                          <input id="originCountry" name="originCountry" maxLength={2} defaultValue={composeSeed?.shippingPackage?.originCountry ?? "US"} />
                         </div>
                         <div className="field">
                           <label htmlFor="destCountry">Destination country</label>
-                          <input id="destCountry" name="destCountry" defaultValue="US" maxLength={2} />
+                          <input id="destCountry" name="destCountry" maxLength={2} defaultValue={composeSeed?.shippingPackage?.destCountry ?? "US"} />
                         </div>
                       </div>
                       <div className="modal-actions">
@@ -1576,7 +1732,14 @@ export default function Marketplace() {
                   )}
                   <div className="field field-full">
                     <label htmlFor="description">Description</label>
-                    <textarea id="description" name="description" required maxLength={1400} placeholder="Condition, dimensions, pickup details…" />
+                    <textarea
+                      id="description"
+                      name="description"
+                      required
+                      maxLength={1400}
+                      placeholder="Condition, dimensions, pickup details…"
+                      defaultValue={composeSeed?.description ?? ""}
+                    />
                   </div>
                   <div className="field field-full">
                     <label>Photos held on this device</label>
@@ -1673,9 +1836,21 @@ export default function Marketplace() {
                   Publishing confirms the item is lawful where offered. A dead or malformed social link blocks publication until you fix it or remove it. Connection counts and creation dates are self-reported until provider OAuth confirms them.
                 </p>
                 <div className="modal-actions">
-                  <button className="button button-ghost" type="button" onClick={() => setModal(null)}>Cancel</button>
+                  <button
+                    className="button button-ghost"
+                    type="button"
+                    onClick={() => setModal(editingListingId && selectedListing ? "detail" : null)}
+                  >
+                    Cancel
+                  </button>
                   <button className="button button-primary" type="submit" disabled={submitting}>
-                    {submitting ? "Publishing…" : "Publish listing"}
+                    {submitting
+                      ? editingListingId
+                        ? "Saving…"
+                        : "Publishing…"
+                      : editingListingId
+                        ? "Save changes"
+                        : "Publish listing"}
                   </button>
                 </div>
               </form>
@@ -1840,6 +2015,15 @@ export default function Marketplace() {
                     </p>
                   </div>
                   <div className="modal-actions">
+                    {signedIn && session?.user.id === selectedListing.sellerId ? (
+                      <button
+                        className="button button-ghost"
+                        type="button"
+                        onClick={() => openEdit(selectedListing)}
+                      >
+                        Edit listing
+                      </button>
+                    ) : null}
                     <button className="button button-ghost" onClick={() => void shareListing(selectedListing)}>Share</button>
                     <button
                       className="button button-primary"

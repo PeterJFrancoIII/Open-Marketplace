@@ -1808,6 +1808,17 @@ a {
   color: var(--brand);
 }
 
+.portal-edit-link {
+  color: var(--brand-dark);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.portal-edit-link:hover {
+  color: var(--brand);
+}
+
 .portal-definition-list {
   display: grid;
   gap: 12px;

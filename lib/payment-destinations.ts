@@ -239,6 +239,7 @@ function resolveRailId(value: unknown): PaymentRail | null {
 function toStoredDestination(
   rail: PaymentRailDefinition,
   destination: string,
+  extras?: Partial<Pick<PaymentDestination, "source" | "health" | "lastCheckedAt" | "healthMessage">>,
 ): PaymentDestination {
   return {
     rail: rail.id,
@@ -246,6 +247,10 @@ function toStoredDestination(
     asset: rail.asset,
     networkId: rail.networkId,
     networkLabel: rail.networkLabel,
+    source: extras?.source === "oauth" ? "oauth" : "self-reported",
+    health: extras?.health,
+    lastCheckedAt: extras?.lastCheckedAt,
+    healthMessage: extras?.healthMessage,
   };
 }
 
@@ -303,7 +308,26 @@ export function parsePaymentDestinationsJson(
       if (!rail || !networkMatches(rail, entry)) continue;
       const normalized = normalizeDestination(rail, destination);
       if (!normalized) continue;
-      byRail.set(rail.id, toStoredDestination(rail, normalized));
+      byRail.set(
+        rail.id,
+        toStoredDestination(rail, normalized, {
+          source:
+            (entry as { source?: unknown }).source === "oauth"
+              ? "oauth"
+              : "self-reported",
+          health: (entry as { health?: PaymentDestination["health"] }).health,
+          lastCheckedAt:
+            typeof (entry as { lastCheckedAt?: unknown }).lastCheckedAt ===
+            "string"
+              ? (entry as { lastCheckedAt: string }).lastCheckedAt
+              : undefined,
+          healthMessage:
+            typeof (entry as { healthMessage?: unknown }).healthMessage ===
+            "string"
+              ? (entry as { healthMessage: string }).healthMessage
+              : undefined,
+        }),
+      );
     }
     return PAYMENT_RAILS.flatMap((rail) => {
       const saved = byRail.get(rail.id);

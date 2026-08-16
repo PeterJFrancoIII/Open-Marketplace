@@ -5,6 +5,8 @@ import {
   getFacebookConnection,
   getMarketplaceSession,
 } from "../../../../lib/auth";
+import { getPayPalConnection } from "../../../../lib/paypal-connect";
+import { mergePaymentDestinationsForSave } from "../../../../lib/paypal-public";
 import {
   PAYMENT_RAILS,
   normalizePaymentDestinations,
@@ -62,6 +64,7 @@ async function profilePayload(
     allowedPaymentRails: PAYMENT_RAILS,
     allowedShippingBrokers: SHIPPING_BROKERS,
     facebookConnection: await getFacebookConnection(request),
+    paypalConnection: await getPayPalConnection(request),
   };
 }
 
@@ -152,7 +155,12 @@ export async function PUT(request: Request) {
       if (!normalized.ok) {
         return Response.json({ error: normalized.error }, { status: 400 });
       }
-      nextPaymentDestinations = normalized.destinations;
+      const paypalConnection = await getPayPalConnection(request);
+      nextPaymentDestinations = mergePaymentDestinationsForSave(
+        normalized.destinations,
+        existingDestinations,
+        paypalConnection.connected,
+      );
     }
     if (hasShipping) {
       const normalized = normalizeShippingBrokers(payload.shippingBrokers);
@@ -198,6 +206,7 @@ export async function PUT(request: Request) {
       allowedPaymentRails: PAYMENT_RAILS,
       allowedShippingBrokers: SHIPPING_BROKERS,
       facebookConnection: await getFacebookConnection(request),
+      paypalConnection: await getPayPalConnection(request),
     });
   } catch (error) {
     return registryError(error);

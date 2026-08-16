@@ -35,7 +35,8 @@ import {
   pirateShipCalculatorUrl,
 } from "../lib/shipping-package";
 import { isConnectedFacebookProof } from "../lib/facebook-listing-proof";
-import type { Listing, SocialProof } from "../lib/types";
+import { isLinkCheckFresh, listingLinksNeedCheck } from "../lib/link-health";
+import type { Listing, PaymentDestination, SocialProof } from "../lib/types";
 
 const categories = [
   "All",
@@ -470,6 +471,7 @@ function normalizeRegistryListing(row: RegistryRow): Listing {
     paymentDestinations:
       row.paymentDestinations ??
       parsePaymentDestinationsJson(row.paymentDestinationsJson),
+    paypalLinked: Boolean(row.paypalLinked),
     shippingPackage: row.shippingPackage ?? null,
     mediaAvailability: "offline",
     createdAt: String(row.createdAt ?? new Date().toISOString()),
@@ -646,9 +648,18 @@ function formatAccountDate(value: string | undefined) {
 }
 
 function hasBrokenAccount(listing: Listing) {
-  return socialAccountsFor(listing).some(
-    (account) => account.health === "dead" || account.health === "invalid",
+  return (
+    socialAccountsFor(listing).some(
+      (account) => account.health === "dead" || account.health === "invalid",
+    ) ||
+    (listing.paymentDestinations ?? []).some(
+      (destination) => destination.health === "dead" || destination.health === "invalid",
+    )
   );
+}
+
+function paypalLinkLabel(listing: Listing) {
+  return listing.paypalLinked ? "PayPal · Linked" : "PayPal · Not linked";
 }
 
 function healthLabel(health: SocialProof["health"]) {
@@ -776,39 +787,72 @@ export default function Marketplace() {
     };
   }, [editOpened, listings, session?.user.id, sessionPending, signedIn]);
 
-  const requestSocialHealth = useCallback(async (accounts: SocialProof[]) => {
-    if (!accounts.length) return [];
-    const response = await fetch("/api/social-health", {
+  const requestLinkHealth = useCallback(async (listing: Listing) => {
+    const response = await fetch("/api/link-health", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accounts }),
+      body: JSON.stringify({
+        accounts: listing.socialProofs,
+        destinations: listing.paymentDestinations ?? [],
+      }),
     });
-    if (!response.ok) throw new Error("Social accounts could not be checked");
-    const payload = (await response.json()) as { accounts?: SocialProof[] };
-    return payload.accounts ?? [];
+    if (!response.ok) throw new Error("Social and payment links could not be checked");
+    const payload = (await response.json()) as {
+      accounts?: SocialProof[];
+      destinations?: PaymentDestination[];
+    };
+    return {
+      accounts: payload.accounts ?? listing.socialProofs,
+      destinations: payload.destinations ?? listing.paymentDestinations ?? [],
+    };
   }, []);
 
-  const refreshSocialHealth = useCallback(async (targetListings: Listing[]) => {
-    const eligible = targetListings
-      .filter((listing) => listing.source === "registry" && listing.socialProofs.length)
-      .slice(0, 16);
-    const refreshed = await Promise.all(
-      eligible.map(async (listing) => ({
-        id: listing.id,
-        accounts: await requestSocialHealth(listing.socialProofs).catch(
-          () => listing.socialProofs,
-        ),
-      })),
-    );
-    const byId = new Map(refreshed.map((item) => [item.id, item.accounts]));
+  const applyListingLinkHealth = useCallback((listing: Listing, checked: {
+    accounts: SocialProof[];
+    destinations: PaymentDestination[];
+  }) => {
+    const updated = {
+      ...listing,
+      socialProofs: checked.accounts,
+      paymentDestinations: checked.destinations,
+    };
     setListings((current) =>
-      current.map((listing) =>
-        byId.has(listing.id)
-          ? { ...listing, socialProofs: byId.get(listing.id) ?? listing.socialProofs }
-          : listing,
-      ),
+      current.map((item) => (item.id === listing.id ? updated : item)),
     );
-  }, [requestSocialHealth]);
+    setSelectedListing((current) =>
+      current?.id === listing.id ? updated : current,
+    );
+    return updated;
+  }, []);
+
+  useEffect(() => {
+    if (!selectedListing || selectedListing.source !== "registry") return;
+    let stored: string | null = null;
+    try {
+      stored = window.localStorage.getItem(`om-link-health:${selectedListing.id}`);
+    } catch {
+      stored = null;
+    }
+    if (isLinkCheckFresh(stored) || !listingLinksNeedCheck(selectedListing)) return;
+    let cancelled = false;
+    void requestLinkHealth(selectedListing)
+      .then((checked) => {
+        if (cancelled) return;
+        applyListingLinkHealth(selectedListing, checked);
+        try {
+          window.localStorage.setItem(
+            `om-link-health:${selectedListing.id}`,
+            new Date().toISOString(),
+          );
+        } catch {
+          // Device storage is optional for the 24-hour check cycle.
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [applyListingLinkHealth, requestLinkHealth, selectedListing]);
 
   useEffect(() => {
     let cancelled = false;
@@ -883,7 +927,6 @@ export default function Marketplace() {
           setSelectedListing(deepLink);
           setModal("detail");
         }
-        void refreshSocialHealth(registryListings);
 
         const ownerId = session?.user.id;
         for (const listing of registryListings) {
@@ -916,7 +959,7 @@ export default function Marketplace() {
     return () => {
       cancelled = true;
     };
-  }, [refreshSocialHealth, session?.user.id]);
+  }, [session?.user.id]);
 
   useEffect(() => {
     const overlayOpen = Boolean(modal || filtersOpen);
@@ -1260,26 +1303,41 @@ export default function Marketplace() {
     }
   }
 
-  async function recheckListingSocial(listing: Listing) {
+  async function recheckListingLinks(listing: Listing, silent = false) {
     if (listing.source === "demo") {
-      setToast("Demo trust data is illustrative; real profiles are rechecked live.");
+      if (!silent) {
+        setToast("Demo trust data is illustrative; real profiles are rechecked live.");
+      }
       return;
     }
-    setToast("Rechecking social links…");
-    const checked = await requestSocialHealth(listing.socialProofs).catch(() => null);
+    if (!silent) setToast("Rechecking social and payment links…");
+    const checked = await requestLinkHealth(listing).catch(() => null);
     if (!checked) {
-      setToast("The social platforms did not allow a recheck right now.");
+      if (!silent) {
+        setToast("The platforms did not allow a recheck right now.");
+      }
       return;
     }
-    const updated = { ...listing, socialProofs: checked };
-    setListings((current) =>
-      current.map((item) => (item.id === listing.id ? updated : item)),
+    applyListingLinkHealth(listing, checked);
+    try {
+      window.localStorage.setItem(
+        `om-link-health:${listing.id}`,
+        new Date().toISOString(),
+      );
+    } catch {
+      // Device storage is optional for the 24-hour check cycle.
+    }
+    if (silent) return;
+    const brokenSocial = checked.accounts.some(
+      (account) => account.health === "dead" || account.health === "invalid",
     );
-    setSelectedListing(updated);
+    const brokenPayment = checked.destinations.some(
+      (destination) => destination.health === "dead" || destination.health === "invalid",
+    );
     setToast(
-      checked.some((account) => account.health === "dead" || account.health === "invalid")
+      brokenSocial || brokenPayment
         ? "A dead link was found. The seller must fix or remove it."
-        : "Social links rechecked.",
+        : "Social and payment links rechecked.",
     );
   }
 
@@ -1602,6 +1660,24 @@ export default function Marketplace() {
                       )) : (
                         <span className="no-social">No social account supplied</span>
                       )}
+                      {listing.source === "registry" ? (
+                        <span
+                          className={`social-fact social-connected status-${listing.paypalLinked ? "active" : "unknown"}`}
+                        >
+                          <span className="proof-mark">pp</span>
+                          <span className="social-fact-copy">
+                            <strong>{paypalLinkLabel(listing)}</strong>
+                            <small>
+                              {listing.paypalLinked
+                                ? "Linked with PayPal Login"
+                                : "Seller has not linked PayPal"}
+                            </small>
+                          </span>
+                          <span className="link-health">
+                            {listing.paypalLinked ? "Linked" : "Not linked"}
+                          </span>
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </article>
@@ -1991,7 +2067,7 @@ export default function Marketplace() {
                     </div>
                     <button
                       className="recheck-button"
-                      onClick={() => void recheckListingSocial(selectedListing)}
+                      onClick={() => void recheckListingLinks(selectedListing)}
                     >
                       ↻ Recheck account links now
                     </button>
@@ -2005,6 +2081,22 @@ export default function Marketplace() {
                       <p className="form-note">
                         Public destinations only. The marketplace does not send, hold, escrow, convert, or protect this transfer.
                       </p>
+                      <span
+                        className={`detail-social-account social-connected status-${selectedListing.paypalLinked ? "active" : "unknown"}`}
+                      >
+                        <span className="proof-mark">pp</span>
+                        <span>
+                          <strong>{paypalLinkLabel(selectedListing)}</strong>
+                          <small>
+                            {selectedListing.paypalLinked
+                              ? "This PayPal account is currently linked with PayPal Login."
+                              : "This seller has not linked PayPal."}
+                          </small>
+                        </span>
+                        <span className="link-health">
+                          {selectedListing.paypalLinked ? "Linked" : "Not linked"}
+                        </span>
+                      </span>
                       {paymentLinksFor(selectedListing.paymentDestinations ?? []).length
                         ? paymentLinksFor(selectedListing.paymentDestinations ?? []).map((link) => (
                             link.href ? (

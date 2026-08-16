@@ -14,6 +14,7 @@ import { getDb } from "../../../db";
 import { authAccounts, listings, profiles } from "../../../db/schema";
 import { getMarketplaceSession } from "../../../lib/auth";
 import { mergeConnectedFacebookProof } from "../../../lib/facebook-listing-proof";
+import { overlayPaypalDestinations } from "../../../lib/paypal-public";
 import { sanitizeImageManifest } from "../../../lib/image-manifest";
 import { parsePaymentDestinationsJson } from "../../../lib/payment-destinations";
 import {
@@ -59,8 +60,9 @@ function optionalPriceCents(value: string | null) {
   return Number(value);
 }
 
-async function facebookConnectedUserIds(
+async function connectedProviderUserIds(
   db: Awaited<ReturnType<typeof getDb>>,
+  providerId: "facebook" | "paypal",
   userIds: string[],
 ) {
   if (!userIds.length) return new Set<string>();
@@ -69,11 +71,21 @@ async function facebookConnectedUserIds(
     .from(authAccounts)
     .where(
       and(
-        eq(authAccounts.providerId, "facebook"),
+        eq(authAccounts.providerId, providerId),
         inArray(authAccounts.userId, userIds),
       ),
     );
   return new Set(rows.map((row) => row.userId));
+}
+
+function publicPaymentDestinations(
+  profilePaymentJson: string | null | undefined,
+  paypalConnected: boolean,
+) {
+  return overlayPaypalDestinations(
+    parsePaymentDestinationsJson(profilePaymentJson),
+    paypalConnected,
+  );
 }
 
 function publicSocialProofsJson(
@@ -248,13 +260,21 @@ export async function GET(request: Request) {
           .where(inArray(profiles.id, sellerIds))
       : [];
     const profileById = new Map(profileRows.map((profile) => [profile.id, profile]));
-    const facebookSellerIds = await facebookConnectedUserIds(db, sellerIds);
+    const [facebookSellerIds, paypalSellerIds] = await Promise.all([
+      connectedProviderUserIds(db, "facebook", sellerIds),
+      connectedProviderUserIds(db, "paypal", sellerIds),
+    ]);
 
     return Response.json({
       listings: rows.map((listing) => {
         const profile = profileById.get(listing.sellerId);
         const unpacked = stripPackageFromDescription(listing.description);
         const sellerName = profile?.displayName ?? listing.sellerName;
+        const paypalLinked = paypalSellerIds.has(listing.sellerId);
+        const paymentDestinations = publicPaymentDestinations(
+          profile?.paymentDestinationsJson,
+          paypalLinked,
+        );
         return {
           ...listing,
           description: unpacked.description,
@@ -265,12 +285,9 @@ export async function GET(request: Request) {
             facebookSellerIds.has(listing.sellerId),
             sellerName,
           ),
-          paymentDestinationsJson: JSON.stringify(
-            parsePaymentDestinationsJson(profile?.paymentDestinationsJson),
-          ),
-          paymentDestinations: parsePaymentDestinationsJson(
-            profile?.paymentDestinationsJson,
-          ),
+          paymentDestinationsJson: JSON.stringify(paymentDestinations),
+          paymentDestinations,
+          paypalLinked,
           itemsSold: profile?.itemsSold ?? 0,
           sellerRating: profile?.sellerRating ?? null,
           sellerRatingCount: profile?.sellerRatingCount ?? 0,
@@ -344,7 +361,10 @@ export async function POST(request: Request) {
         { status: 422 },
       );
     }
-    const facebookSellerIds = await facebookConnectedUserIds(db, [sellerId]);
+    const [facebookSellerIds, paypalSellerIds] = await Promise.all([
+      connectedProviderUserIds(db, "facebook", [sellerId]),
+      connectedProviderUserIds(db, "paypal", [sellerId]),
+    ]);
 
     const id = crypto.randomUUID();
     const updatedAt = new Date().toISOString();
@@ -403,9 +423,11 @@ export async function POST(request: Request) {
             facebookSellerIds.has(sellerId),
             sellerName,
           ),
-          paymentDestinations: parsePaymentDestinationsJson(
+          paymentDestinations: publicPaymentDestinations(
             existingProfile?.paymentDestinationsJson,
+            paypalSellerIds.has(sellerId),
           ),
+          paypalLinked: paypalSellerIds.has(sellerId),
           itemsSold: 0,
           sellerRating: null,
           sellerRatingCount: 0,
@@ -495,7 +517,10 @@ export async function PATCH(request: Request) {
         { status: 422 },
       );
     }
-    const facebookSellerIds = await facebookConnectedUserIds(db, [sellerId]);
+    const [facebookSellerIds, paypalSellerIds] = await Promise.all([
+      connectedProviderUserIds(db, "facebook", [sellerId]),
+      connectedProviderUserIds(db, "paypal", [sellerId]),
+    ]);
 
     const updatedAt = new Date().toISOString();
     const [listing] = await db
@@ -532,9 +557,11 @@ export async function PATCH(request: Request) {
           facebookSellerIds.has(sellerId),
           sellerName,
         ),
-        paymentDestinations: parsePaymentDestinationsJson(
+        paymentDestinations: publicPaymentDestinations(
           existingProfile?.paymentDestinationsJson,
+          paypalSellerIds.has(sellerId),
         ),
+        paypalLinked: paypalSellerIds.has(sellerId),
         itemsSold: existingProfile?.itemsSold ?? 0,
         sellerRating: existingProfile?.sellerRating ?? null,
         sellerRatingCount: existingProfile?.sellerRatingCount ?? 0,

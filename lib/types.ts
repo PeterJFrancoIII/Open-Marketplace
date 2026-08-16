@@ -17,6 +17,12 @@ export type FacebookConnection = {
   imageUrl: string | null;
 };
 
+export type PayPalConnection = {
+  available: boolean;
+  connected: boolean;
+  email: string | null;
+};
+
 export type SocialProof = {
   provider: "facebook" | "instagram" | "tiktok" | "other";
   url: string;
@@ -48,6 +54,10 @@ export type PaymentDestination = {
   asset: "BTC" | "ETH" | "USDT" | "BNB" | "USDC" | null;
   networkId: string | null;
   networkLabel: string | null;
+  source?: "self-reported" | "oauth";
+  health?: SocialProof["health"];
+  lastCheckedAt?: string;
+  healthMessage?: string;
 };
 
 export type Listing = {
@@ -76,6 +86,7 @@ export type Listing = {
   endingAt: string | null;
   source: "demo" | "registry" | "device";
   paymentDestinations?: PaymentDestination[];
+  paypalLinked?: boolean;
   shippingPackage?: {
     weightLb: number;
     lengthIn: number;

@@ -10,6 +10,7 @@ import {
   getMarketplaceAdminEmails,
   requireMarketplaceSession,
 } from "../../lib/auth";
+import { getPayPalConnection } from "../../lib/paypal-connect";
 import { isAdminEmail } from "../../lib/admin-policy";
 import AccountSettings from "./account-settings";
 import PortalShell from "../portal/portal-shell";
@@ -50,7 +51,10 @@ export default async function AccountPage() {
       .limit(1),
   ]);
   const profile = profileRows[0];
-  const facebookConnection = await getFacebookConnection(requestHeaders);
+  const [facebookConnection, paypalConnection] = await Promise.all([
+    getFacebookConnection(requestHeaders),
+    getPayPalConnection(requestHeaders),
+  ]);
 
   const counts = {
     active: 0,
@@ -162,6 +166,7 @@ export default async function AccountPage() {
           profile?.paymentDestinationsJson,
         )}
         initialFacebookConnection={facebookConnection}
+        initialPayPalConnection={paypalConnection}
       />
     </PortalShell>
   );

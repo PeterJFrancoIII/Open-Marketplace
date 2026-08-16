@@ -197,11 +197,13 @@ export async function getMarketplaceAuth(request?: Request) {
             : {};
         if (
           (path === "/sign-in/social" || path.endsWith("/sign-in/social")) &&
-          body.provider === "facebook"
+          (body.provider === "facebook" || body.provider === "paypal")
         ) {
           throw new APIError("BAD_REQUEST", {
             message:
-              "Facebook is an account connector only. Sign in with email.",
+              body.provider === "paypal"
+                ? "PayPal is an account connector only. Sign in with email."
+                : "Facebook is an account connector only. Sign in with email.",
           });
         }
         if (

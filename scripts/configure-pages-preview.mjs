@@ -14,6 +14,9 @@ export function buildPagesPreviewDeploymentConfigs({
   adminEmails,
   facebookClientId,
   facebookClientSecret,
+  paypalClientId,
+  paypalClientSecret,
+  paypalEnv,
   parcelMonkeyUserId,
   parcelMonkeyApiToken,
 }) {
@@ -35,6 +38,22 @@ export function buildPagesPreviewDeploymentConfigs({
     previewEnvVars.FACEBOOK_CLIENT_SECRET = {
       type: "secret_text",
       value: facebookSecret,
+    };
+  }
+  const paypalId = paypalClientId?.trim();
+  const paypalSecret = paypalClientSecret?.trim();
+  if (paypalId && paypalSecret) {
+    previewEnvVars.PAYPAL_CLIENT_ID = {
+      type: "plain_text",
+      value: paypalId,
+    };
+    previewEnvVars.PAYPAL_CLIENT_SECRET = {
+      type: "secret_text",
+      value: paypalSecret,
+    };
+    previewEnvVars.PAYPAL_ENV = {
+      type: "plain_text",
+      value: paypalEnv?.trim() === "live" ? "live" : "sandbox",
     };
   }
   const parcelUser = parcelMonkeyUserId?.trim();
@@ -105,6 +124,9 @@ async function configurePagesPreview() {
     adminEmails: ADMIN_EMAILS,
     facebookClientId: process.env.FACEBOOK_CLIENT_ID,
     facebookClientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+    paypalClientId: process.env.PAYPAL_CLIENT_ID,
+    paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET,
+    paypalEnv: process.env.PAYPAL_ENV,
     parcelMonkeyUserId: process.env.PARCEL_MONKEY_USER_ID,
     parcelMonkeyApiToken: process.env.PARCEL_MONKEY_API_TOKEN,
   });

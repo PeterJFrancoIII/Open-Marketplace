@@ -22,6 +22,7 @@ import {
 } from "../../lib/shipping-brokers";
 import type {
   FacebookConnection,
+  PayPalConnection,
   PaymentDestination,
   PaymentRail,
   SocialProof,
@@ -118,11 +119,12 @@ function facebookOauthErrorSubscribe() {
   return () => {};
 }
 
-function readFacebookOauthError() {
+function readOauthError() {
   if (typeof window === "undefined") return "";
-  return new URLSearchParams(window.location.search).get("error")
-    ? "Facebook Connect did not complete. Try again."
-    : "";
+  const error = new URLSearchParams(window.location.search).get("error");
+  if (!error) return "";
+  if (error === "paypal") return "PayPal Link did not complete. Try again.";
+  return "Facebook Connect did not complete. Try again.";
 }
 
 const FACEBOOK_PUBLIC_PROFILE_SCOPE = "public_profile";
@@ -137,6 +139,12 @@ const emptyFacebookConnection: FacebookConnection = {
   imageUrl: null,
 };
 
+const emptyPayPalConnection: PayPalConnection = {
+  available: false,
+  connected: false,
+  email: null,
+};
+
 export default function AccountSettings({
   initialName,
   email,
@@ -144,6 +152,7 @@ export default function AccountSettings({
   initialPaymentDestinations,
   initialShippingBrokers,
   initialFacebookConnection,
+  initialPayPalConnection,
 }: {
   initialName: string;
   email: string;
@@ -151,6 +160,7 @@ export default function AccountSettings({
   initialPaymentDestinations: PaymentDestination[];
   initialShippingBrokers: ShippingBrokerConnection[];
   initialFacebookConnection: FacebookConnection;
+  initialPayPalConnection: PayPalConnection;
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
@@ -168,6 +178,9 @@ export default function AccountSettings({
   const [facebookConnection, setFacebookConnection] = useState(
     initialFacebookConnection ?? emptyFacebookConnection,
   );
+  const [paypalConnection, setPaypalConnection] = useState(
+    initialPayPalConnection ?? emptyPayPalConnection,
+  );
   const [pending, setPending] = useState<
     | "name"
     | "password"
@@ -177,6 +190,8 @@ export default function AccountSettings({
     | "shipping"
     | "facebook-connect"
     | "facebook-disconnect"
+    | "paypal-connect"
+    | "paypal-disconnect"
     | "media-node"
     | null
   >(null);
@@ -191,7 +206,7 @@ export default function AccountSettings({
   const [error, setError] = useState("");
   const oauthError = useSyncExternalStore(
     facebookOauthErrorSubscribe,
-    readFacebookOauthError,
+    readOauthError,
     () => "",
   );
   const visibleError = error || oauthError;
@@ -279,9 +294,13 @@ export default function AccountSettings({
       paymentDestinations?: PaymentDestination[];
       shippingBrokers?: ShippingBrokerConnection[];
       facebookConnection?: FacebookConnection;
+      paypalConnection?: PayPalConnection;
     };
     if (result.facebookConnection) {
       setFacebookConnection(result.facebookConnection);
+    }
+    if (result.paypalConnection) {
+      setPaypalConnection(result.paypalConnection);
     }
     if (response.status === 401) {
       window.location.assign("/login?returnTo=%2Faccount");
@@ -545,6 +564,53 @@ export default function AccountSettings({
     } catch (submitError) {
       setError(
         normalizeAuthError(submitError, "Could not disconnect Facebook."),
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function onConnectPayPal() {
+    setPending("paypal-connect");
+    setStatus("");
+    setError("");
+    window.location.assign("/api/paypal/connect");
+  }
+
+  async function onDisconnectPayPal() {
+    setPending("paypal-disconnect");
+    setStatus("");
+    setError("");
+    try {
+      const response = await fetch("/api/paypal/disconnect", {
+        method: "POST",
+        headers: { accept: "application/json" },
+      });
+      const result = (await response.json()) as {
+        error?: string;
+        paypalConnection?: PayPalConnection;
+      };
+      if (response.status === 401) {
+        window.location.assign("/login?returnTo=%2Faccount");
+        return;
+      }
+      if (!response.ok) {
+        setError(result.error ?? "Could not disconnect PayPal.");
+        return;
+      }
+      setPaypalConnection(
+        result.paypalConnection ?? {
+          available: paypalConnection.available,
+          connected: false,
+          email: null,
+        },
+      );
+      setPaymentDrafts((current) => ({ ...current, paypal: "" }));
+      setStatus("PayPal disconnected. Your Open Marketplace account is unchanged.");
+      router.refresh();
+    } catch (submitError) {
+      setError(
+        normalizeAuthError(submitError, "Could not disconnect PayPal."),
       );
     } finally {
       setPending(null);
@@ -854,11 +920,12 @@ export default function AccountSettings({
         <div>
           <h3 id="payment-options-title">Payment options</h3>
           <p className="portal-lead">
-            Connect public pay-to destinations for PayPal, Venmo, Cash App,
-            Zelle, Apple Cash, Bitcoin on Bitcoin Mainnet, Ethereum on Ethereum
-            Mainnet, Tether (USDT) on Ethereum Mainnet (ERC-20), BNB on BNB
-            Smart Chain Mainnet, and USDC on Ethereum Mainnet (ERC-20). These
-            are connectors to the official apps, not a checkout.
+            Link PayPal with official PayPal Login to fill your public pay-to
+            email. Venmo, Cash App, Zelle, Apple Cash, Bitcoin on Bitcoin
+            Mainnet, Ethereum on Ethereum Mainnet, Tether (USDT) on Ethereum
+            Mainnet (ERC-20), BNB on BNB Smart Chain Mainnet, and USDC on
+            Ethereum Mainnet (ERC-20) stay typed public contacts. These are
+            connectors to the official apps, not a checkout.
           </p>
           <p className="portal-settings-note">
             Zelle and Apple Cash are public payment contact information. Type an
@@ -873,14 +940,32 @@ export default function AccountSettings({
           <div className="portal-settings-row" key={rail.id}>
             <div className="portal-settings-row-head">
               <strong>{rail.label}</strong>
-              {paymentDrafts[rail.id] ? (
-                <span className="portal-settings-health">Connected</span>
+              {rail.id === "paypal" && paypalConnection.connected ? (
+                <span className="portal-settings-health">Linked</span>
+              ) : paymentDrafts[rail.id] ? (
+                <span className="portal-settings-health">Saved</span>
+              ) : rail.id === "paypal" ? (
+                <span className="portal-settings-health">Not linked</span>
               ) : null}
             </div>
+            {rail.id === "paypal" ? (
+              <p className="portal-settings-note">
+                PayPal Link uses official Log in with PayPal and the email
+                scope only. It fills this public pay-to contact. It does not
+                sign you in, take payments, or hold money.
+                {!paypalConnection.available && !paypalConnection.connected
+                  ? " PayPal Login is not available on this copy of the site, so you can still save a public PayPal email or paypal.me link."
+                  : ""}
+              </p>
+            ) : null}
             <label className="portal-field">
               <span>{rail.hint}</span>
               <input
-                value={paymentDrafts[rail.id]}
+                value={
+                  rail.id === "paypal" && paypalConnection.connected
+                    ? paypalConnection.email ?? paymentDrafts.paypal
+                    : paymentDrafts[rail.id]
+                }
                 onChange={(event) =>
                   setPaymentDrafts((current) => ({
                     ...current,
@@ -889,10 +974,34 @@ export default function AccountSettings({
                 }
                 autoComplete="off"
                 spellCheck={false}
-                disabled={pending !== null}
+                disabled={
+                  pending !== null ||
+                  (rail.id === "paypal" && paypalConnection.connected)
+                }
               />
             </label>
             <div className="portal-connector-actions">
+              {rail.id === "paypal" && paypalConnection.connected ? (
+                <button
+                  className="button button-ghost"
+                  type="button"
+                  onClick={() => void onDisconnectPayPal()}
+                  disabled={pending !== null}
+                >
+                  {pending === "paypal-disconnect"
+                    ? "Disconnecting…"
+                    : "Disconnect PayPal"}
+                </button>
+              ) : rail.id === "paypal" && paypalConnection.available ? (
+                <button
+                  className="button button-dark"
+                  type="button"
+                  onClick={onConnectPayPal}
+                  disabled={pending !== null}
+                >
+                  {pending === "paypal-connect" ? "Connecting…" : "Link PayPal"}
+                </button>
+              ) : null}
               <a
                 className="button button-ghost"
                 href={rail.connectUrl}
@@ -901,7 +1010,8 @@ export default function AccountSettings({
               >
                 Open {rail.label}
               </a>
-              {paymentDrafts[rail.id] ? (
+              {paymentDrafts[rail.id] &&
+              !(rail.id === "paypal" && paypalConnection.connected) ? (
                 <button
                   className="button button-ghost"
                   type="button"

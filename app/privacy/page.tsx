@@ -5,7 +5,7 @@ import { LegalShell } from "../legal/legal-shell";
 export const metadata: Metadata = {
   title: "Privacy Policy — Open Marketplace",
   description:
-    "How Open Marketplace handles accounts, listings, and Facebook Login on this site.",
+    "How Open Marketplace handles accounts, listings, Facebook Login, and PayPal Login on this site.",
 };
 
 const sections = [
@@ -14,6 +14,7 @@ const sections = [
   { id: "local-media-boundary", label: "Photographs" },
   { id: "facebook-connect-disclosure", label: "Facebook Login" },
   { id: "facebook-exclusions", label: "What Facebook does not give us" },
+  { id: "paypal-connect-disclosure", label: "PayPal Login" },
   { id: "provider-credential-boundary", label: "How Facebook credentials are kept" },
   { id: "purposes", label: "Why we use this information" },
   { id: "sharing-and-sale", label: "Sharing" },
@@ -27,7 +28,7 @@ export default function PrivacyPage() {
   return (
     <LegalShell
       title="Privacy Policy"
-      lead="This policy explains what Open Marketplace collects, what Facebook Login can add, and how you can remove that link. Anyone can read it. You do not need an account."
+      lead="This policy explains what Open Marketplace collects, what Facebook Login and PayPal Login can add, and how you can remove those links. Anyone can read it. You do not need an account."
     >
       <nav aria-label="On this page">
         <ul className="privacy-toc">
@@ -124,6 +125,26 @@ export default function PrivacyPage() {
             Government-identity verification, or any “Facebook verified” label.
           </li>
         </ul>
+      </section>
+
+      <section
+        id="paypal-connect-disclosure"
+        aria-labelledby="paypal-connect-disclosure-title"
+      >
+        <h2 id="paypal-connect-disclosure-title">PayPal Login</h2>
+        <p>
+          Signed-in people can choose Link PayPal. That uses official Log in
+          with PayPal and asks for <code>openid</code>, <code>email</code>, and{" "}
+          <code>profile</code> only. We use the PayPal email so your public
+          pay-to contact can be filled and so listings can show whether PayPal
+          is currently linked. PayPal Login is not a way to create or open an
+          Open Marketplace account, and this marketplace does not take, hold,
+          or send PayPal payments.
+        </p>
+        <p>
+          You can remove the PayPal link in Account settings. PayPal tokens
+          stay on the server. They are not placed in public listing records.
+        </p>
       </section>
 
       <section

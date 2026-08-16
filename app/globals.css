@@ -690,6 +690,16 @@ a {
   border-color: var(--brand);
 }
 
+.social-fact.social-connected,
+.detail-social-account.social-connected {
+  cursor: default;
+}
+
+.social-fact.social-connected:hover,
+.detail-social-account.social-connected:hover {
+  border-color: var(--line);
+}
+
 .social-fact-copy {
   min-width: 0;
 }

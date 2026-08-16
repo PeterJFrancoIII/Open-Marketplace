@@ -34,6 +34,7 @@ import {
   parcelMonkeyCalculatorUrl,
   pirateShipCalculatorUrl,
 } from "../lib/shipping-package";
+import { isConnectedFacebookProof } from "../lib/facebook-listing-proof";
 import type { Listing, SocialProof } from "../lib/types";
 
 const categories = [
@@ -526,6 +527,19 @@ function reputationFor(listing: Listing) {
 
 function socialAccountsFor(listing: Listing): SocialProof[] {
   return listing.socialProofs.map((account, index) => {
+    if (isConnectedFacebookProof(account)) {
+      return {
+        ...account,
+        url: "",
+        handle: account.handle?.trim() || listing.sellerName,
+        accountCreatedAt: undefined,
+        connectionCount: undefined,
+        metricsSource: "oauth",
+        health: "active",
+        healthMessage: "Connected with Facebook Login.",
+        connectionLabel: "friends",
+      };
+    }
     if (account.accountCreatedAt && account.connectionCount !== undefined) return account;
     const minimumYear = account.provider === "facebook" ? 2005 : account.provider === "instagram" ? 2011 : 2017;
     const year = minimumYear + ((listing.sellerId.length + index) % (2025 - minimumYear));
@@ -543,6 +557,76 @@ function socialAccountsFor(listing: Listing): SocialProof[] {
       healthMessage: account.healthMessage ?? "Profile URL resolves.",
     };
   });
+}
+
+function SocialAccountFact({
+  account,
+  className,
+  variant,
+}: {
+  account: SocialProof;
+  className: string;
+  variant: "card" | "detail";
+}) {
+  const connectedFacebook = isConnectedFacebookProof(account);
+  const statusClass = `${className} status-${account.health ?? "unknown"}${
+    connectedFacebook ? " social-connected" : ""
+  }`;
+  const copy = connectedFacebook ? (
+    <>
+      <strong>
+        {variant === "detail"
+          ? `${providerName(account.provider)} · Connected`
+          : account.handle ?? "Facebook"}
+      </strong>
+      <small>Connected with Facebook Login</small>
+    </>
+  ) : variant === "detail" ? (
+    <>
+      <strong>
+        {providerName(account.provider)} · @{account.handle}
+      </strong>
+      <small>
+        Created {formatAccountDate(account.accountCreatedAt)} · {formatCompactCount(account.connectionCount)} {account.connectionLabel ?? "connections"} · {account.metricsSource === "oauth" ? "provider verified" : "self-reported"}
+      </small>
+    </>
+  ) : (
+    <>
+      <strong>@{account.handle ?? providerName(account.provider)}</strong>
+      <small>
+        Joined {formatAccountDate(account.accountCreatedAt)} · {formatCompactCount(account.connectionCount)} {account.connectionLabel ?? "connections"}
+      </small>
+    </>
+  );
+  const inner = (
+    <>
+      <span className="proof-mark">{socialLabel(account.provider)}</span>
+      {variant === "card" ? <span className="social-fact-copy">{copy}</span> : <span>{copy}</span>}
+      <span className="link-health">
+        {connectedFacebook ? "Connected" : healthLabel(account.health)}
+      </span>
+    </>
+  );
+  if (connectedFacebook || !account.url) {
+    return (
+      <span className={statusClass} title={account.healthMessage}>
+        {inner}
+      </span>
+    );
+  }
+  return (
+    <a
+      className={statusClass}
+      href={account.url}
+      target="_blank"
+      rel="noreferrer"
+      title={account.healthMessage}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {inner}
+    </a>
+  );
 }
 
 function formatRating(rating: number | undefined, count: number) {
@@ -1509,25 +1593,12 @@ export default function Marketplace() {
                     </div>
                     <div className="social-facts" aria-label={`${socialAccounts.length} linked social accounts`}>
                       {socialAccounts.length ? socialAccounts.map((account, index) => (
-                        <a
-                          className={`social-fact status-${account.health ?? "unknown"}`}
-                          href={account.url}
-                          target="_blank"
-                          rel="noreferrer"
+                        <SocialAccountFact
+                          account={account}
+                          className="social-fact"
+                          variant="card"
                           key={`${account.provider}-${index}`}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => event.stopPropagation()}
-                          title={account.healthMessage}
-                        >
-                          <span className="proof-mark">{socialLabel(account.provider)}</span>
-                          <span className="social-fact-copy">
-                            <strong>@{account.handle ?? providerName(account.provider)}</strong>
-                            <small>
-                              Joined {formatAccountDate(account.accountCreatedAt)} · {formatCompactCount(account.connectionCount)} {account.connectionLabel ?? "connections"}
-                            </small>
-                          </span>
-                          <span className="link-health">{healthLabel(account.health)}</span>
-                        </a>
+                        />
                       )) : (
                         <span className="no-social">No social account supplied</span>
                       )}
@@ -1910,22 +1981,12 @@ export default function Marketplace() {
                     </div>
                     <div className="detail-social-list">
                       {socialAccountsFor(selectedListing).length ? socialAccountsFor(selectedListing).map((account, index) => (
-                        <a
-                          className={`detail-social-account status-${account.health ?? "unknown"}`}
-                          href={account.url}
-                          target="_blank"
-                          rel="noreferrer"
+                        <SocialAccountFact
+                          account={account}
+                          className="detail-social-account"
+                          variant="detail"
                           key={`${account.provider}-${index}`}
-                        >
-                          <span className="proof-mark">{socialLabel(account.provider)}</span>
-                          <span>
-                            <strong>{providerName(account.provider)} · @{account.handle}</strong>
-                            <small>
-                              Created {formatAccountDate(account.accountCreatedAt)} · {formatCompactCount(account.connectionCount)} {account.connectionLabel ?? "connections"} · {account.metricsSource === "oauth" ? "provider verified" : "self-reported"}
-                            </small>
-                          </span>
-                          <span className="link-health">{healthLabel(account.health)}</span>
-                        </a>
+                        />
                       )) : <span className="no-social">No social account supplied</span>}
                     </div>
                     <button

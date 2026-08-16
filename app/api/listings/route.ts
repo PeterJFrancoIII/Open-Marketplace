@@ -11,8 +11,9 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { listings, profiles } from "../../../db/schema";
+import { authAccounts, listings, profiles } from "../../../db/schema";
 import { getMarketplaceSession } from "../../../lib/auth";
+import { mergeConnectedFacebookProof } from "../../../lib/facebook-listing-proof";
 import { sanitizeImageManifest } from "../../../lib/image-manifest";
 import { parsePaymentDestinationsJson } from "../../../lib/payment-destinations";
 import {
@@ -56,6 +57,37 @@ function boundedInteger(value: string | null, fallback: number, maximum: number)
 function optionalPriceCents(value: string | null) {
   if (value == null || value.trim() === "") return Number.NaN;
   return Number(value);
+}
+
+async function facebookConnectedUserIds(
+  db: Awaited<ReturnType<typeof getDb>>,
+  userIds: string[],
+) {
+  if (!userIds.length) return new Set<string>();
+  const rows = await db
+    .select({ userId: authAccounts.userId })
+    .from(authAccounts)
+    .where(
+      and(
+        eq(authAccounts.providerId, "facebook"),
+        inArray(authAccounts.userId, userIds),
+      ),
+    );
+  return new Set(rows.map((row) => row.userId));
+}
+
+function publicSocialProofsJson(
+  profileSocialJson: string | null | undefined,
+  facebookConnected: boolean,
+  sellerName: string,
+) {
+  return JSON.stringify(
+    mergeConnectedFacebookProof(
+      parseSocialAccountsJson(profileSocialJson),
+      facebookConnected,
+      sellerName,
+    ),
+  );
 }
 
 function parseListingWrite(payload: Record<string, unknown>) {
@@ -216,18 +248,23 @@ export async function GET(request: Request) {
           .where(inArray(profiles.id, sellerIds))
       : [];
     const profileById = new Map(profileRows.map((profile) => [profile.id, profile]));
+    const facebookSellerIds = await facebookConnectedUserIds(db, sellerIds);
 
     return Response.json({
       listings: rows.map((listing) => {
         const profile = profileById.get(listing.sellerId);
         const unpacked = stripPackageFromDescription(listing.description);
+        const sellerName = profile?.displayName ?? listing.sellerName;
         return {
           ...listing,
           description: unpacked.description,
           shippingPackage: unpacked.package,
-          sellerName: profile?.displayName ?? listing.sellerName,
-          socialProofsJson:
+          sellerName,
+          socialProofsJson: publicSocialProofsJson(
             profile?.socialAccountsJson ?? listing.socialProofsJson,
+            facebookSellerIds.has(listing.sellerId),
+            sellerName,
+          ),
           paymentDestinationsJson: JSON.stringify(
             parsePaymentDestinationsJson(profile?.paymentDestinationsJson),
           ),
@@ -307,6 +344,7 @@ export async function POST(request: Request) {
         { status: 422 },
       );
     }
+    const facebookSellerIds = await facebookConnectedUserIds(db, [sellerId]);
 
     const id = crypto.randomUUID();
     const updatedAt = new Date().toISOString();
@@ -360,6 +398,11 @@ export async function POST(request: Request) {
           ...listing,
           description: unpacked.description,
           shippingPackage: unpacked.package,
+          socialProofsJson: publicSocialProofsJson(
+            socialAccountsJson,
+            facebookSellerIds.has(sellerId),
+            sellerName,
+          ),
           paymentDestinations: parsePaymentDestinationsJson(
             existingProfile?.paymentDestinationsJson,
           ),
@@ -452,6 +495,7 @@ export async function PATCH(request: Request) {
         { status: 422 },
       );
     }
+    const facebookSellerIds = await facebookConnectedUserIds(db, [sellerId]);
 
     const updatedAt = new Date().toISOString();
     const [listing] = await db
@@ -483,6 +527,11 @@ export async function PATCH(request: Request) {
         ...listing,
         description: unpacked.description,
         shippingPackage: unpacked.package,
+        socialProofsJson: publicSocialProofsJson(
+          existingProfile?.socialAccountsJson,
+          facebookSellerIds.has(sellerId),
+          sellerName,
+        ),
         paymentDestinations: parsePaymentDestinationsJson(
           existingProfile?.paymentDestinationsJson,
         ),

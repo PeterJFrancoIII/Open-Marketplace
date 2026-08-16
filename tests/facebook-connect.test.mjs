@@ -626,6 +626,107 @@ test("Facebook identity stays connection-scoped and is not copied into the core 
   }
 });
 
+test("listings show a connected Facebook account without a typed profile URL", async () => {
+  const restoreFetch = installSocialFetchStub();
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("facebook-listing-proof");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+  try {
+    const signup = await signUp(worker, env, {
+      name: "Listing Owner",
+      email: "listing-facebook@example.com",
+      password: USER_PASSWORD,
+    });
+    const { user } = await signup.json();
+    await signIn(worker, env, cookieJar, {
+      email: "listing-facebook@example.com",
+      password: USER_PASSWORD,
+    });
+
+    const now = Date.now();
+    d1.__sqlite
+      .prepare(
+        `INSERT INTO auth_accounts (
+          id, user_id, account_id, provider_id, access_token, refresh_token,
+          access_token_expires_at, refresh_token_expires_at, scope, id_token,
+          password, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "facebook-listing-row",
+        user.id,
+        "facebook-app-scoped-id",
+        "facebook",
+        FACEBOOK_ACCESS_TOKEN,
+        null,
+        now + 60_000,
+        null,
+        "public_profile",
+        null,
+        null,
+        now,
+        now,
+      );
+
+    const published = await postJson(worker, env, "/api/listings", cookieJar, {
+      title: "Connected Facebook lamp",
+      description: "Should show the seller Facebook Login connection.",
+      priceCents: 1800,
+      condition: "Good",
+      category: "Furniture",
+      locationLabel: "Brooklyn, NY",
+      format: "Fixed price",
+      delivery: "Pickup",
+      socialProofs: [
+        {
+          provider: "facebook",
+          url: "https://facebook.com/spoofed.listing",
+          accountCreatedAt: "2020-01-01",
+          connectionCount: 99,
+        },
+      ],
+      imageManifest: [],
+    });
+    assert.equal(published.status, 201);
+    const publishedBody = await published.json();
+    const publishedSocial = JSON.parse(publishedBody.listing.socialProofsJson ?? "[]");
+    assert.equal(publishedSocial.length, 1);
+    assert.equal(publishedSocial[0]?.provider, "facebook");
+    assert.equal(publishedSocial[0]?.metricsSource, "oauth");
+    assert.equal(publishedSocial[0]?.handle, "Listing Owner");
+    assert.equal(publishedSocial[0]?.url, "");
+    assert.equal(publishedSocial[0]?.connectionCount, undefined);
+    assert.doesNotMatch(JSON.stringify(publishedSocial), /spoofed\.listing|facebook-app-scoped-id/);
+    assertNoSecrets(publishedBody);
+
+    const listed = await getJson(worker, env, "/api/listings?limit=80");
+    assert.equal(listed.status, 200);
+    const listedBody = await listed.json();
+    const listedSocial = JSON.parse(listedBody.listings?.[0]?.socialProofsJson ?? "[]");
+    assert.equal(listedSocial[0]?.metricsSource, "oauth");
+    assert.equal(listedSocial[0]?.handle, "Listing Owner");
+    assertNoSecrets(listedBody);
+
+    const unlinked = await postJson(
+      worker,
+      env,
+      "/api/auth/unlink-account",
+      cookieJar,
+      { providerId: "facebook" },
+    );
+    assert.equal(unlinked.status, 200);
+
+    const afterDisconnect = await getJson(worker, env, "/api/listings?limit=80");
+    const afterBody = await afterDisconnect.json();
+    const afterSocial = JSON.parse(afterBody.listings?.[0]?.socialProofsJson ?? "[]");
+    assert.equal(afterSocial.length, 0);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test("account settings source offers Connect, Connected, and Disconnect only", async () => {
   const source = await readFile(
     new URL("../app/account/account-settings.tsx", import.meta.url),

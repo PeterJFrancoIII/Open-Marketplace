@@ -161,6 +161,22 @@ async function fetchAllowlistedProfile(initialUrl: URL): Promise<Response> {
 
 export async function checkSocialAccount(account: SocialProof): Promise<SocialProof> {
   const checkedAt = new Date().toISOString();
+  if (account.provider === "facebook" && account.metricsSource === "oauth") {
+    const handle =
+      typeof account.handle === "string" && account.handle.trim()
+        ? account.handle.trim()
+        : "Facebook";
+    return {
+      provider: "facebook",
+      url: "",
+      handle,
+      metricsSource: "oauth",
+      health: "active",
+      healthMessage: "Connected with Facebook Login.",
+      connectionLabel: "friends",
+      lastCheckedAt: checkedAt,
+    };
+  }
   const url = normalizedProfileUrl(account.url);
   if (!url) {
     return {

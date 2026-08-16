@@ -37,6 +37,8 @@ test("owner-restored listing tools stay present without a spoofable social edito
   );
   assert.match(listingsRoute, /export async function PATCH/);
   assert.match(listingsRoute, /storedSocialProofs/);
+  assert.match(listingsRoute, /facebookConnectedUserIds/);
+  assert.match(listingsRoute, /mergeConnectedFacebookProof/);
   assert.doesNotMatch(listingsRoute, /incomingSocialProofs/);
 
   const authSource = await readFile(new URL("lib/auth.ts", root), "utf8");

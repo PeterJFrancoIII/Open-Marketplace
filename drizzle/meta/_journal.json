@@ -71,6 +71,13 @@
       "when": 1786899000000,
       "tag": "0009_conversation_media",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1786900800000,
+      "tag": "0010_cancel_transaction",
+      "breakpoints": true
     }
   ]
 }

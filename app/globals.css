@@ -2129,6 +2129,16 @@ a.detail-social-account.social-connected:hover,
   padding: 10px 12px;
 }
 
+.portal-cancel-request {
+  background: #fff1f1;
+  border: 1px solid #e8c4c6;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 10px 12px;
+}
+
 .portal-tracking-updates {
   display: grid;
   gap: 8px;

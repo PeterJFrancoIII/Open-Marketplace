@@ -215,6 +215,8 @@ export const conversations = sqliteTable(
     shippedPackagingJson: text("shipped_packaging_json"),
     evidenceRequestNote: text("evidence_request_note"),
     evidenceRequestedAt: text("evidence_requested_at"),
+    buyerCancelRequestedAt: text("buyer_cancel_requested_at"),
+    sellerCancelRequestedAt: text("seller_cancel_requested_at"),
     buyerConfirmedAt: text("buyer_confirmed_at"),
     sellerConfirmedAt: text("seller_confirmed_at"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),

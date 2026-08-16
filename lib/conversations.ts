@@ -276,6 +276,100 @@ export async function sendMessage(
   return { ok: true as const, message };
 }
 
+async function wipeConversation(db: Db, conversationId: string) {
+  await db
+    .delete(conversationMedia)
+    .where(eq(conversationMedia.conversationId, conversationId));
+  await db
+    .delete(conversationMessages)
+    .where(eq(conversationMessages.conversationId, conversationId));
+  await db.delete(conversations).where(eq(conversations.id, conversationId));
+}
+
+export async function cancelConversation(
+  db: Db,
+  actor: ConversationActor,
+  conversationId: string,
+  action: "request" | "withdraw" = "request",
+) {
+  const [row] = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  if (!row || (row.buyerId !== actor.id && row.sellerId !== actor.id)) {
+    return { ok: false as const, status: 404, error: "Conversation not found." };
+  }
+  if (conversationCompleted(row)) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "This sale is complete and cannot be cancelled.",
+    };
+  }
+
+  const isBuyer = row.buyerId === actor.id;
+  const myRequestedAt = isBuyer
+    ? row.buyerCancelRequestedAt
+    : row.sellerCancelRequestedAt;
+  const otherRequestedAt = isBuyer
+    ? row.sellerCancelRequestedAt
+    : row.buyerCancelRequestedAt;
+  const now = new Date().toISOString();
+
+  if (action === "withdraw") {
+    if (isBuyer) {
+      await db
+        .update(conversations)
+        .set({ buyerCancelRequestedAt: null, updatedAt: now })
+        .where(eq(conversations.id, conversationId));
+    } else {
+      await db
+        .update(conversations)
+        .set({ sellerCancelRequestedAt: null, updatedAt: now })
+        .where(eq(conversations.id, conversationId));
+    }
+    return {
+      ok: true as const,
+      deleted: false as const,
+      conversation: await conversationPayload(db, conversationId, actor.id),
+    };
+  }
+
+  if (action !== "request") {
+    return {
+      ok: false as const,
+      status: 400,
+      error: "Choose request or withdraw.",
+    };
+  }
+
+  if (otherRequestedAt) {
+    await wipeConversation(db, conversationId);
+    return { ok: true as const, deleted: true as const };
+  }
+
+  if (!myRequestedAt) {
+    if (isBuyer) {
+      await db
+        .update(conversations)
+        .set({ buyerCancelRequestedAt: now, updatedAt: now })
+        .where(eq(conversations.id, conversationId));
+    } else {
+      await db
+        .update(conversations)
+        .set({ sellerCancelRequestedAt: now, updatedAt: now })
+        .where(eq(conversations.id, conversationId));
+    }
+  }
+
+  return {
+    ok: true as const,
+    deleted: false as const,
+    conversation: await conversationPayload(db, conversationId, actor.id),
+  };
+}
+
 export type SaleEvidenceInput = {
   trackingNumber?: unknown;
   paymentReceipt?: unknown;
@@ -1265,6 +1359,16 @@ async function conversationPayload(db: Db, conversationId: string, userId: strin
     otherRating: otherRating
       ? { score: otherRating.score, note: otherRating.note }
       : null,
+    myCancelRequested: Boolean(
+      myRole === "buyer"
+        ? row.buyerCancelRequestedAt
+        : row.sellerCancelRequestedAt,
+    ),
+    otherCancelRequested: Boolean(
+      myRole === "buyer"
+        ? row.sellerCancelRequestedAt
+        : row.buyerCancelRequestedAt,
+    ),
     ...evidenceFromRow(row),
   };
 }

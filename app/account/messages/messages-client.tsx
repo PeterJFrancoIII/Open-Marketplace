@@ -59,6 +59,8 @@ type ConversationSummary = {
   shippedPackaging: MediaManifest | null;
   evidenceRequestNote: string | null;
   evidenceRequestedAt: string | null;
+  myCancelRequested: boolean;
+  otherCancelRequested: boolean;
 };
 
 type ConversationMessage = {
@@ -386,6 +388,15 @@ export default function MessagesClient({
       error?: string;
     };
     if (!response.ok || !payload.conversation) {
+      if (response.status === 404) {
+        setConversation(null);
+        setMessages([]);
+        setSelectedId("");
+        router.replace("/account/messages");
+        void loadInbox();
+        setError("This conversation was cancelled and deleted.");
+        return;
+      }
       setError(payload.error ?? "Conversation not found.");
       return;
     }
@@ -636,6 +647,44 @@ export default function MessagesClient({
     }
   }
 
+  async function cancelTransaction(action: "request" | "withdraw") {
+    if (!selectedId) return;
+    setBusy("cancel");
+    setError("");
+    try {
+      const response = await fetch("/api/conversations/cancel", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ conversationId: selectedId, action }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        conversation?: ConversationSummary;
+        deleted?: boolean;
+        error?: string;
+      };
+      if (!response.ok) {
+        setError(payload.error ?? "Could not update the cancel request.");
+        return;
+      }
+      if (payload.deleted) {
+        setConversation(null);
+        setMessages([]);
+        setSelectedId("");
+        setDraft("");
+        setShowTransferPrompt(false);
+        router.replace("/account/messages");
+        await loadInbox();
+        return;
+      }
+      await Promise.all([loadThread(selectedId), loadInbox()]);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function submitCurrentRating() {
     if (!selectedId) return;
     setBusy("rating");
@@ -688,7 +737,13 @@ export default function MessagesClient({
                   <strong>{item.listingTitle}</strong>
                   <small>
                     {item.myRole === "buyer" ? item.sellerName : item.buyerName}
-                    {item.lastMessagePreview ? ` · ${item.lastMessagePreview}` : ""}
+                    {item.otherCancelRequested
+                      ? " · Cancel requested"
+                      : item.myCancelRequested
+                        ? " · Waiting to cancel"
+                        : item.lastMessagePreview
+                          ? ` · ${item.lastMessagePreview}`
+                          : ""}
                   </small>
                 </button>
               </li>
@@ -813,6 +868,57 @@ export default function MessagesClient({
                   {otherName} marked Complete. Your Complete will lock the sale.
                 </p>
               ) : null}
+
+              <h3>Cancel transaction</h3>
+              <p className="portal-settings-note">
+                Both people must agree. That closes this document and deletes
+                the chat history from the system.
+              </p>
+              {conversation.completed ? (
+                <p className="portal-settings-note">
+                  This sale is complete and cannot be cancelled.
+                </p>
+              ) : conversation.myCancelRequested &&
+                !conversation.otherCancelRequested ? (
+                <>
+                  <p className="portal-cancel-request">
+                    Waiting for {otherName} to agree to cancel.
+                  </p>
+                  <button
+                    className="button button-ghost"
+                    type="button"
+                    disabled={busy === "cancel"}
+                    onClick={() => void cancelTransaction("withdraw")}
+                  >
+                    {busy === "cancel" ? "Updating…" : "Withdraw cancel"}
+                  </button>
+                </>
+              ) : conversation.otherCancelRequested &&
+                !conversation.myCancelRequested ? (
+                <>
+                  <p className="portal-cancel-request">
+                    {otherName} asked to cancel. Agree to cancel and delete
+                    this chat.
+                  </p>
+                  <button
+                    className="button button-primary"
+                    type="button"
+                    disabled={busy === "cancel"}
+                    onClick={() => void cancelTransaction("request")}
+                  >
+                    {busy === "cancel" ? "Deleting…" : "Agree and delete"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="button button-ghost"
+                  type="button"
+                  disabled={busy === "cancel"}
+                  onClick={() => void cancelTransaction("request")}
+                >
+                  {busy === "cancel" ? "Updating…" : "Cancel transaction"}
+                </button>
+              )}
 
               <h3>Shipping evidence</h3>
               <p className="portal-settings-note">

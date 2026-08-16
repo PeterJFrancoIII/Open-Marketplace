@@ -247,6 +247,9 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   assert.doesNotMatch(listingsRoute, /conversation_media/);
   assert.doesNotMatch(listingsRoute, /bytes_base64/);
   assert.doesNotMatch(listingsRoute, /tracking_number/);
+  assert.doesNotMatch(listingsRoute, /buyer_cancel/);
+  assert.doesNotMatch(listingsRoute, /seller_cancel/);
+  assert.doesNotMatch(listingsRoute, /cancelRequested/);
 
   const replica = await readFile(new URL("../lib/replica-host.ts", import.meta.url), "utf8");
   assert.doesNotMatch(replica, /conversation_messages/);
@@ -256,6 +259,8 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   assert.doesNotMatch(replica, /shippedItem/);
   assert.doesNotMatch(replica, /evidenceRequest/);
   assert.doesNotMatch(replica, /trackingNumber/);
+  assert.doesNotMatch(replica, /cancelRequested/);
+  assert.doesNotMatch(replica, /buyer_cancel/);
 
   const messagesUi = await readFile(
     new URL("../app/account/messages/messages-client.tsx", import.meta.url),
@@ -282,6 +287,10 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   assert.match(messagesUi, /Shipping evidence/);
   assert.match(messagesUi, /Accept Evidence/);
   assert.match(messagesUi, /Ask for additional evidence/);
+  assert.match(messagesUi, /Cancel transaction/);
+  assert.match(messagesUi, /Both people must agree/);
+  assert.match(messagesUi, /Agree and delete/);
+  assert.match(messagesUi, /\/api\/conversations\/cancel/);
   assert.match(messagesUi, /\/api\/conversations\/evidence/);
   assert.match(messagesUi, /\/api\/conversations\/evidence\/media/);
   assert.match(messagesUi, /17TRACK/);
@@ -397,6 +406,11 @@ test("signed-out chat, sale, and rating requests are rejected", async () => {
     note: "Please add a clearer photo of the shipping box.",
   });
   assert.equal(requestMore.status, 401);
+
+  const cancel = await postJson(worker, env, "/api/conversations/cancel", undefined, {
+    conversationId: "missing",
+  });
+  assert.equal(cancel.status, 401);
 
   const messagesPage = await workerFetch(worker, env, "/account/messages", {
     headers: { accept: "text/html" },
@@ -968,6 +982,11 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   });
   assert.equal(lockedSale.status, 409);
 
+  const lockedCancel = await postJson(worker, env, "/api/conversations/cancel", sellerJar, {
+    conversationId: conversation.id,
+  });
+  assert.equal(lockedCancel.status, 409);
+
   const otherConfirm = await postJson(
     worker,
     env,
@@ -1080,3 +1099,189 @@ test("PayPal pay links use the seller-editable sale price and default to Goods a
   assert.match(safe.paypalPayHref, /amount=55\.00/);
   assert.doesNotMatch(safe.paypalPayHref, /cmd=_xclick/);
 });
+
+function conversationRowCount(d1, table, conversationId) {
+  return d1.__sqlite
+    .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE conversation_id = ?`)
+    .get(conversationId).n;
+}
+
+test("mutual cancel deletes the conversation and wipes chat history", async () => {
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("chat-mutual-cancel");
+  const env = createTestEnv(d1);
+  const sellerJar = new Map();
+  const buyerJar = new Map();
+  const otherBuyerJar = new Map();
+
+  await signUp(worker, env, {
+    name: "Seller Reed",
+    email: "seller-cancel@example.com",
+  });
+  await signIn(worker, env, sellerJar, { email: "seller-cancel@example.com" });
+  await signUp(worker, env, {
+    name: "Buyer Lane",
+    email: "buyer-cancel@example.com",
+  });
+  await signIn(worker, env, buyerJar, { email: "buyer-cancel@example.com" });
+  await signUp(worker, env, {
+    name: "Other Buyer",
+    email: "other-buyer-cancel@example.com",
+  });
+  await signIn(worker, env, otherBuyerJar, { email: "other-buyer-cancel@example.com" });
+
+  const published = await postJson(
+    worker,
+    env,
+    "/api/listings",
+    sellerJar,
+    listingWrite("Cancel lamp"),
+  );
+  assert.equal(published.status, 201);
+  const listing = (await published.json()).listing;
+
+  const started = await postJson(worker, env, "/api/conversations", buyerJar, {
+    listingId: listing.id,
+  });
+  assert.equal(started.status, 201);
+  const conversation = (await started.json()).conversation;
+  assert.equal(conversation.myCancelRequested, false);
+  assert.equal(conversation.otherCancelRequested, false);
+
+  const sent = await postJson(worker, env, "/api/conversations/messages", buyerJar, {
+    conversationId: conversation.id,
+    body: SECRET_CHAT,
+  });
+  assert.equal(sent.status, 201);
+
+  const sellerEvidence = await postJson(
+    worker,
+    env,
+    "/api/conversations/sale",
+    sellerJar,
+    {
+      conversationId: conversation.id,
+      status: "in_transfer",
+      trackingNumber: "1Z999AA10123456784",
+      shippedItem: salePhoto("shipped-item.jpg"),
+      shippedPackaging: salePhoto("shipped-box.jpg"),
+    },
+  );
+  assert.equal(sellerEvidence.status, 200);
+  assert.equal(conversationRowCount(d1, "conversation_messages", conversation.id), 1);
+  assert.ok(conversationRowCount(d1, "conversation_media", conversation.id) >= 1);
+
+  const stranger = await postJson(
+    worker,
+    env,
+    "/api/conversations/cancel",
+    otherBuyerJar,
+    { conversationId: conversation.id },
+  );
+  assert.equal(stranger.status, 404);
+
+  const badAction = await postJson(worker, env, "/api/conversations/cancel", buyerJar, {
+    conversationId: conversation.id,
+    action: "delete",
+  });
+  assert.equal(badAction.status, 400);
+
+  const buyerRequest = await postJson(worker, env, "/api/conversations/cancel", buyerJar, {
+    conversationId: conversation.id,
+  });
+  assert.equal(buyerRequest.status, 200);
+  const requested = await buyerRequest.json();
+  assert.equal(requested.deleted, false);
+  assert.equal(requested.conversation.myCancelRequested, true);
+  assert.equal(requested.conversation.otherCancelRequested, false);
+
+  const stillThere = await getJson(
+    worker,
+    env,
+    `/api/conversations?id=${conversation.id}`,
+    buyerJar,
+  );
+  assert.equal(stillThere.status, 200);
+  const stillThereBody = await stillThere.json();
+  assert.equal(stillThereBody.messages?.[0]?.body, SECRET_CHAT);
+  assert.equal(conversationRowCount(d1, "conversation_messages", conversation.id), 1);
+
+  const sellerView = await getJson(
+    worker,
+    env,
+    `/api/conversations?id=${conversation.id}`,
+    sellerJar,
+  );
+  const sellerViewBody = await sellerView.json();
+  assert.equal(sellerViewBody.conversation.otherCancelRequested, true);
+  assert.equal(sellerViewBody.conversation.myCancelRequested, false);
+
+  const withdraw = await postJson(worker, env, "/api/conversations/cancel", buyerJar, {
+    conversationId: conversation.id,
+    action: "withdraw",
+  });
+  assert.equal(withdraw.status, 200);
+  const withdrawn = await withdraw.json();
+  assert.equal(withdrawn.deleted, false);
+  assert.equal(withdrawn.conversation.myCancelRequested, false);
+
+  const sellerRequest = await postJson(
+    worker,
+    env,
+    "/api/conversations/cancel",
+    sellerJar,
+    { conversationId: conversation.id },
+  );
+  assert.equal(sellerRequest.status, 200);
+  const sellerRequested = await sellerRequest.json();
+  assert.equal(sellerRequested.deleted, false);
+  assert.equal(sellerRequested.conversation.myCancelRequested, true);
+
+  const buyerAgree = await postJson(worker, env, "/api/conversations/cancel", buyerJar, {
+    conversationId: conversation.id,
+  });
+  assert.equal(buyerAgree.status, 200);
+  const deleted = await buyerAgree.json();
+  assert.equal(deleted.deleted, true);
+  assert.equal(deleted.conversation, undefined);
+
+  const gone = await getJson(
+    worker,
+    env,
+    `/api/conversations?id=${conversation.id}`,
+    buyerJar,
+  );
+  assert.equal(gone.status, 404);
+  assert.equal(conversationRowCount(d1, "conversation_messages", conversation.id), 0);
+  assert.equal(conversationRowCount(d1, "conversation_media", conversation.id), 0);
+  assert.equal(
+    d1.__sqlite
+      .prepare("SELECT COUNT(*) AS n FROM conversations WHERE id = ?")
+      .get(conversation.id).n,
+    0,
+  );
+  assert.equal(
+    d1.__sqlite
+      .prepare("SELECT COUNT(*) AS n FROM conversation_messages WHERE body = ?")
+      .get(SECRET_CHAT).n,
+    0,
+  );
+
+  const publicList = await getJson(worker, env, "/api/listings?limit=80");
+  const publicListBody = await publicList.json();
+  assert.equal(publicList.status, 200);
+  assert.equal(publicListBody.listings?.[0]?.id, listing.id);
+  assert.equal(publicListBody.listings[0].status, "active");
+  assert.doesNotMatch(JSON.stringify(publicListBody), new RegExp(SECRET_CHAT));
+  assert.doesNotMatch(JSON.stringify(publicListBody), /buyer_cancel/);
+
+  const restarted = await postJson(worker, env, "/api/conversations", buyerJar, {
+    listingId: listing.id,
+  });
+  assert.equal(restarted.status, 201);
+  const nextConversation = (await restarted.json()).conversation;
+  assert.notEqual(nextConversation.id, conversation.id);
+  assert.equal(nextConversation.myCancelRequested, false);
+});
+

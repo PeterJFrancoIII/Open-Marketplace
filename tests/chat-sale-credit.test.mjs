@@ -215,6 +215,14 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   const replica = await readFile(new URL("../lib/replica-host.ts", import.meta.url), "utf8");
   assert.doesNotMatch(replica, /conversation_messages/);
   assert.doesNotMatch(replica, /lastMessagePreview/);
+
+  const messagesUi = await readFile(
+    new URL("../app/account/messages/messages-client.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(messagesUi, /Pending/);
+  assert.match(messagesUi, /In-Transfer/);
+  assert.match(messagesUi, /Complete cannot be/);
 });
 
 test("signed-out chat, sale, and rating requests are rejected", async () => {
@@ -239,6 +247,7 @@ test("signed-out chat, sale, and rating requests are rejected", async () => {
 
   const sale = await postJson(worker, env, "/api/conversations/sale", undefined, {
     conversationId: "missing",
+    status: "complete",
   });
   assert.equal(sale.status, 401);
 
@@ -343,12 +352,39 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   assert.equal(beforeConfirm.items_sold, 0);
   assert.equal(beforeConfirm.social_credit_score, 0);
 
+  const missingStatus = await postJson(worker, env, "/api/conversations/sale", buyerJar, {
+    conversationId: conversation.id,
+  });
+  assert.equal(missingStatus.status, 400);
+
+  const inTransfer = await postJson(worker, env, "/api/conversations/sale", buyerJar, {
+    conversationId: conversation.id,
+    status: "in_transfer",
+  });
+  assert.equal(inTransfer.status, 200);
+  assert.equal((await inTransfer.json()).conversation.mySaleStatus, "in_transfer");
+
+  const backToPending = await postJson(worker, env, "/api/conversations/sale", buyerJar, {
+    conversationId: conversation.id,
+    status: "pending",
+  });
+  assert.equal(backToPending.status, 200);
+  assert.equal((await backToPending.json()).conversation.mySaleStatus, "pending");
+
   const buyerConfirm = await postJson(worker, env, "/api/conversations/sale", buyerJar, {
     conversationId: conversation.id,
+    status: "complete",
   });
   assert.equal(buyerConfirm.status, 200);
   const afterOneSide = await buyerConfirm.json();
   assert.equal(afterOneSide.conversation.completed, false);
+  assert.equal(afterOneSide.conversation.mySaleStatus, "complete");
+
+  const reverseComplete = await postJson(worker, env, "/api/conversations/sale", buyerJar, {
+    conversationId: conversation.id,
+    status: "pending",
+  });
+  assert.equal(reverseComplete.status, 409);
 
   const stillListed = await getJson(worker, env, "/api/listings?limit=80");
   const stillListedBody = await stillListed.json();
@@ -373,6 +409,7 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
 
   const sellerConfirm = await postJson(worker, env, "/api/conversations/sale", sellerJar, {
     conversationId: conversation.id,
+    status: "complete",
   });
   assert.equal(sellerConfirm.status, 200);
   const completed = await sellerConfirm.json();
@@ -458,12 +495,18 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
     }),
   );
 
+  const lockedSale = await postJson(worker, env, "/api/conversations/sale", sellerJar, {
+    conversationId: conversation.id,
+    status: "in_transfer",
+  });
+  assert.equal(lockedSale.status, 409);
+
   const otherConfirm = await postJson(
     worker,
     env,
     "/api/conversations/sale",
     otherBuyerJar,
-    { conversationId: otherConversation.id },
+    { conversationId: otherConversation.id, status: "complete" },
   );
   assert.equal(otherConfirm.status, 409);
 

@@ -2061,6 +2061,12 @@ a.detail-social-account.social-connected:hover,
   padding: 16px;
 }
 
+.portal-sale-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .portal-error {
   color: var(--danger);
   font-weight: 700;

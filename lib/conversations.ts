@@ -14,6 +14,8 @@ import {
   MESSAGE_MAX_LENGTH,
   RATING_NOTE_MAX,
   RATING_NOTE_MIN,
+  type SaleStatus,
+  isSaleStatus,
 } from "./conversation-limits";
 import { computeSocialCreditScore } from "./social-credit";
 
@@ -22,7 +24,11 @@ export {
   MESSAGE_MAX_LENGTH,
   RATING_NOTE_MAX,
   RATING_NOTE_MIN,
+  SALE_STATUSES,
+  isSaleStatus,
+  saleStatusLabel,
 } from "./conversation-limits";
+export type { SaleStatus } from "./conversation-limits";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -31,11 +37,31 @@ export type ConversationActor = {
   name: string;
 };
 
+export function partySaleStatus(
+  row: {
+    buyerSaleStatus?: string | null;
+    sellerSaleStatus?: string | null;
+    buyerConfirmedAt?: string | null;
+    sellerConfirmedAt?: string | null;
+  },
+  role: "buyer" | "seller",
+): SaleStatus {
+  const stored = role === "buyer" ? row.buyerSaleStatus : row.sellerSaleStatus;
+  if (isSaleStatus(stored)) return stored;
+  const confirmed = role === "buyer" ? row.buyerConfirmedAt : row.sellerConfirmedAt;
+  return confirmed ? "complete" : "pending";
+}
+
 export function conversationCompleted(row: {
+  buyerSaleStatus?: string | null;
+  sellerSaleStatus?: string | null;
   buyerConfirmedAt?: string | null;
   sellerConfirmedAt?: string | null;
 }) {
-  return Boolean(row.buyerConfirmedAt && row.sellerConfirmedAt);
+  return (
+    partySaleStatus(row, "buyer") === "complete" &&
+    partySaleStatus(row, "seller") === "complete"
+  );
 }
 
 export async function ensureProfile(
@@ -220,10 +246,11 @@ export async function sendMessage(
   return { ok: true as const, message };
 }
 
-export async function confirmSale(
+export async function setSaleStatus(
   db: Db,
   actor: ConversationActor,
   conversationId: string,
+  status: SaleStatus,
 ) {
   const [row] = await db
     .select()
@@ -250,33 +277,52 @@ export async function confirmSale(
     };
   }
 
-  const now = new Date().toISOString();
   const isBuyer = row.buyerId === actor.id;
-  if (isBuyer && row.buyerConfirmedAt) {
+  const myStatus = partySaleStatus(row, isBuyer ? "buyer" : "seller");
+  if (conversationCompleted(row) && status !== "complete") {
     return {
-      ok: true as const,
-      conversation: await conversationPayload(db, conversationId, actor.id),
+      ok: false as const,
+      status: 409,
+      error: "This sale is complete and cannot be reversed.",
     };
   }
-  if (!isBuyer && row.sellerConfirmedAt) {
+  if (myStatus === "complete" && status !== "complete") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "Complete cannot be reversed.",
+    };
+  }
+  if (myStatus === status) {
     return {
       ok: true as const,
       conversation: await conversationPayload(db, conversationId, actor.id),
     };
   }
 
-  const nextBuyerConfirmedAt = isBuyer ? now : row.buyerConfirmedAt;
-  const nextSellerConfirmedAt = isBuyer ? row.sellerConfirmedAt : now;
+  const now = new Date().toISOString();
+  const nextBuyerStatus = isBuyer ? status : partySaleStatus(row, "buyer");
+  const nextSellerStatus = isBuyer ? partySaleStatus(row, "seller") : status;
+  const nextBuyerConfirmedAt =
+    nextBuyerStatus === "complete" ? row.buyerConfirmedAt ?? now : null;
+  const nextSellerConfirmedAt =
+    nextSellerStatus === "complete" ? row.sellerConfirmedAt ?? now : null;
   await db
     .update(conversations)
     .set({
+      buyerSaleStatus: nextBuyerStatus,
+      sellerSaleStatus: nextSellerStatus,
       buyerConfirmedAt: nextBuyerConfirmedAt,
       sellerConfirmedAt: nextSellerConfirmedAt,
       updatedAt: now,
     })
     .where(eq(conversations.id, conversationId));
 
-  if (nextBuyerConfirmedAt && nextSellerConfirmedAt && listing.status === "active") {
+  if (
+    nextBuyerStatus === "complete" &&
+    nextSellerStatus === "complete" &&
+    listing.status === "active"
+  ) {
     const [existingSale] = await db
       .select({ id: saleHistory.id })
       .from(saleHistory)
@@ -287,6 +333,8 @@ export async function confirmSale(
         db,
         {
           ...row,
+          buyerSaleStatus: nextBuyerStatus,
+          sellerSaleStatus: nextSellerStatus,
           buyerConfirmedAt: nextBuyerConfirmedAt,
           sellerConfirmedAt: nextSellerConfirmedAt,
         },
@@ -317,7 +365,7 @@ export async function submitRating(
     return {
       ok: false as const,
       status: 409,
-      error: "Both people must confirm the sale before rating.",
+      error: "Both people must mark the sale complete before rating.",
     };
   }
   if (!Number.isInteger(score) || score < 1 || score > 5) {
@@ -597,16 +645,17 @@ async function conversationPayload(db: Db, conversationId: string, userId: strin
     sellerName: seller?.displayName ?? listing?.sellerName ?? "Seller",
     lastMessageAt: row.lastMessageAt,
     lastMessagePreview: lastMessage?.body?.slice(0, 140) ?? "",
+    buyerSaleStatus: partySaleStatus(row, "buyer"),
+    sellerSaleStatus: partySaleStatus(row, "seller"),
     buyerConfirmedAt: row.buyerConfirmedAt,
     sellerConfirmedAt: row.sellerConfirmedAt,
     completed: conversationCompleted(row),
     myRole,
-    myConfirmed: Boolean(
-      myRole === "buyer" ? row.buyerConfirmedAt : row.sellerConfirmedAt,
-    ),
-    otherConfirmed: Boolean(
-      myRole === "buyer" ? row.sellerConfirmedAt : row.buyerConfirmedAt,
-    ),
+    mySaleStatus: partySaleStatus(row, myRole),
+    otherSaleStatus: partySaleStatus(row, myRole === "buyer" ? "seller" : "buyer"),
+    myConfirmed: partySaleStatus(row, myRole) === "complete",
+    otherConfirmed:
+      partySaleStatus(row, myRole === "buyer" ? "seller" : "buyer") === "complete",
     myRating: myRating ? { score: myRating.score, note: myRating.note } : null,
     otherRating: otherRating
       ? { score: otherRating.score, note: otherRating.note }

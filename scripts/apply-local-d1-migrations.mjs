@@ -11,9 +11,10 @@ const d1ObjectDir = join(
 const migrationFiles = [
   "drizzle/0000_ambitious_blockbuster.sql",
   "drizzle/0001_rapid_leper_queen.sql",
-  "drizzle/0002_married_wolverine.sql",
+    "drizzle/0002_married_wolverine.sql",
     "drizzle/0003_ambitious_hawkeye.sql",
     "drizzle/0004_chat_sale_credit.sql",
+    "drizzle/0005_sale_status.sql",
 ];
 
 function findLocalD1Files() {
@@ -53,10 +54,17 @@ for (const databasePath of databasePaths) {
       "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'conversations' LIMIT 1",
     )
     .get();
+  const hasSaleStatus = db
+    .prepare(
+      "SELECT 1 AS ok FROM pragma_table_info('conversations') WHERE name = 'buyer_sale_status' LIMIT 1",
+    )
+    .get();
   const pending = alreadyApplied
     ? hasConversations
-      ? []
-      : ["drizzle/0004_chat_sale_credit.sql"]
+      ? hasSaleStatus
+        ? []
+        : ["drizzle/0005_sale_status.sql"]
+      : ["drizzle/0004_chat_sale_credit.sql", "drizzle/0005_sale_status.sql"]
     : migrationFiles;
   if (!pending.length) {
     db.close();

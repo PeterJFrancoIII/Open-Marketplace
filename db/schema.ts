@@ -201,6 +201,8 @@ export const conversations = sqliteTable(
     buyerId: text("buyer_id").notNull(),
     sellerId: text("seller_id").notNull(),
     lastMessageAt: text("last_message_at"),
+    buyerSaleStatus: text("buyer_sale_status").notNull().default("pending"),
+    sellerSaleStatus: text("seller_sale_status").notNull().default("pending"),
     buyerConfirmedAt: text("buyer_confirmed_at"),
     sellerConfirmedAt: text("seller_confirmed_at"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),

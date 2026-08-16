@@ -6,6 +6,9 @@ import {
   MESSAGE_MAX_LENGTH,
   RATING_NOTE_MAX,
   RATING_NOTE_MIN,
+  SALE_STATUSES,
+  type SaleStatus,
+  saleStatusLabel,
 } from "../../../lib/conversation-limits";
 
 type Rating = { score: number; note: string };
@@ -26,6 +29,8 @@ type ConversationSummary = {
   lastMessagePreview: string;
   completed: boolean;
   myRole: "buyer" | "seller";
+  mySaleStatus: SaleStatus;
+  otherSaleStatus: SaleStatus;
   myConfirmed: boolean;
   otherConfirmed: boolean;
   myRating: Rating | null;
@@ -169,7 +174,7 @@ export default function MessagesClient({
     }
   }
 
-  async function confirmCurrentSale() {
+  async function setCurrentSaleStatus(status: SaleStatus) {
     if (!selectedId) return;
     setBusy("sale");
     setError("");
@@ -180,11 +185,11 @@ export default function MessagesClient({
           accept: "application/json",
           "content-type": "application/json",
         },
-        body: JSON.stringify({ conversationId: selectedId }),
+        body: JSON.stringify({ conversationId: selectedId, status }),
       });
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) {
-        setError(payload.error ?? "Could not confirm this sale.");
+        setError(payload.error ?? "Could not update this sale.");
         return;
       }
       await Promise.all([loadThread(selectedId), loadInbox()]);
@@ -310,34 +315,47 @@ export default function MessagesClient({
             </form>
 
             <div className="portal-sale-box">
-              <h3>Sale confirmation</h3>
+              <h3>Sale status</h3>
               <p className="portal-settings-note">
-                Both people must confirm. One-sided confirm does nothing public.
-                This does not send, hold, or execute payment.
+                Pending and In-Transfer can be changed. Complete cannot be
+                reversed. The listing stays active until both people mark
+                Complete. This does not send, hold, or execute payment.
+              </p>
+              <p className="portal-settings-note">
+                {otherName} is {saleStatusLabel(conversation.otherSaleStatus)}.
+                You are {saleStatusLabel(conversation.mySaleStatus)}.
               </p>
               {conversation.listingStatus === "sold" && !conversation.completed ? (
                 <p className="portal-empty">This listing was sold in another conversation.</p>
-              ) : conversation.completed ? (
-                <p>Both people confirmed. The listing is archived as sold.</p>
               ) : (
-                <button
-                  className="button button-ghost"
-                  type="button"
-                  disabled={conversation.myConfirmed || busy === "sale"}
-                  onClick={() => void confirmCurrentSale()}
-                >
-                  {conversation.myConfirmed
-                    ? conversation.myRole === "buyer"
-                      ? "You confirmed purchased"
-                      : "You confirmed sold"
-                    : conversation.myRole === "buyer"
-                      ? "Confirm purchased"
-                      : "Confirm sold"}
-                </button>
+                <div className="portal-sale-status-row" role="group" aria-label="Your sale status">
+                  {SALE_STATUSES.map((status) => {
+                    const locked =
+                      conversation.completed ||
+                      (conversation.mySaleStatus === "complete" && status !== "complete");
+                    return (
+                      <button
+                        key={status}
+                        className={`button${
+                          conversation.mySaleStatus === status
+                            ? " button-primary"
+                            : " button-ghost"
+                        }`}
+                        type="button"
+                        disabled={locked || busy === "sale"}
+                        onClick={() => void setCurrentSaleStatus(status)}
+                      >
+                        {saleStatusLabel(status)}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
-              {conversation.otherConfirmed && !conversation.completed ? (
+              {conversation.completed ? (
+                <p>Both people marked Complete. The listing is archived and this record is locked.</p>
+              ) : conversation.otherConfirmed ? (
                 <p className="portal-settings-note">
-                  {otherName} already confirmed. Your confirm will complete the sale.
+                  {otherName} marked Complete. Your Complete will lock the sale.
                 </p>
               ) : null}
             </div>

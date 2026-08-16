@@ -3,6 +3,12 @@
 import { type FormEvent, useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "../../lib/auth-client";
+import {
+  parseMediaNodeOrigin,
+  probeMediaNode,
+  readMediaNodeConfig,
+  writeMediaNodeConfig,
+} from "../../lib/media-node";
 import { PAYMENT_RAILS } from "../../lib/payment-destinations";
 import {
   SHIPPING_BROKERS,
@@ -166,8 +172,15 @@ export default function AccountSettings({
     | "shipping"
     | "facebook-connect"
     | "facebook-disconnect"
+    | "media-node"
     | null
   >(null);
+  const [mediaNodeOrigin, setMediaNodeOrigin] = useState(
+    () => readMediaNodeConfig()?.origin ?? "",
+  );
+  const [mediaNodeToken, setMediaNodeToken] = useState(
+    () => readMediaNodeConfig()?.writeToken ?? "",
+  );
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const oauthError = useSyncExternalStore(
@@ -399,6 +412,71 @@ export default function AccountSettings({
     }
   }
 
+  async function onSaveMediaNode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending("media-node");
+    setStatus("");
+    setError("");
+    try {
+      const origin = mediaNodeOrigin.trim();
+      if (!origin) {
+        writeMediaNodeConfig(null);
+        setMediaNodeToken("");
+        setStatus("Trusted media node disconnected on this device.");
+        return;
+      }
+      const parsed = parseMediaNodeOrigin(origin);
+      if (!parsed) {
+        setError(
+          "Use an https origin for the Synology node, or http://localhost for local testing.",
+        );
+        return;
+      }
+      writeMediaNodeConfig({ origin: parsed, writeToken: mediaNodeToken });
+      setMediaNodeOrigin(parsed);
+      setStatus(
+        "Trusted media node saved on this device. Listing photos will be copied there and loaded from there when this browser does not have them. The public registry still stores hashes only.",
+      );
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Could not save the trusted media node.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function onProbeMediaNode() {
+    setPending("media-node");
+    setStatus("");
+    setError("");
+    try {
+      const parsed = parseMediaNodeOrigin(mediaNodeOrigin);
+      if (!parsed) {
+        setError(
+          "Use an https origin for the Synology node, or http://localhost for local testing.",
+        );
+        return;
+      }
+      const ok = await probeMediaNode(parsed);
+      if (!ok) {
+        setError(
+          "The node did not answer as a trusted media node. Check HTTPS, CORS, and that the container is running.",
+        );
+        return;
+      }
+      setStatus("Trusted media node is reachable from this browser.");
+    } catch {
+      setError(
+        "This browser could not reach the media node. The live preview needs an https origin.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
   async function onConnectFacebook() {
     setPending("facebook-connect");
     setStatus("");
@@ -565,9 +643,10 @@ export default function AccountSettings({
             Connect your Facebook account to prove you control it. This uses
             consumer Facebook Login and public_profile only, and reads every
             field Facebook returns on that permission: name, first name, last
-            name, middle name, short name, and a large profile photo. If those
-            marketplace fields are empty, they are filled from Facebook.
-            Address, date of birth, phone, and email are not available from
+            name, middle name, short name, and a large profile photo. Those
+            values stay on the Facebook connector and do not replace your Open
+            Marketplace email or name. Address, date of birth, phone, and email
+            are not available from
             Facebook Login. It does not sign you in, import listings, or make
             you Facebook verified.
           </p>
@@ -975,6 +1054,62 @@ export default function AccountSettings({
         >
           {pending === "shipping" ? "Saving…" : "Save shipping connectors"}
         </button>
+      </form>
+
+      <form
+        className="portal-form"
+        id="trusted-media-node-settings"
+        onSubmit={onSaveMediaNode}
+        aria-labelledby="trusted-media-node-title"
+      >
+        <div>
+          <h3 id="trusted-media-node-title">Trusted media node</h3>
+          <p className="portal-lead">
+            This is the first hosting-node copy of listing photos. Run the
+            Synology container from <code>hosting-node/</code>, put HTTPS in
+            front of it, then save that origin here. Photo bytes stay off the
+            public registry. The write token is stored only in this browser.
+          </p>
+        </div>
+        <label className="portal-field">
+          <span>Node origin</span>
+          <input
+            type="url"
+            name="mediaNodeOrigin"
+            placeholder="https://photos.your-nas.example"
+            value={mediaNodeOrigin}
+            onChange={(event) => setMediaNodeOrigin(event.target.value)}
+            disabled={pending !== null}
+          />
+        </label>
+        <label className="portal-field">
+          <span>Write token</span>
+          <input
+            type="password"
+            name="mediaNodeToken"
+            autoComplete="off"
+            value={mediaNodeToken}
+            onChange={(event) => setMediaNodeToken(event.target.value)}
+            disabled={pending !== null}
+          />
+        </label>
+        <div className="portal-connector-actions">
+          <button
+            className="button button-ghost"
+            type="button"
+            onClick={() => void onProbeMediaNode()}
+            disabled={pending !== null}
+          >
+            Test connection
+          </button>
+          <button
+            className="button button-dark"
+            type="submit"
+            disabled={pending !== null}
+          >
+            {pending === "media-node" ? "Saving…" : "Save media node"}
+          </button>
+        </div>
       </form>
 
       <div className="portal-signout">

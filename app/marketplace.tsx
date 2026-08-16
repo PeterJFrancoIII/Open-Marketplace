@@ -1626,7 +1626,7 @@ export default function Marketplace() {
                     />
                   </div>
                   <div className="field field-full">
-                    <label>Photos held on this device</label>
+                    <label>Listing photos</label>
                     {photoDrafts.length > 0 && (
                       <div className="photo-editor">
                         {photoDrafts.map((photo, index) => (
@@ -1637,7 +1637,7 @@ export default function Marketplace() {
                             ) : (
                               <div className="photo-draft-missing">
                                 <strong>{photo.name || `Photo ${index + 1}`}</strong>
-                                <span>Not on this device</span>
+                                <span>Not on this device or trusted media node</span>
                               </div>
                             )}
                             <div className="photo-draft-actions">
@@ -1675,7 +1675,7 @@ export default function Marketplace() {
                         <span className="upload-copy">
                           <strong>Add photos</strong>
                           <span>
-                            {photoDrafts.length} of {LISTING_PHOTO_LIMIT} · hashed locally · never uploaded to the registry
+                            {photoDrafts.length} of {LISTING_PHOTO_LIMIT} · hashed locally · copied to your trusted media node when connected · never uploaded to the registry
                           </span>
                         </span>
                         <input type="file" accept="image/*" multiple onChange={handleFiles} />

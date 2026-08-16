@@ -1,3 +1,9 @@
+import {
+  fetchMediaFromNode,
+  publishMediaToNode,
+  readMediaNodeConfig,
+  toSha256Hash,
+} from "./media-node";
 import type { MediaManifest } from "./types";
 
 const DATABASE_NAME = "open-exchange-media";
@@ -25,16 +31,8 @@ function openMediaDatabase(): Promise<IDBDatabase> {
   });
 }
 
-function toHex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 async function hashFile(file: File): Promise<string> {
-  const bytes = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return `sha256:${toHex(digest)}`;
+  return toSha256Hash(await file.arrayBuffer());
 }
 
 function putAsset(database: IDBDatabase, asset: StoredAsset): Promise<void> {
@@ -46,10 +44,20 @@ function putAsset(database: IDBDatabase, asset: StoredAsset): Promise<void> {
   });
 }
 
+function getAsset(database: IDBDatabase, hash: string): Promise<StoredAsset | undefined> {
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(STORE_NAME, "readonly");
+    const request = transaction.objectStore(STORE_NAME).get(hash);
+    request.onsuccess = () => resolve(request.result as StoredAsset | undefined);
+    request.onerror = () => reject(request.error ?? new Error("Media could not be read"));
+  });
+}
+
 export async function storeMedia(files: File[]): Promise<MediaManifest[]> {
   if (!files.length) return [];
 
   const database = await openMediaDatabase();
+  const node = readMediaNodeConfig();
   try {
     const manifests: MediaManifest[] = [];
     for (const file of files) {
@@ -64,6 +72,13 @@ export async function storeMedia(files: File[]): Promise<MediaManifest[]> {
         blob: file,
         storedAt: new Date().toISOString(),
       });
+      if (node) {
+        try {
+          await publishMediaToNode(node, manifest.hash, file);
+        } catch {
+          // Local vault remains; the node copy is retried the next time this photo is stored.
+        }
+      }
       manifests.push(manifest);
     }
     return manifests;
@@ -75,15 +90,22 @@ export async function storeMedia(files: File[]): Promise<MediaManifest[]> {
 export async function getLocalMediaUrl(hash: string): Promise<string | null> {
   const database = await openMediaDatabase();
   try {
-    return await new Promise((resolve, reject) => {
-      const transaction = database.transaction(STORE_NAME, "readonly");
-      const request = transaction.objectStore(STORE_NAME).get(hash);
-      request.onsuccess = () => {
-        const asset = request.result as StoredAsset | undefined;
-        resolve(asset?.blob ? URL.createObjectURL(asset.blob) : null);
-      };
-      request.onerror = () => reject(request.error ?? new Error("Media could not be read"));
+    const local = await getAsset(database, hash);
+    if (local?.blob) return URL.createObjectURL(local.blob);
+
+    const node = readMediaNodeConfig();
+    if (!node) return null;
+    const remote = await fetchMediaFromNode(node.origin, hash);
+    if (!remote) return null;
+    await putAsset(database, {
+      hash,
+      name: "listing-photo",
+      size: remote.size,
+      type: remote.type || "application/octet-stream",
+      blob: remote,
+      storedAt: new Date().toISOString(),
     });
+    return URL.createObjectURL(remote);
   } finally {
     database.close();
   }

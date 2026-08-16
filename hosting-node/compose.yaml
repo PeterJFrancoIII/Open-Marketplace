@@ -1,0 +1,15 @@
+services:
+  open-marketplace-media-node:
+    build: .
+    container_name: open-marketplace-media-node
+    restart: unless-stopped
+    ports:
+      - "8788:8788"
+    environment:
+      MEDIA_NODE_WRITE_TOKEN: ${MEDIA_NODE_WRITE_TOKEN}
+      MEDIA_NODE_CORS_ORIGINS: ${MEDIA_NODE_CORS_ORIGINS:-https://feature-account-management-p.open-marketplace-demo.pages.dev,http://localhost:5173}
+    volumes:
+      - media-data:/data
+
+volumes:
+  media-data:

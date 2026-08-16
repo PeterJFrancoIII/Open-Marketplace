@@ -19,6 +19,13 @@ import {
 } from "./conversation-limits";
 import { parsePaymentDestinationsJson } from "./payment-destinations";
 import { paypalPayHref } from "./paypal-pay-link";
+import {
+  normalizeTrackingNumber,
+  parseSalePhotoJson,
+  saleEvidenceMissing,
+  sanitizeSalePhoto,
+  serializeSalePhoto,
+} from "./sale-evidence";
 import { computeSocialCreditScore } from "./social-credit";
 
 export {
@@ -262,11 +269,139 @@ export async function sendMessage(
   return { ok: true as const, message };
 }
 
+export type SaleEvidenceInput = {
+  trackingNumber?: unknown;
+  paymentReceipt?: unknown;
+  receivedItem?: unknown;
+  receivedPackaging?: unknown;
+};
+
+function evidenceFromRow(row: {
+  trackingNumber?: string | null;
+  paymentReceiptJson?: string | null;
+  receivedItemJson?: string | null;
+  receivedPackagingJson?: string | null;
+}) {
+  return {
+    trackingNumber: row.trackingNumber?.trim() || null,
+    paymentReceipt: parseSalePhotoJson(row.paymentReceiptJson, "paymentReceipt"),
+    receivedItem: parseSalePhotoJson(row.receivedItemJson, "receivedItem"),
+    receivedPackaging: parseSalePhotoJson(
+      row.receivedPackagingJson,
+      "receivedPackaging",
+    ),
+  };
+}
+
+function readEvidencePatch(
+  role: "buyer" | "seller",
+  input: SaleEvidenceInput | undefined,
+):
+  | { ok: true; patch: Record<string, string | null> }
+  | { ok: false; status: number; error: string } {
+  if (!input) return { ok: true, patch: {} };
+  const patch: Record<string, string | null> = {};
+  if (input.trackingNumber !== undefined) {
+    if (role !== "seller") {
+      return {
+        ok: false,
+        status: 403,
+        error: "Only the seller can add the tracking number.",
+      };
+    }
+    const trackingNumber = normalizeTrackingNumber(input.trackingNumber);
+    if (!trackingNumber) {
+      return {
+        ok: false,
+        status: 400,
+        error: "Enter a public tracking number, or PICKUP if you handed it over.",
+      };
+    }
+    patch.trackingNumber = trackingNumber;
+  }
+  const photoFields = [
+    ["paymentReceipt", "paymentReceiptJson", "payment receipt"],
+    ["receivedItem", "receivedItemJson", "product photo"],
+    ["receivedPackaging", "receivedPackagingJson", "packaging photo"],
+  ] as const;
+  for (const [key, column, label] of photoFields) {
+    if (input[key] === undefined) continue;
+    if (role !== "buyer") {
+      return {
+        ok: false,
+        status: 403,
+        error: `Only the buyer can upload the ${label}.`,
+      };
+    }
+    const manifest = sanitizeSalePhoto(input[key], key);
+    if (!manifest) {
+      return {
+        ok: false,
+        status: 400,
+        error: `Upload a photo of the ${label}. Image bytes stay off this registry.`,
+      };
+    }
+    patch[column] = serializeSalePhoto(manifest);
+  }
+  return { ok: true, patch };
+}
+
+export async function updateSaleEvidence(
+  db: Db,
+  actor: ConversationActor,
+  conversationId: string,
+  input: SaleEvidenceInput,
+) {
+  const [row] = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  if (!row || (row.buyerId !== actor.id && row.sellerId !== actor.id)) {
+    return { ok: false as const, status: 404, error: "Conversation not found." };
+  }
+  if (conversationCompleted(row)) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "This sale is complete and the proof cannot be changed.",
+    };
+  }
+  const role = row.buyerId === actor.id ? "buyer" : "seller";
+  if (partySaleStatus(row, role) === "complete") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "Complete proof cannot be changed.",
+    };
+  }
+  const parsed = readEvidencePatch(role, input);
+  if (!parsed.ok) {
+    return { ok: false as const, status: parsed.status, error: parsed.error };
+  }
+  if (!Object.keys(parsed.patch).length) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: "Add a tracking number or a sale photo.",
+    };
+  }
+  await db
+    .update(conversations)
+    .set({ ...parsed.patch, updatedAt: new Date().toISOString() })
+    .where(eq(conversations.id, conversationId));
+  return {
+    ok: true as const,
+    conversation: await conversationPayload(db, conversationId, actor.id),
+  };
+}
+
 export async function setSaleStatus(
   db: Db,
   actor: ConversationActor,
   conversationId: string,
   status: SaleStatus,
+  evidence?: SaleEvidenceInput,
 ) {
   const [row] = await db
     .select()
@@ -309,7 +444,22 @@ export async function setSaleStatus(
       error: "Complete cannot be reversed.",
     };
   }
-  if (myStatus === status) {
+
+  const role = isBuyer ? "buyer" : "seller";
+  const parsed = readEvidencePatch(role, evidence);
+  if (!parsed.ok) {
+    return { ok: false as const, status: parsed.status, error: parsed.error };
+  }
+  const nextEvidence = evidenceFromRow({
+    ...row,
+    ...parsed.patch,
+  });
+  const missing = saleEvidenceMissing(role, status, nextEvidence);
+  if (missing) {
+    return { ok: false as const, status: 400, error: missing };
+  }
+
+  if (myStatus === status && !Object.keys(parsed.patch).length) {
     return {
       ok: true as const,
       conversation: await conversationPayload(db, conversationId, actor.id),
@@ -326,6 +476,7 @@ export async function setSaleStatus(
   await db
     .update(conversations)
     .set({
+      ...parsed.patch,
       buyerSaleStatus: nextBuyerStatus,
       sellerSaleStatus: nextSellerStatus,
       buyerConfirmedAt: nextBuyerConfirmedAt,
@@ -779,5 +930,6 @@ async function conversationPayload(db: Db, conversationId: string, userId: strin
     otherRating: otherRating
       ? { score: otherRating.score, note: otherRating.note }
       : null,
+    ...evidenceFromRow(row),
   };
 }

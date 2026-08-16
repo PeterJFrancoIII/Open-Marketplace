@@ -2083,6 +2083,26 @@ a.detail-social-account.social-connected:hover,
   justify-self: start;
 }
 
+.portal-sale-proof {
+  margin: 0;
+}
+
+.portal-sale-proof img {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: block;
+  max-height: 220px;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.portal-sale-proof figcaption {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 6px;
+}
+
 .portal-error {
   color: var(--danger);
   font-weight: 700;

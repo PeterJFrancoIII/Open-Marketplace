@@ -10,6 +10,8 @@ import {
   type SaleStatus,
   saleStatusLabel,
 } from "../../../lib/conversation-limits";
+import { getLocalMediaUrl, storeMedia } from "../../../lib/media-store";
+import type { MediaManifest } from "../../../lib/types";
 
 type Rating = { score: number; note: string };
 
@@ -41,6 +43,10 @@ type ConversationSummary = {
   otherConfirmed: boolean;
   myRating: Rating | null;
   otherRating: Rating | null;
+  trackingNumber: string | null;
+  paymentReceipt: MediaManifest | null;
+  receivedItem: MediaManifest | null;
+  receivedPackaging: MediaManifest | null;
 };
 
 type ConversationMessage = {
@@ -57,6 +63,56 @@ function formatMoney(cents: number, currency = "USD") {
     currency,
     maximumFractionDigits: 2,
   }).format(cents / 100);
+}
+
+function SaleProof({
+  label,
+  photo,
+}: {
+  label: string;
+  photo: MediaManifest | null;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const photoKey = photo
+    ? `${photo.hash}:${(photo.hosts ?? []).join(",")}`
+    : "";
+
+  useEffect(() => {
+    if (!photoKey || !photo) return;
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    void getLocalMediaUrl(photo.hash, photo.hosts ?? []).then((next) => {
+      if (cancelled) {
+        if (next) URL.revokeObjectURL(next);
+        return;
+      }
+      objectUrl = next;
+      setUrl(next);
+    });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [photo, photoKey]);
+
+  if (!photo) {
+    return <p className="portal-empty">{label}: not uploaded yet.</p>;
+  }
+  const isPdf = photo.type.toLowerCase() === "application/pdf";
+  return (
+    <figure className="portal-sale-proof">
+      {url && isPdf ? (
+        <a href={url} target="_blank" rel="noreferrer">
+          Open {label.toLowerCase()}
+        </a>
+      ) : url ? (
+        <img src={url} alt={label} />
+      ) : null}
+      <figcaption>
+        {label}: {photo.name}
+      </figcaption>
+    </figure>
+  );
 }
 
 function formatWhen(value: string | null) {
@@ -101,6 +157,11 @@ export default function MessagesClient({
   const [busy, setBusy] = useState("");
   const [priceDraft, setPriceDraft] = useState("");
   const [priceDirty, setPriceDirty] = useState(false);
+  const [trackingDraft, setTrackingDraft] = useState("");
+  const [trackingDirty, setTrackingDirty] = useState(false);
+  const trackingValue = trackingDirty
+    ? trackingDraft
+    : conversation?.trackingNumber ?? "";
   const salePriceDraft = priceDirty
     ? priceDraft
     : conversation
@@ -159,6 +220,7 @@ export default function MessagesClient({
   function openThread(conversationId: string) {
     setSelectedId(conversationId);
     setPriceDirty(false);
+    setTrackingDirty(false);
     router.replace(`/account/messages?id=${encodeURIComponent(conversationId)}`);
     void loadThread(conversationId);
   }
@@ -216,6 +278,58 @@ export default function MessagesClient({
     }
   }
 
+  async function persistSaleEvidence(patch: Record<string, unknown>) {
+    if (!selectedId) return false;
+    const response = await fetch("/api/conversations/evidence", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ conversationId: selectedId, ...patch }),
+    });
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) {
+      setError(payload.error ?? "Could not save that sale proof.");
+      return false;
+    }
+    setTrackingDirty(false);
+    await Promise.all([loadThread(selectedId), loadInbox()]);
+    return true;
+  }
+
+  async function saveSaleEvidence(patch: Record<string, unknown>) {
+    if (!selectedId) return;
+    setBusy("evidence");
+    setError("");
+    try {
+      await persistSaleEvidence(patch);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function uploadSalePhoto(
+    kind: "paymentReceipt" | "receivedItem" | "receivedPackaging",
+    file: File | undefined,
+  ) {
+    if (!file) return;
+    setBusy("evidence");
+    setError("");
+    try {
+      const [manifest] = await storeMedia([file]);
+      if (!manifest) {
+        setError("Could not store that photo on this device.");
+        return;
+      }
+      await persistSaleEvidence({ [kind]: manifest });
+    } catch {
+      setError("Could not store that photo on this device.");
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function setCurrentSaleStatus(status: SaleStatus) {
     if (!selectedId) return;
     setBusy("sale");
@@ -227,7 +341,13 @@ export default function MessagesClient({
           accept: "application/json",
           "content-type": "application/json",
         },
-        body: JSON.stringify({ conversationId: selectedId, status }),
+        body: JSON.stringify({
+          conversationId: selectedId,
+          status,
+          ...(conversation?.myRole === "seller" && trackingValue.trim()
+            ? { trackingNumber: trackingValue }
+            : {}),
+        }),
       });
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) {
@@ -400,6 +520,92 @@ export default function MessagesClient({
                   {otherName} marked Complete. Your Complete will lock the sale.
                 </p>
               ) : null}
+            </div>
+
+            <div className="portal-sale-box">
+              <h3>Sale proof</h3>
+              <p className="portal-settings-note">
+                In-Transfer needs the seller tracking number and the buyer
+                payment receipt. Complete needs the buyer to upload a photo of
+                the product they received and a photo of the packaging. Photo
+                bytes stay off the public registry.
+              </p>
+              {conversation.myRole === "seller" ? (
+                <form
+                  className="portal-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void saveSaleEvidence({ trackingNumber: trackingValue });
+                  }}
+                >
+                  <label className="portal-field">
+                    <span>Tracking number</span>
+                    <input
+                      value={trackingValue}
+                      maxLength={80}
+                      onChange={(event) => {
+                        setTrackingDirty(true);
+                        setTrackingDraft(event.target.value);
+                      }}
+                      placeholder="Carrier tracking, or PICKUP"
+                    />
+                  </label>
+                  <button
+                    className="button button-primary"
+                    type="submit"
+                    disabled={busy === "evidence" || conversation.mySaleStatus === "complete"}
+                  >
+                    {busy === "evidence" ? "Saving…" : "Save tracking number"}
+                  </button>
+                </form>
+              ) : (
+                <p>
+                  Tracking number: {conversation.trackingNumber ?? "Not added yet"}
+                </p>
+              )}
+              {conversation.myRole === "buyer" && conversation.mySaleStatus !== "complete" ? (
+                <div className="portal-form">
+                  <label className="portal-field">
+                    <span>Payment receipt</span>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf,application/pdf"
+                      onChange={(event) =>
+                        void uploadSalePhoto(
+                          "paymentReceipt",
+                          event.target.files?.[0],
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="portal-field">
+                    <span>Photo of the product received</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        void uploadSalePhoto("receivedItem", event.target.files?.[0])
+                      }
+                    />
+                  </label>
+                  <label className="portal-field">
+                    <span>Photo of the packaging</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        void uploadSalePhoto(
+                          "receivedPackaging",
+                          event.target.files?.[0],
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+              ) : null}
+              <SaleProof label="Payment receipt" photo={conversation.paymentReceipt} />
+              <SaleProof label="Product received" photo={conversation.receivedItem} />
+              <SaleProof label="Packaging received" photo={conversation.receivedPackaging} />
             </div>
 
             <div className="portal-sale-box">

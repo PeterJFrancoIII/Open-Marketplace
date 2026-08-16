@@ -207,6 +207,10 @@ export const conversations = sqliteTable(
     buyerMarksSafe: integer("buyer_marks_safe", { mode: "boolean" })
       .notNull()
       .default(false),
+    trackingNumber: text("tracking_number"),
+    paymentReceiptJson: text("payment_receipt_json"),
+    receivedItemJson: text("received_item_json"),
+    receivedPackagingJson: text("received_packaging_json"),
     buyerConfirmedAt: text("buyer_confirmed_at"),
     sellerConfirmedAt: text("seller_confirmed_at"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),

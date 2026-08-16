@@ -1,6 +1,5 @@
 import { getDb } from "../../../../db";
-import { setSaleStatus } from "../../../../lib/conversations";
-import { isSaleStatus } from "../../../../lib/conversation-limits";
+import { updateSaleEvidence } from "../../../../lib/conversations";
 import {
   conversationError,
   readConversationId,
@@ -11,7 +10,7 @@ export async function POST(request: Request) {
   try {
     const { actor, response } = await requireConversationSession(
       request,
-      "update this sale",
+      "add sale proof",
     );
     if (!actor) return response;
 
@@ -20,25 +19,13 @@ export async function POST(request: Request) {
     if (!conversationId) {
       return Response.json({ error: "A conversation id is required." }, { status: 400 });
     }
-    if (!isSaleStatus(payload.status)) {
-      return Response.json(
-        { error: "Choose Pending, In-Transfer, or Complete." },
-        { status: 400 },
-      );
-    }
 
-    const result = await setSaleStatus(
-      await getDb(),
-      actor,
-      conversationId,
-      payload.status,
-      {
-        trackingNumber: payload.trackingNumber,
-        paymentReceipt: payload.paymentReceipt,
-        receivedItem: payload.receivedItem,
-        receivedPackaging: payload.receivedPackaging,
-      },
-    );
+    const result = await updateSaleEvidence(await getDb(), actor, conversationId, {
+      trackingNumber: payload.trackingNumber,
+      paymentReceipt: payload.paymentReceipt,
+      receivedItem: payload.receivedItem,
+      receivedPackaging: payload.receivedPackaging,
+    });
     if (!result.ok) {
       return Response.json({ error: result.error }, { status: result.status });
     }

@@ -2,6 +2,7 @@
 
 import {
   type ChangeEvent,
+  type DragEvent,
   type FormEvent,
   type KeyboardEvent,
   useCallback,
@@ -12,9 +13,11 @@ import {
 import { authClient } from "../lib/auth-client";
 import {
   LISTING_PHOTO_LIMIT,
+  PHOTO_DRAG_TYPE,
   appendPhotoFiles,
   manifestsFromPhotoDrafts,
   movePhotoDraft,
+  photoDragIndex,
   photoDraftsFromExisting,
   photoDraftsFromManifest,
   removePhotoDraft,
@@ -615,6 +618,8 @@ export default function Marketplace() {
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [photoDrafts, setPhotoDrafts] = useState<PhotoDraft[]>([]);
+  const [dragPhotoIndex, setDragPhotoIndex] = useState<number | null>(null);
+  const [dropPhotoIndex, setDropPhotoIndex] = useState<number | null>(null);
   const [localMedia, setLocalMedia] = useState<Record<string, string>>({});
   const [toast, setToast] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -1006,6 +1011,34 @@ export default function Marketplace() {
 
   function handleMovePhoto(from: number, to: number) {
     setPhotoDrafts((current) => movePhotoDraft(current, from, to));
+  }
+
+  function handlePhotoDragStart(event: DragEvent<HTMLDivElement>, index: number) {
+    event.dataTransfer.setData(PHOTO_DRAG_TYPE, String(index));
+    event.dataTransfer.setData("text/plain", String(index));
+    event.dataTransfer.effectAllowed = "move";
+    setDragPhotoIndex(index);
+  }
+
+  function handlePhotoDragOver(event: DragEvent<HTMLDivElement>, index: number) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (dropPhotoIndex !== index) setDropPhotoIndex(index);
+  }
+
+  function handlePhotoDrop(event: DragEvent<HTMLDivElement>, index: number) {
+    event.preventDefault();
+    const from =
+      photoDragIndex(event.dataTransfer.getData(PHOTO_DRAG_TYPE), photoDrafts.length) ??
+      photoDragIndex(event.dataTransfer.getData("text/plain"), photoDrafts.length);
+    if (from != null) handleMovePhoto(from, index);
+    setDragPhotoIndex(null);
+    setDropPhotoIndex(null);
+  }
+
+  function handlePhotoDragEnd() {
+    setDragPhotoIndex(null);
+    setDropPhotoIndex(null);
   }
 
   async function submitListing(event: FormEvent<HTMLFormElement>) {
@@ -1697,12 +1730,33 @@ export default function Marketplace() {
                   <div className="field field-full">
                     <label>Listing photos</label>
                     {photoDrafts.length > 0 && (
+                      <p className="form-note photo-order-note">
+                        Drag photos to change the display order. The first photo
+                        is the one shown on the listings page.
+                      </p>
+                    )}
+                    {photoDrafts.length > 0 && (
                       <div className="photo-editor">
                         {photoDrafts.map((photo, index) => (
-                          <div className="photo-draft" key={photo.key}>
+                          <div
+                            className={`photo-draft${dragPhotoIndex === index ? " is-dragging" : ""}${dropPhotoIndex === index ? " is-drop-target" : ""}`}
+                            key={photo.key}
+                            draggable
+                            onDragStart={(event) => handlePhotoDragStart(event, index)}
+                            onDragOver={(event) => handlePhotoDragOver(event, index)}
+                            onDrop={(event) => handlePhotoDrop(event, index)}
+                            onDragEnd={handlePhotoDragEnd}
+                          >
+                            {index === 0 && (
+                              <span className="photo-draft-cover">Listings page</span>
+                            )}
                             {photo.previewUrl ? (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img src={photo.previewUrl} alt={photo.name || `Photo ${index + 1}`} />
+                              <img
+                                src={photo.previewUrl}
+                                alt={photo.name || `Photo ${index + 1}`}
+                                draggable={false}
+                              />
                             ) : (
                               <div className="photo-draft-missing">
                                 <strong>{photo.name || `Photo ${index + 1}`}</strong>

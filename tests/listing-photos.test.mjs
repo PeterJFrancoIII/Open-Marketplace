@@ -6,6 +6,7 @@ import {
   appendPhotoFiles,
   manifestsFromPhotoDrafts,
   movePhotoDraft,
+  photoDragIndex,
   photoDraftsFromExisting,
   photoDraftsFromManifest,
   removePhotoDraft,
@@ -41,6 +42,9 @@ test("existing listing photos stay visible and can be removed or reordered", asy
   assert.equal(reordered[0].name, "chair.jpg");
   assert.equal(reordered[1].name, "lamp.jpg");
   assert.deepEqual(movePhotoDraft(hydrated, 0, 0), hydrated);
+  assert.equal(photoDragIndex("1", 3), 1);
+  assert.equal(photoDragIndex("9", 2), null);
+  assert.equal(photoDragIndex("abc", 2), null);
 
   const removed = removePhotoDraft(reordered, 0);
   assert.equal(removed.length, 1);
@@ -90,6 +94,9 @@ test("compose UI lets owners add, remove, and reorder assigned photos", async ()
   assert.match(marketplace, /listingPhotoLoader/);
   assert.match(marketplace, /Move photo left/);
   assert.match(marketplace, /Move photo right/);
+  assert.match(marketplace, /handlePhotoDrop/);
+  assert.match(marketplace, /Drag photos to change the display order/);
+  assert.match(marketplace, /Listings page/);
   assert.match(marketplace, /Remove photo/);
   assert.match(marketplace, /Add photos/);
   assert.match(marketplace, /manifestsFromPhotoDrafts/);

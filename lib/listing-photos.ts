@@ -62,6 +62,15 @@ export function removePhotoDraft(current: PhotoDraft[], index: number): PhotoDra
   return current.filter((_, itemIndex) => itemIndex !== index);
 }
 
+export const PHOTO_DRAG_TYPE = "application/x-open-marketplace-photo-index";
+
+export function photoDragIndex(data: string | null | undefined, length: number): number | null {
+  if (data == null || data === "") return null;
+  const index = Number.parseInt(data, 10);
+  if (!Number.isInteger(index) || index < 0 || index >= length) return null;
+  return index;
+}
+
 export function movePhotoDraft(
   current: PhotoDraft[],
   from: number,

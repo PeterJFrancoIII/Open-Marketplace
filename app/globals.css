@@ -1056,7 +1056,32 @@ a {
   background: #f6f5f1;
   border: 1px solid var(--line);
   border-radius: 12px;
+  cursor: grab;
   overflow: hidden;
+  position: relative;
+}
+
+.photo-draft.is-dragging {
+  cursor: grabbing;
+  opacity: 0.55;
+}
+
+.photo-draft.is-drop-target {
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.photo-draft-cover {
+  background: rgba(20, 20, 22, 0.78);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  left: 8px;
+  letter-spacing: 0.02em;
+  padding: 3px 7px;
+  position: absolute;
+  top: 8px;
+  z-index: 1;
 }
 
 .photo-draft img,
@@ -1118,6 +1143,10 @@ a {
   line-height: 1.5;
   margin-top: 17px;
   padding: 11px 12px;
+}
+
+.form-note.photo-order-note {
+  margin: 0 0 10px;
 }
 
 .modal-actions {

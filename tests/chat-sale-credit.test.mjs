@@ -259,6 +259,10 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   );
   assert.match(messagesUi, /Pending/);
   assert.match(messagesUi, /In-Transfer/);
+  assert.match(messagesUi, /SALE_STATUSES.map/);
+  assert.match(messagesUi, /Only the seller can click In-Transfer/);
+  assert.match(messagesUi, /Submit In-Transfer evidence/);
+  assert.doesNotMatch(messagesUi, /status !== "in_transfer"/);
   assert.match(messagesUi, /Complete cannot be/);
   assert.match(messagesUi, /Goods and Services/);
   assert.match(messagesUi, /Friends and Family/);

@@ -705,12 +705,13 @@ export default function MessagesClient({
               </button>
             </form>
 
-            <div className="portal-sale-box">
+            <div className="portal-sale-box portal-shipping-evidence">
               <h3>Sale status</h3>
               <p className="portal-settings-note">
                 Pending and In-Transfer can be changed. Complete cannot be
                 reversed. The listing stays active until both people mark
-                Complete. This does not send, hold, or execute payment.
+                Complete. Only the seller can click In-Transfer. This does
+                not send, hold, or execute payment.
               </p>
               <p className="portal-settings-note">
                 {otherName} is {saleStatusLabel(conversation.otherSaleStatus)}.
@@ -720,23 +721,29 @@ export default function MessagesClient({
                 <p className="portal-empty">This listing was sold in another conversation.</p>
               ) : (
                 <div className="portal-sale-status-row" role="group" aria-label="Your sale status">
-                  {(conversation.myRole === "seller"
-                    ? SALE_STATUSES
-                    : SALE_STATUSES.filter((status) => status !== "in_transfer")
-                  ).map((status) => {
+                  {SALE_STATUSES.map((status) => {
+                    const buyerBlockedTransfer =
+                      status === "in_transfer" && conversation.myRole !== "seller";
                     const locked =
                       conversation.completed ||
+                      buyerBlockedTransfer ||
                       (conversation.mySaleStatus === "complete" && status !== "complete");
                     return (
                       <button
                         key={status}
                         className={`button${
-                          conversation.mySaleStatus === status
+                          conversation.mySaleStatus === status ||
+                          (status === "in_transfer" && showTransferPrompt)
                             ? " button-primary"
                             : " button-ghost"
                         }`}
                         type="button"
                         disabled={locked || busy === "sale"}
+                        title={
+                          buyerBlockedTransfer
+                            ? "Only the seller can click In-Transfer."
+                            : undefined
+                        }
                         onClick={() => chooseSaleStatus(status)}
                       >
                         {saleStatusLabel(status)}
@@ -745,10 +752,11 @@ export default function MessagesClient({
                   })}
                 </div>
               )}
-              {showTransferPrompt && conversation.myRole === "seller" ? (
+              {conversation.myRole === "buyer" ? (
                 <p className="portal-settings-note">
-                  Enter the actual tracking number and shipping photos in the
-                  shipping evidence window below.
+                  Only the seller can click In-Transfer. After they submit
+                  shipping evidence in this window, use Accept Evidence or ask
+                  for additional evidence.
                 </p>
               ) : null}
               {conversation.completed ? (
@@ -758,15 +766,13 @@ export default function MessagesClient({
                   {otherName} marked Complete. Your Complete will lock the sale.
                 </p>
               ) : null}
-            </div>
 
-            <div className="portal-sale-box portal-shipping-evidence">
               <h3>Shipping evidence</h3>
               <p className="portal-settings-note">
-                Only the seller marks In-Transfer. That prompt needs the actual
-                UPS, USPS, FedEx, or DHL tracking number plus a photo of the
-                item and the shipping box. Tracking updates stay in this same
-                window. Photo bytes stay off the public registry.
+                In-Transfer asks the seller for the actual UPS, USPS, FedEx, or
+                DHL tracking number plus a photo of the item and the shipping
+                box. Tracking updates stay in this same window. Photo bytes
+                stay off the public registry.
               </p>
               {conversation.evidenceRequestNote ? (
                 <p className="portal-evidence-request">
@@ -777,7 +783,10 @@ export default function MessagesClient({
                   : {conversation.evidenceRequestNote}
                 </p>
               ) : null}
-              {conversation.myRole === "seller" && showTransferPrompt ? (
+              {conversation.myRole === "seller" &&
+              !conversation.completed &&
+              conversation.mySaleStatus !== "complete" &&
+              (showTransferPrompt || conversation.mySaleStatus === "pending") ? (
                 <form
                   className="portal-form portal-transfer-prompt"
                   onSubmit={(event) => {
@@ -838,13 +847,15 @@ export default function MessagesClient({
                     >
                       {busy === "sale" ? "Saving…" : "Submit In-Transfer evidence"}
                     </button>
-                    <button
-                      className="button button-ghost"
-                      type="button"
-                      onClick={() => setShowTransferPrompt(false)}
-                    >
-                      Cancel
-                    </button>
+                    {conversation.mySaleStatus !== "pending" ? (
+                      <button
+                        className="button button-ghost"
+                        type="button"
+                        onClick={() => setShowTransferPrompt(false)}
+                      >
+                        Cancel
+                      </button>
+                    ) : null}
                   </div>
                 </form>
               ) : conversation.myRole === "seller" &&

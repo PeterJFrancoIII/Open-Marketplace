@@ -720,11 +720,20 @@ function socialProfileHref(value?: string) {
   }
 }
 
+function listingPayDetails(listing: Listing) {
+  return {
+    amountCents: listing.priceCents,
+    currency: listing.currency || "USD",
+    itemName: listing.title,
+    kind: "goods_and_services" as const,
+  };
+}
+
 function paypalConnectorHref(listing: Listing) {
   const paypal = (listing.paymentDestinations ?? []).find(
     (destination) => destination.rail === "paypal",
   );
-  return paypal ? paymentLinkFor(paypal).href ?? "" : "";
+  return paypal ? paymentLinkFor(paypal, listingPayDetails(listing)).href ?? "" : "";
 }
 
 function healthLabel(health: SocialProof["health"]) {
@@ -1791,7 +1800,7 @@ export default function Marketplace() {
                               ? "Linked with PayPal Login"
                               : "Seller has not linked PayPal"
                           }
-                          label="Open PayPal profile"
+                          label="Pay with PayPal"
                         >
                           <span className="proof-mark">pp</span>
                           <span className="social-fact-copy">
@@ -2242,7 +2251,7 @@ export default function Marketplace() {
                             ? "This PayPal account is currently linked with PayPal Login."
                             : "This seller has not linked PayPal."
                         }
-                        label="Open PayPal profile"
+                        label="Pay with PayPal"
                       >
                         <span className="proof-mark">pp</span>
                         <span>
@@ -2257,8 +2266,14 @@ export default function Marketplace() {
                           {selectedListing.paypalLinked ? "Linked" : "Not linked"}
                         </span>
                       </ConnectorAnchor>
-                      {paymentLinksFor(selectedListing.paymentDestinations ?? []).length
-                        ? paymentLinksFor(selectedListing.paymentDestinations ?? []).map((link) => (
+                      {paymentLinksFor(
+                        selectedListing.paymentDestinations ?? [],
+                        listingPayDetails(selectedListing),
+                      ).length
+                        ? paymentLinksFor(
+                            selectedListing.paymentDestinations ?? [],
+                            listingPayDetails(selectedListing),
+                          ).map((link) => (
                             link.href ? (
                               <a
                                 className="detail-social-account"

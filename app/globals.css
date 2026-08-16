@@ -2067,6 +2067,22 @@ a.detail-social-account.social-connected:hover,
   gap: 8px;
 }
 
+.portal-safe-sale {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.portal-safe-sale input {
+  margin-top: 3px;
+}
+
+.portal-sale-box a.button {
+  justify-self: start;
+}
+
 .portal-error {
   color: var(--danger);
   font-weight: 700;

@@ -129,6 +129,18 @@ async function postJson(worker, env, path, cookieJar, body) {
   });
 }
 
+async function putJson(worker, env, path, cookieJar, body) {
+  return workerFetch(worker, env, path, {
+    method: "PUT",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+    },
+    cookieJar,
+    body: JSON.stringify(body),
+  });
+}
+
 async function getJson(worker, env, path, cookieJar) {
   return workerFetch(worker, env, path, {
     headers: { accept: "application/json" },
@@ -223,6 +235,9 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   assert.match(messagesUi, /Pending/);
   assert.match(messagesUi, /In-Transfer/);
   assert.match(messagesUi, /Complete cannot be/);
+  assert.match(messagesUi, /Goods and Services/);
+  assert.match(messagesUi, /Friends and Family/);
+  assert.match(messagesUi, /\/api\/conversations\/paypal/);
 });
 
 test("signed-out chat, sale, and rating requests are rejected", async () => {
@@ -260,6 +275,12 @@ test("signed-out chat, sale, and rating requests are rejected", async () => {
 
   const history = await getJson(worker, env, "/api/conversations/history");
   assert.equal(history.status, 401);
+
+  const paypal = await postJson(worker, env, "/api/conversations/paypal", undefined, {
+    conversationId: "missing",
+    salePriceCents: 100,
+  });
+  assert.equal(paypal.status, 401);
 
   const messagesPage = await workerFetch(worker, env, "/account/messages", {
     headers: { accept: "text/html" },
@@ -528,4 +549,88 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   assert.match(html, />Messages</);
   assert.match(html, />History</);
   assert.match(html, /Social Credit/);
+});
+
+test("PayPal pay links use the seller-editable sale price and default to Goods and Services", async () => {
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("chat-paypal-sale-price");
+  const env = createTestEnv(d1);
+  const sellerJar = new Map();
+  const buyerJar = new Map();
+
+  await signUp(worker, env, {
+    name: "Seller Reed",
+    email: "seller-paypal-price@example.com",
+  });
+  await signIn(worker, env, sellerJar, { email: "seller-paypal-price@example.com" });
+  await signUp(worker, env, {
+    name: "Buyer Lane",
+    email: "buyer-paypal-price@example.com",
+  });
+  await signIn(worker, env, buyerJar, { email: "buyer-paypal-price@example.com" });
+
+  const saved = await putJson(worker, env, "/api/account/profile", sellerJar, {
+    paymentDestinations: [
+      { rail: "paypal", destination: "seller-paypal@example.com" },
+    ],
+  });
+  assert.equal(saved.status, 200);
+
+  const published = await postJson(
+    worker,
+    env,
+    "/api/listings",
+    sellerJar,
+    listingWrite("PayPal lamp"),
+  );
+  assert.equal(published.status, 201);
+  const listing = (await published.json()).listing;
+
+  const started = await postJson(worker, env, "/api/conversations", buyerJar, {
+    listingId: listing.id,
+  });
+  assert.equal(started.status, 201);
+  const conversation = (await started.json()).conversation;
+  assert.equal(conversation.salePriceCents, 4200);
+  assert.equal(conversation.buyerMarksSafe, false);
+  assert.equal(conversation.paypalKind, "goods_and_services");
+  assert.equal(conversation.paypalDestination, "seller-paypal@example.com");
+  assert.match(conversation.paypalPayHref, /cmd=_xclick/);
+  assert.match(conversation.paypalPayHref, /amount=42\.00/);
+  assert.match(conversation.paypalPayHref, /item_name=PayPal\+lamp/);
+
+  const buyerPrice = await postJson(worker, env, "/api/conversations/paypal", buyerJar, {
+    conversationId: conversation.id,
+    salePriceCents: 5500,
+  });
+  assert.equal(buyerPrice.status, 403);
+
+  const sellerSafe = await postJson(worker, env, "/api/conversations/paypal", sellerJar, {
+    conversationId: conversation.id,
+    buyerMarksSafe: true,
+  });
+  assert.equal(sellerSafe.status, 403);
+
+  const sellerPrice = await postJson(worker, env, "/api/conversations/paypal", sellerJar, {
+    conversationId: conversation.id,
+    salePriceCents: 5500,
+  });
+  assert.equal(sellerPrice.status, 200);
+  const priced = (await sellerPrice.json()).conversation;
+  assert.equal(priced.salePriceCents, 5500);
+  assert.match(priced.paypalPayHref, /amount=55\.00/);
+  assert.match(priced.paypalPayHref, /cmd=_xclick/);
+
+  const buyerSafe = await postJson(worker, env, "/api/conversations/paypal", buyerJar, {
+    conversationId: conversation.id,
+    buyerMarksSafe: true,
+  });
+  assert.equal(buyerSafe.status, 200);
+  const safe = (await buyerSafe.json()).conversation;
+  assert.equal(safe.buyerMarksSafe, true);
+  assert.equal(safe.paypalKind, "friends_and_family");
+  assert.match(safe.paypalPayHref, /\/myaccount\/transfer\/homepage\/pay/);
+  assert.match(safe.paypalPayHref, /amount=55\.00/);
+  assert.doesNotMatch(safe.paypalPayHref, /cmd=_xclick/);
 });

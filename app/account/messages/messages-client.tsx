@@ -20,6 +20,12 @@ type ConversationSummary = {
   listingStatus: string;
   listingPriceCents: number;
   listingCurrency: string;
+  salePriceCents: number;
+  buyerMarksSafe: boolean;
+  paypalDestination: string | null;
+  paypalLinked: boolean;
+  paypalKind: "goods_and_services" | "friends_and_family";
+  paypalPayHref: string | null;
   soldAt: string | null;
   buyerId: string;
   sellerId: string;
@@ -93,6 +99,13 @@ export default function MessagesClient({
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
+  const [priceDraft, setPriceDraft] = useState("");
+  const [priceDirty, setPriceDirty] = useState(false);
+  const salePriceDraft = priceDirty
+    ? priceDraft
+    : conversation
+      ? (conversation.salePriceCents / 100).toFixed(2)
+      : "";
 
   const otherName = useMemo(() => {
     if (!conversation) return "";
@@ -145,6 +158,7 @@ export default function MessagesClient({
 
   function openThread(conversationId: string) {
     setSelectedId(conversationId);
+    setPriceDirty(false);
     router.replace(`/account/messages?id=${encodeURIComponent(conversationId)}`);
     void loadThread(conversationId);
   }
@@ -168,6 +182,34 @@ export default function MessagesClient({
         return;
       }
       setDraft("");
+      await Promise.all([loadThread(selectedId), loadInbox()]);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function updatePaypalSale(patch: {
+    salePriceCents?: number;
+    buyerMarksSafe?: boolean;
+  }) {
+    if (!selectedId) return;
+    setBusy("paypal");
+    setError("");
+    try {
+      const response = await fetch("/api/conversations/paypal", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ conversationId: selectedId, ...patch }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        setError(payload.error ?? "Could not update the PayPal sale.");
+        return;
+      }
+      setPriceDirty(false);
       await Promise.all([loadThread(selectedId), loadInbox()]);
     } finally {
       setBusy("");
@@ -269,7 +311,7 @@ export default function MessagesClient({
           <>
             <p className="portal-eyebrow">
               {conversation.myRole === "buyer" ? "Buying" : "Selling"} ·{" "}
-              {formatMoney(conversation.listingPriceCents, conversation.listingCurrency)}
+              {formatMoney(conversation.salePriceCents, conversation.listingCurrency)}
             </p>
             <h2 id="messages-thread-title">{conversation.listingTitle}</h2>
             <p className="portal-lead">
@@ -358,6 +400,106 @@ export default function MessagesClient({
                   {otherName} marked Complete. Your Complete will lock the sale.
                 </p>
               ) : null}
+            </div>
+
+            <div className="portal-sale-box">
+              <h3>PayPal</h3>
+              <p className="portal-settings-note">
+                PayPal fields fill from the current sale price. The marketplace
+                does not send, hold, escrow, or execute payment. Default is
+                Goods and Services.
+              </p>
+              {conversation.myRole === "seller" ? (
+                <form
+                  className="portal-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const cents = Math.round(Number(salePriceDraft) * 100);
+                    void updatePaypalSale({ salePriceCents: cents });
+                  }}
+                >
+                  <label className="portal-field">
+                    <span>Sale price</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0.01"
+                      step="0.01"
+                      value={salePriceDraft}
+                      onChange={(event) => {
+                        setPriceDirty(true);
+                        setPriceDraft(event.target.value);
+                      }}
+                    />
+                  </label>
+                  <button
+                    className="button button-primary"
+                    type="submit"
+                    disabled={busy === "paypal"}
+                  >
+                    {busy === "paypal" ? "Saving…" : "Update sale price"}
+                  </button>
+                </form>
+              ) : (
+                <p>
+                  Sale price{" "}
+                  {formatMoney(conversation.salePriceCents, conversation.listingCurrency)}
+                </p>
+              )}
+              {conversation.paypalPayHref ? (
+                <>
+                  {conversation.myRole === "buyer" ? (
+                    <>
+                      <label className="portal-safe-sale">
+                        <input
+                          type="checkbox"
+                          checked={conversation.buyerMarksSafe}
+                          disabled={busy === "paypal"}
+                          onChange={(event) =>
+                            void updatePaypalSale({
+                              buyerMarksSafe: event.target.checked,
+                            })
+                          }
+                        />
+                        <span>
+                          I judge this sale safe. Use Friends and Family
+                          instead. That choice is mine and drops PayPal
+                          purchase protection.
+                        </span>
+                      </label>
+                      <a
+                        className="button button-primary"
+                        href={conversation.paypalPayHref}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {conversation.buyerMarksSafe
+                          ? "Pay with PayPal · Friends and Family"
+                          : "Pay with PayPal · Goods and Services"}
+                      </a>
+                    </>
+                  ) : (
+                    <p className="portal-settings-note">
+                      Buyer pays{" "}
+                      {formatMoney(
+                        conversation.salePriceCents,
+                        conversation.listingCurrency,
+                      )}{" "}
+                      as{" "}
+                      {conversation.buyerMarksSafe
+                        ? "Friends and Family"
+                        : "Goods and Services"}
+                      {conversation.paypalLinked ? " to your linked PayPal." : "."}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="portal-empty">
+                  {conversation.myRole === "seller"
+                    ? "Add a PayPal email in Account settings so the buyer can pay this sale price."
+                    : "This seller has not published a PayPal destination yet."}
+                </p>
+              )}
             </div>
 
             {conversation.completed ? (

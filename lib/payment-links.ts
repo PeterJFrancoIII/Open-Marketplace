@@ -1,5 +1,16 @@
 import { PAYMENT_RAILS } from "./payment-destinations";
+import {
+  paypalPayHref,
+  type PaypalPaymentKind,
+} from "./paypal-pay-link";
 import type { PaymentDestination } from "./types";
+
+export type PaymentLinkDetails = {
+  amountCents?: number;
+  currency?: string;
+  itemName?: string;
+  kind?: PaypalPaymentKind;
+};
 
 const USDT_ETHEREUM = "0xdac17f958d2ee523a2206206994597c13d831ec7";
 const USDC_ETHEREUM = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
@@ -16,7 +27,20 @@ function railLabel(rail: PaymentDestination["rail"]) {
   return PAYMENT_RAILS.find((item) => item.id === rail)?.label ?? rail;
 }
 
-function paypalHref(destination: string) {
+function paypalHref(destination: string, details?: PaymentLinkDetails) {
+  if (
+    details &&
+    Number.isSafeInteger(details.amountCents) &&
+    (details.amountCents ?? 0) > 0
+  ) {
+    return paypalPayHref({
+      destination,
+      amountCents: details.amountCents ?? 0,
+      currency: details.currency,
+      itemName: details.itemName,
+      kind: details.kind ?? "goods_and_services",
+    });
+  }
   if (destination.includes("@")) {
     return `https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=${encodeURIComponent(destination)}`;
   }
@@ -33,7 +57,10 @@ function cashAppHref(destination: string) {
   return `https://cash.app/${destination.startsWith("$") ? destination : `$${destination}`}`;
 }
 
-export function paymentLinkFor(destination: PaymentDestination): PaymentLink {
+export function paymentLinkFor(
+  destination: PaymentDestination,
+  details?: PaymentLinkDetails,
+): PaymentLink {
   const label = railLabel(destination.rail);
   const value = destination.destination;
   if (destination.rail === "paypal") {
@@ -41,7 +68,7 @@ export function paymentLinkFor(destination: PaymentDestination): PaymentLink {
       rail: destination.rail,
       label,
       destination: value,
-      href: paypalHref(value),
+      href: paypalHref(value, details),
       actionLabel: "Pay with PayPal",
     };
   }
@@ -117,6 +144,9 @@ export function paymentLinkFor(destination: PaymentDestination): PaymentLink {
   };
 }
 
-export function paymentLinksFor(destinations: PaymentDestination[]) {
-  return destinations.map(paymentLinkFor);
+export function paymentLinksFor(
+  destinations: PaymentDestination[],
+  details?: PaymentLinkDetails,
+) {
+  return destinations.map((destination) => paymentLinkFor(destination, details));
 }

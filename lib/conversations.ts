@@ -17,6 +17,8 @@ import {
   type SaleStatus,
   isSaleStatus,
 } from "./conversation-limits";
+import { parsePaymentDestinationsJson } from "./payment-destinations";
+import { paypalPayHref } from "./paypal-pay-link";
 import { computeSocialCreditScore } from "./social-credit";
 
 export {
@@ -50,6 +52,18 @@ export function partySaleStatus(
   if (isSaleStatus(stored)) return stored;
   const confirmed = role === "buyer" ? row.buyerConfirmedAt : row.sellerConfirmedAt;
   return confirmed ? "complete" : "pending";
+}
+
+const SALE_PRICE_MAX_CENTS = 1_000_000_000;
+
+export function effectiveSalePriceCents(
+  row: { salePriceCents?: number | null },
+  listing: { priceCents?: number | null } | null | undefined,
+) {
+  const stored = Number(row.salePriceCents ?? 0);
+  if (Number.isSafeInteger(stored) && stored > 0) return stored;
+  const listed = Number(listing?.priceCents ?? 0);
+  return Number.isSafeInteger(listed) && listed > 0 ? listed : 0;
 }
 
 export function conversationCompleted(row: {
@@ -139,6 +153,8 @@ export async function startConversation(
     listingId: listing.id,
     buyerId: actor.id,
     sellerId: listing.sellerId,
+    salePriceCents: listing.priceCents,
+    buyerMarksSafe: false,
     createdAt: now,
     updatedAt: now,
   });
@@ -350,6 +366,86 @@ export async function setSaleStatus(
   };
 }
 
+export async function updatePaypalSale(
+  db: Db,
+  actor: ConversationActor,
+  conversationId: string,
+  patch: {
+    salePriceCents?: number;
+    buyerMarksSafe?: boolean;
+  },
+) {
+  const [row] = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  if (!row || (row.buyerId !== actor.id && row.sellerId !== actor.id)) {
+    return { ok: false as const, status: 404, error: "Conversation not found." };
+  }
+
+  const hasPrice = patch.salePriceCents !== undefined;
+  const hasSafe = patch.buyerMarksSafe !== undefined;
+  if (!hasPrice && !hasSafe) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: "Set a sale price or Friends and Family choice.",
+    };
+  }
+
+  const isBuyer = row.buyerId === actor.id;
+  if (hasPrice && isBuyer) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: "Only the seller can change the sale price.",
+    };
+  }
+  if (hasSafe && !isBuyer) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: "Only the buyer can mark this sale safe for Friends and Family.",
+    };
+  }
+
+  const next: {
+    updatedAt: string;
+    salePriceCents?: number;
+    buyerMarksSafe?: boolean;
+  } = { updatedAt: new Date().toISOString() };
+
+  if (hasPrice) {
+    const salePriceCents = Number(patch.salePriceCents);
+    if (
+      !Number.isSafeInteger(salePriceCents) ||
+      salePriceCents < 1 ||
+      salePriceCents > SALE_PRICE_MAX_CENTS
+    ) {
+      return {
+        ok: false as const,
+        status: 400,
+        error: "Enter a sale price greater than zero.",
+      };
+    }
+    next.salePriceCents = salePriceCents;
+  }
+  if (hasSafe) {
+    next.buyerMarksSafe = Boolean(patch.buyerMarksSafe);
+  }
+
+  await db
+    .update(conversations)
+    .set(next)
+    .where(eq(conversations.id, conversationId));
+
+  return {
+    ok: true as const,
+    conversation: await conversationPayload(db, conversationId, actor.id),
+  };
+}
+
 export async function submitRating(
   db: Db,
   actor: ConversationActor,
@@ -509,7 +605,7 @@ async function completeSale(
     buyerId: row.buyerId,
     sellerId: row.sellerId,
     title: listing.title,
-    priceCents: listing.priceCents,
+    priceCents: effectiveSalePriceCents(row, listing),
     currency: listing.currency,
     soldAt,
   });
@@ -630,6 +726,23 @@ async function conversationPayload(db: Db, conversationId: string, userId: strin
     .from(saleHistory)
     .where(eq(saleHistory.listingId, row.listingId))
     .limit(1);
+  const salePriceCents = effectiveSalePriceCents(row, listing);
+  const paypalDestination =
+    parsePaymentDestinationsJson(seller?.paymentDestinationsJson).find(
+      (destination) => destination.rail === "paypal",
+    ) ?? null;
+  const paypalKind = row.buyerMarksSafe
+    ? "friends_and_family"
+    : "goods_and_services";
+  const paypalPayHrefValue = paypalDestination
+    ? paypalPayHref({
+        destination: paypalDestination.destination,
+        amountCents: salePriceCents,
+        currency: listing?.currency ?? "USD",
+        itemName: listing?.title ?? "Marketplace listing",
+        kind: paypalKind,
+      })
+    : null;
 
   return {
     id: row.id,
@@ -638,6 +751,12 @@ async function conversationPayload(db: Db, conversationId: string, userId: strin
     listingStatus: listing?.status ?? "active",
     listingPriceCents: listing?.priceCents ?? 0,
     listingCurrency: listing?.currency ?? "USD",
+    salePriceCents,
+    buyerMarksSafe: Boolean(row.buyerMarksSafe),
+    paypalDestination: paypalDestination?.destination ?? null,
+    paypalLinked: paypalDestination?.source === "oauth",
+    paypalKind,
+    paypalPayHref: paypalPayHrefValue,
     soldAt: sale?.soldAt ?? null,
     buyerId: row.buyerId,
     sellerId: row.sellerId,

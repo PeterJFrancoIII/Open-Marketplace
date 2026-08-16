@@ -8,6 +8,9 @@ import {
 } from "./helpers/memory-d1.mjs";
 import { buildPagesPreviewDeploymentConfigs } from "../scripts/configure-pages-preview.mjs";
 import {
+  paypalPayHref,
+} from "../lib/paypal-pay-link.ts";
+import {
   mergePaymentDestinationsForSave,
   overlayPaypalDestinations,
   parsePaypalUserInfo,
@@ -222,6 +225,44 @@ function assertNoSecrets(value) {
   assert.doesNotMatch(text, /accessToken|refreshToken|clientSecret/i);
 }
 
+test("PayPal pay links fill amount and default to Goods and Services", () => {
+  const goods = paypalPayHref({
+    destination: "seller-paypal@example.com",
+    amountCents: 4200,
+    currency: "USD",
+    itemName: "Chat lamp",
+    kind: "goods_and_services",
+  });
+  const goodsUrl = new URL(goods ?? "");
+  assert.equal(goodsUrl.hostname, "www.paypal.com");
+  assert.equal(goodsUrl.pathname, "/cgi-bin/webscr");
+  assert.equal(goodsUrl.searchParams.get("cmd"), "_xclick");
+  assert.equal(goodsUrl.searchParams.get("business"), "seller-paypal@example.com");
+  assert.equal(goodsUrl.searchParams.get("amount"), "42.00");
+  assert.equal(goodsUrl.searchParams.get("currency_code"), "USD");
+  assert.equal(goodsUrl.searchParams.get("item_name"), "Chat lamp");
+
+  const friends = paypalPayHref({
+    destination: "seller-paypal@example.com",
+    amountCents: 5500,
+    currency: "USD",
+    kind: "friends_and_family",
+  });
+  const friendsUrl = new URL(friends ?? "");
+  assert.equal(friendsUrl.hostname, "www.paypal.com");
+  assert.equal(friendsUrl.pathname, "/myaccount/transfer/homepage/pay");
+  assert.equal(friendsUrl.searchParams.get("recipient"), "seller-paypal@example.com");
+  assert.equal(friendsUrl.searchParams.get("amount"), "55.00");
+  assert.doesNotMatch(friends ?? "", /cmd=_xclick/);
+
+  const handle = paypalPayHref({
+    destination: "https://www.paypal.me/SellerReed",
+    amountCents: 1000,
+    kind: "friends_and_family",
+  });
+  assert.equal(handle, "https://www.paypal.com/paypalme/SellerReed/10.00");
+});
+
 test("PayPal authorize URL stays on official Log in with PayPal scopes", () => {
   const url = new URL(
     paypalAuthorizeUrl({
@@ -394,11 +435,12 @@ test("PayPal connect requires a session and then populates the public pay-to ema
 });
 
 test("account settings and listings source offer Link PayPal without checkout", async () => {
-  const [settings, marketplace, connect, paypalPublic] = await Promise.all([
+  const [settings, marketplace, connect, paypalPublic, payLink] = await Promise.all([
     readFile(new URL("../app/account/account-settings.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/marketplace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/paypal-connect.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/paypal-public.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/paypal-pay-link.ts", import.meta.url), "utf8"),
   ]);
   assert.match(settings, /Link PayPal/);
   assert.match(settings, /\/api\/paypal\/connect/);
@@ -406,9 +448,17 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(settings, /does not execute, insure, escrow/);
   assert.doesNotMatch(settings, /Orders API|CreateShipment|\/v2\/checkout\/orders|payouts/i);
   assert.match(marketplace, /PayPal · Linked/);
+  assert.match(marketplace, /listingPayDetails/);
+  assert.match(marketplace, /goods_and_services/);
+  assert.match(payLink, /cmd/);
+  assert.match(payLink, /_xclick/);
+  assert.match(payLink, /friends_and_family/);
   assert.match(paypalPublic, /openid/);
   assert.match(connect, /identity\/oauth2\/userinfo/);
-  assert.doesNotMatch(`${connect}\n${paypalPublic}`, /\/v2\/checkout\/orders|payouts/);
+  assert.doesNotMatch(
+    `${connect}\n${paypalPublic}\n${payLink}`,
+    /\/v2\/checkout\/orders|payouts/,
+  );
 });
 
 test("preview PayPal credentials stay off the production Pages config", async () => {

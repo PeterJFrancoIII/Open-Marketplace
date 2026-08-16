@@ -15,6 +15,7 @@ const migrationFiles = [
     "drizzle/0003_ambitious_hawkeye.sql",
     "drizzle/0004_chat_sale_credit.sql",
     "drizzle/0005_sale_status.sql",
+    "drizzle/0006_paypal_sale_price.sql",
 ];
 
 function findLocalD1Files() {
@@ -59,12 +60,22 @@ for (const databasePath of databasePaths) {
       "SELECT 1 AS ok FROM pragma_table_info('conversations') WHERE name = 'buyer_sale_status' LIMIT 1",
     )
     .get();
+  const hasPaypalSalePrice = db
+    .prepare(
+      "SELECT 1 AS ok FROM pragma_table_info('conversations') WHERE name = 'sale_price_cents' LIMIT 1",
+    )
+    .get();
   const pending = alreadyApplied
     ? hasConversations
-      ? hasSaleStatus
-        ? []
-        : ["drizzle/0005_sale_status.sql"]
-      : ["drizzle/0004_chat_sale_credit.sql", "drizzle/0005_sale_status.sql"]
+      ? [
+          ...(hasSaleStatus ? [] : ["drizzle/0005_sale_status.sql"]),
+          ...(hasPaypalSalePrice ? [] : ["drizzle/0006_paypal_sale_price.sql"]),
+        ]
+      : [
+          "drizzle/0004_chat_sale_credit.sql",
+          "drizzle/0005_sale_status.sql",
+          "drizzle/0006_paypal_sale_price.sql",
+        ]
     : migrationFiles;
   if (!pending.length) {
     db.close();

@@ -545,10 +545,17 @@ test("Facebook Graph fields stay public_profile only and never request email", a
   assert.match(authSource, /getUserInfo:/);
   assert.doesNotMatch(authSource, /fields:\s*\[[^\]]*email/);
   assert.doesNotMatch(authSource, /user_birthday|user_location|user_hometown|user_mobile_phone/);
-  assert.match(authSource, /fillEmptyProfileFromFacebook/);
+  assert.doesNotMatch(authSource, /fillEmptyProfileFromFacebook/);
+  assert.match(authSource, /updateUserInfoOnLink:\s*false/);
+
+  const accountPage = await readFile(
+    new URL("../app/account/page.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(accountPage, /fillEmptyProfileFromFacebook/);
 });
 
-test("empty profile photo is filled from Facebook without replacing a typed name", async () => {
+test("Facebook identity stays connection-scoped and is not copied into the core user", async () => {
   const photoUrl = "https://graph.facebook.com/v24.0/me/picture";
   const restoreFetch = installFacebookProfileStub({
     id: "facebook-app-scoped-id",
@@ -608,10 +615,11 @@ test("empty profile photo is filled from Facebook without replacing a typed name
     assertNoSecrets(body);
 
     const row = d1.__sqlite
-      .prepare("select name, image from auth_users where id = ?")
+      .prepare("select name, email, image from auth_users where id = ?")
       .get(user.id);
     assert.equal(row.name, "Keep This Name");
-    assert.equal(row.image, photoUrl);
+    assert.equal(row.email, "keep-name@example.com");
+    assert.equal(row.image, null);
   } finally {
     restoreFetch();
   }

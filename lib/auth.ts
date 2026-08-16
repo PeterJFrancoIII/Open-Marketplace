@@ -409,38 +409,6 @@ async function readFacebookPublicProfile(
   };
 }
 
-export async function fillEmptyProfileFromFacebook(
-  userId: string,
-  current: { name?: string | null; image?: string | null },
-  facebook: FacebookConnection,
-) {
-  if (!facebook.connected) {
-    return { name: current.name ?? null, image: current.image ?? null };
-  }
-
-  const nextName = current.name?.trim()
-    ? current.name
-    : displayNameFromFacebook(facebook);
-  const nextImage = current.image?.trim()
-    ? current.image
-    : facebook.imageUrl;
-  if (nextName === current.name && nextImage === (current.image ?? null)) {
-    return { name: current.name ?? null, image: current.image ?? null };
-  }
-
-  const db = await getDb();
-  await db
-    .update(authUsers)
-    .set({
-      ...(nextName && nextName !== current.name ? { name: nextName } : {}),
-      ...(nextImage && nextImage !== current.image ? { image: nextImage } : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(authUsers.id, userId));
-
-  return { name: nextName ?? current.name ?? null, image: nextImage ?? null };
-}
-
 function publicFacebookConnection(
   available: boolean,
   connected: boolean,
@@ -535,9 +503,7 @@ export async function getFacebookConnection(
       );
     }
 
-    const connection = publicFacebookConnection(true, true, profile ?? undefined);
-    await fillEmptyProfileFromFacebook(session.user.id, session.user, connection);
-    return connection;
+    return publicFacebookConnection(true, true, profile ?? undefined);
   } catch {
     return publicFacebookConnection(true, false);
   }

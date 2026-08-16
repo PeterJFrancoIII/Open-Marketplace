@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Privacy Policy — Open Marketplace",
   description:
-    "How Open Marketplace handles account, listing, and future Facebook Connect data.",
+    "How Open Marketplace handles account, listing, and Facebook Connect data on this preview.",
 };
 
 const sections = [
@@ -40,8 +40,10 @@ export default function PrivacyPage() {
             <h1 id="privacy-title">Privacy Policy</h1>
             <p className="portal-lead">
               This page describes how the Open Marketplace account preview
-              handles information today, and what Facebook Connect will and will
-              not do if it is later enabled. It does not require an account.
+              handles information today, including Facebook Connect for
+              authenticated users on this non-production preview. It does not
+              require an account. Facebook Connect is not enabled in production;
+              the production account portal remains unreleased.
             </p>
             <p>
               <Link className="privacy-home" href="/">
@@ -122,14 +124,15 @@ export default function PrivacyPage() {
               Facebook Connect disclosure
             </h2>
             <p>
-              Facebook Connect is not yet enabled on this preview. This preview
-              does not currently receive Facebook data through Facebook Login.
+              Facebook Connect is enabled on this non-production account preview
+              for authenticated users. Choosing Connect requests consumer
+              Facebook Login <code>public_profile</code> only and uses
+              provider-supplied public profile identity for explicit account
+              linking and a Connected display under OM-DEC-017.
             </p>
             <p>
-              Before Facebook Connect is enabled, Open Marketplace will request
-              consumer Facebook Login <code>public_profile</code> only. Provider-supplied
-              profile identity will be used solely for explicit account linking
-              and a Connected status under OM-DEC-017.
+              Facebook Connect is not enabled in production. The production
+              account portal remains unreleased.
             </p>
           </section>
 
@@ -140,8 +143,8 @@ export default function PrivacyPage() {
           >
             <h2 id="facebook-exclusions-title">Facebook exclusions</h2>
             <p>
-              Open Marketplace does not claim, and does not plan to collect, any
-              of the following through Facebook Connect:
+              Open Marketplace does not request or use any of the following
+              through Facebook Connect:
             </p>
             <ul>
               <li>Facebook email permission.</li>
@@ -166,10 +169,9 @@ export default function PrivacyPage() {
               Provider credential boundary
             </h2>
             <p>
-              When Facebook Connect is later implemented, provider tokens and
-              connection credentials will remain server-side. They will not be
-              exposed in public profile JSON, public listings, logs, Git, or
-              agent handoffs.
+              Facebook access credentials and tokens remain server-side. They
+              are not placed in public profile JSON, public listing JSON, logs,
+              Git, or agent handoffs.
             </p>
           </section>
 
@@ -185,8 +187,8 @@ export default function PrivacyPage() {
               <li>Provide marketplace features the user requested.</li>
               <li>Maintain security and abuse controls.</li>
               <li>
-                Perform explicit provider account linking when that feature is
-                enabled.
+                Perform explicit Facebook account linking on this preview when
+                the signed-in user chooses Connect.
               </li>
             </ul>
           </section>
@@ -225,24 +227,17 @@ export default function PrivacyPage() {
           >
             <h2 id="facebook-data-deletion-title">Facebook data deletion</h2>
             <p>
-              Facebook Connect is not yet enabled, so this preview does not
-              currently receive Facebook data through Facebook Login. There is
-              therefore no Facebook Login dataset to delete on this preview
-              today, and Account Settings does not yet offer Disconnect.
+              Account Settings offers Disconnect now. Disconnect removes the
+              active linked Facebook account credentials and tokens and the
+              connection-scoped provider identity used for Connected display,
+              stops future Facebook access, and leaves the Open Marketplace
+              account and session intact.
             </p>
             <p>
-              Before Facebook Connect is enabled for users, Account Settings
-              will provide Disconnect. Disconnect must stop future provider
-              access and remove the active Facebook connection credentials,
-              tokens, and provider-supplied Facebook profile data used for
-              Connected qualification. This page documents that contract. It
-              does not implement Facebook Login, OAuth, or Disconnect.
-            </p>
-            <p>
-              A private privacy-request contact channel will be published before
-              public Facebook Connect launch. Do not post credentials, tokens,
-              or other sensitive personal data in a public GitHub issue or any
-              other public channel.
+              This page does not publish a privacy email, phone number, or
+              postal address. Do not post credentials, tokens, or other
+              sensitive personal data in a public GitHub issue or any other
+              public channel.
             </p>
           </section>
 
@@ -252,7 +247,7 @@ export default function PrivacyPage() {
             aria-labelledby="effective-date-title"
           >
             <h2 id="effective-date-title">Effective date</h2>
-            <p className="privacy-effective">2026-08-14</p>
+            <p className="privacy-effective">2026-08-16</p>
           </section>
         </article>
       </main>

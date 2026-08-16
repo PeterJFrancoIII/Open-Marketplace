@@ -2109,9 +2109,14 @@ a.detail-social-account.social-connected:hover,
 
 .portal-transfer-prompt {
   background: #fff;
-  border: 1px solid var(--line);
+  border: 1px solid var(--brand);
   border-radius: 14px;
   padding: 14px;
+}
+
+.portal-transfer-prompt h4 {
+  font-size: 16px;
+  margin: 0;
 }
 
 .portal-evidence-request {

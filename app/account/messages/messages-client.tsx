@@ -126,7 +126,13 @@ function SaleProof({
   );
 }
 
-function TrackingUpdates({ trackingNumber }: { trackingNumber: string }) {
+function TrackingUpdates({
+  trackingNumber,
+  waiting = false,
+}: {
+  trackingNumber: string;
+  waiting?: boolean;
+}) {
   const reactId = useId().replace(/:/g, "");
   const containerId = `yq-${reactId}`;
   const [liveNumber, setLiveNumber] = useState(trackingNumber);
@@ -197,7 +203,18 @@ function TrackingUpdates({ trackingNumber }: { trackingNumber: string }) {
     };
   }, [containerId, details]);
 
-  if (!details) return null;
+  if (!details) {
+    if (!waiting) return null;
+    return (
+      <div className="portal-tracking-updates">
+        <h4>Shipping details</h4>
+        <p className="portal-settings-note">
+          Enter a UPS, USPS, FedEx, or DHL tracking number to verify this
+          shipment in the approved provider window.
+        </p>
+      </div>
+    );
+  }
   if (details.kind === "pickup") {
     return (
       <p className="portal-settings-note">
@@ -208,7 +225,7 @@ function TrackingUpdates({ trackingNumber }: { trackingNumber: string }) {
 
   return (
     <div className="portal-tracking-updates">
-      <h4>Tracking updates</h4>
+      <h4>Shipping details</h4>
       <p className="portal-settings-note">
         {details.carrier === "unknown"
           ? "Carrier will be identified from the tracking number."
@@ -237,8 +254,8 @@ function TrackingUpdates({ trackingNumber }: { trackingNumber: string }) {
         />
       ) : null}
       <p className="portal-settings-note">
-        Live updates use 17TRACK&apos;s official embed. Official carrier
-        pages stay the source of truth.
+        Tracking updates use 17TRACK&apos;s official embed for UPS, USPS,
+        FedEx, and DHL. Official carrier pages stay the source of truth.
       </p>
     </div>
   );
@@ -530,6 +547,12 @@ export default function MessagesClient({
       }
       if (conversation.completed || conversation.mySaleStatus === "complete") return;
       setShowTransferPrompt(true);
+      window.requestAnimationFrame(() => {
+        document.getElementById("in-transfer-prompt")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
       return;
     }
     void setCurrentSaleStatus(status);
@@ -769,10 +792,11 @@ export default function MessagesClient({
 
               <h3>Shipping evidence</h3>
               <p className="portal-settings-note">
-                In-Transfer asks the seller for the actual UPS, USPS, FedEx, or
-                DHL tracking number plus a photo of the item and the shipping
-                box. Tracking updates stay in this same window. Photo bytes
-                stay off the public registry.
+                The seller clicks In-Transfer to enter a real tracking number,
+                verify it in this shipping details window, and upload photos of
+                the item and the shipping box. The buyer then chooses Accept
+                Evidence if they want to. Photo bytes stay off the public
+                registry.
               </p>
               {conversation.evidenceRequestNote ? (
                 <p className="portal-evidence-request">
@@ -786,17 +810,20 @@ export default function MessagesClient({
               {conversation.myRole === "seller" &&
               !conversation.completed &&
               conversation.mySaleStatus !== "complete" &&
-              (showTransferPrompt || conversation.mySaleStatus === "pending") ? (
+              showTransferPrompt ? (
                 <form
+                  id="in-transfer-prompt"
                   className="portal-form portal-transfer-prompt"
                   onSubmit={(event) => {
                     event.preventDefault();
                     void submitSellerInTransfer();
                   }}
                 >
+                  <h4>In-Transfer</h4>
                   <p className="portal-settings-note">
-                    Enter the actual tracking number for this shipment. Stand-in
-                    values are rejected.
+                    Enter the actual UPS, USPS, FedEx, or DHL tracking number.
+                    The approved provider window below verifies that number.
+                    Then upload the required shipment photos.
                   </p>
                   <label className="portal-field">
                     <span>Tracking number</span>
@@ -804,6 +831,7 @@ export default function MessagesClient({
                       value={trackingValue}
                       maxLength={80}
                       required
+                      autoFocus
                       onChange={(event) => {
                         setTrackingDirty(true);
                         setTrackingDraft(event.target.value);
@@ -811,6 +839,12 @@ export default function MessagesClient({
                       placeholder="Actual UPS, USPS, FedEx, or DHL tracking number"
                     />
                   </label>
+                  <TrackingUpdates
+                    waiting
+                    trackingNumber={
+                      requireActualTrackingNumber(trackingValue) ?? ""
+                    }
+                  />
                   <label className="portal-field">
                     <span>Photo of the item</span>
                     <input
@@ -839,23 +873,35 @@ export default function MessagesClient({
                       }
                     />
                   </label>
+                  <SaleProof
+                    label="Item photo"
+                    photo={shippedItemDraft ?? conversation.shippedItem}
+                  />
+                  <SaleProof
+                    label="Shipping box"
+                    photo={shippedPackagingDraft ?? conversation.shippedPackaging}
+                  />
                   <div className="portal-sale-status-row">
                     <button
                       className="button button-primary"
                       type="submit"
-                      disabled={busy === "sale" || busy === "evidence"}
+                      disabled={
+                        busy === "sale" ||
+                        busy === "evidence" ||
+                        !requireActualTrackingNumber(trackingValue) ||
+                        !(shippedItemDraft ?? conversation.shippedItem) ||
+                        !(shippedPackagingDraft ?? conversation.shippedPackaging)
+                      }
                     >
                       {busy === "sale" ? "Saving…" : "Submit In-Transfer evidence"}
                     </button>
-                    {conversation.mySaleStatus !== "pending" ? (
-                      <button
-                        className="button button-ghost"
-                        type="button"
-                        onClick={() => setShowTransferPrompt(false)}
-                      >
-                        Cancel
-                      </button>
-                    ) : null}
+                    <button
+                      className="button button-ghost"
+                      type="button"
+                      onClick={() => setShowTransferPrompt(false)}
+                    >
+                      Cancel
+                    </button>
                   </div>
                 </form>
               ) : conversation.myRole === "seller" &&
@@ -887,6 +933,13 @@ export default function MessagesClient({
                       placeholder="Actual UPS, USPS, FedEx, or DHL tracking number"
                     />
                   </label>
+                  <TrackingUpdates
+                    trackingNumber={
+                      requireActualTrackingNumber(trackingValue) ??
+                      conversation.trackingNumber ??
+                      ""
+                    }
+                  />
                   <label className="portal-field">
                     <span>Photo of the item</span>
                     <input
@@ -922,44 +975,71 @@ export default function MessagesClient({
                   </button>
                 </form>
               ) : (
-                <p>
-                  Tracking number: {conversation.trackingNumber ?? "Not added yet"}
-                </p>
+                <>
+                  {conversation.myRole === "seller" &&
+                  conversation.mySaleStatus === "pending" ? (
+                    <p className="portal-settings-note">
+                      Click In-Transfer to enter the tracking number, verify it
+                      in the shipping details window, and upload the required
+                      shipment photos.
+                    </p>
+                  ) : (
+                    <p>
+                      Tracking number:{" "}
+                      {conversation.trackingNumber ?? "Not added yet"}
+                    </p>
+                  )}
+                  <TrackingUpdates
+                    trackingNumber={conversation.trackingNumber ?? ""}
+                  />
+                </>
               )}
-              <TrackingUpdates
-                trackingNumber={
-                  conversation.myRole === "seller"
-                    ? trackingValue
-                    : conversation.trackingNumber ?? ""
-                }
-              />
-              <SaleProof
-                label="Item photo"
-                photo={shippedItemDraft ?? conversation.shippedItem}
-              />
-              <SaleProof
-                label="Shipping box"
-                photo={shippedPackagingDraft ?? conversation.shippedPackaging}
-              />
+              {!(
+                conversation.myRole === "seller" &&
+                showTransferPrompt &&
+                !conversation.completed &&
+                conversation.mySaleStatus !== "complete"
+              ) ? (
+                <>
+                  <SaleProof
+                    label="Item photo"
+                    photo={conversation.shippedItem}
+                  />
+                  <SaleProof
+                    label="Shipping box"
+                    photo={conversation.shippedPackaging}
+                  />
+                </>
+              ) : null}
               {conversation.myRole === "buyer" &&
               !conversation.completed &&
-              conversation.mySaleStatus !== "complete" &&
-              (conversation.otherSaleStatus === "in_transfer" ||
-                conversation.otherSaleStatus === "complete") ? (
+              conversation.mySaleStatus !== "complete" ? (
                 <div className="portal-form">
-                  {conversation.mySaleStatus !== "in_transfer" ? (
-                    <button
-                      className="button button-primary"
-                      type="button"
-                      disabled={busy === "evidence"}
-                      onClick={() => void acceptCurrentEvidence()}
-                    >
-                      {busy === "evidence" ? "Saving…" : "Accept Evidence"}
-                    </button>
-                  ) : (
+                  {conversation.mySaleStatus === "in_transfer" ? (
                     <p className="portal-settings-note">
                       You accepted this shipping evidence.
                     </p>
+                  ) : (
+                    <>
+                      <p className="portal-settings-note">
+                        {conversation.otherSaleStatus === "in_transfer" ||
+                        conversation.otherSaleStatus === "complete"
+                          ? "Choose Accept Evidence if this shipment looks correct."
+                          : "Accept Evidence is available after the seller submits In-Transfer shipping details."}
+                      </p>
+                      <button
+                        className="button button-primary"
+                        type="button"
+                        disabled={
+                          busy === "evidence" ||
+                          (conversation.otherSaleStatus !== "in_transfer" &&
+                            conversation.otherSaleStatus !== "complete")
+                        }
+                        onClick={() => void acceptCurrentEvidence()}
+                      >
+                        {busy === "evidence" ? "Saving…" : "Accept Evidence"}
+                      </button>
+                    </>
                   )}
                   {conversation.otherSaleStatus === "in_transfer" ? (
                     <>

@@ -55,6 +55,7 @@ test("messages attach 17TRACK updates to the tracking number field", async () =>
     "utf8",
   );
   assert.match(messagesUi, /Tracking updates/);
+  assert.match(messagesUi, /Shipping details/);
   assert.match(messagesUi, /TRACKING_EMBED_SCRIPT/);
   assert.match(messagesUi, /Open official/);
   assert.match(messagesUi, /Open AfterShip/);

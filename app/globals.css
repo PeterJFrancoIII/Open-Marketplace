@@ -2138,27 +2138,114 @@ a {
   transform: none;
 }
 
-.privacy-doc {
+.legal-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(90, 79, 243, 0.08), transparent 36%),
+    linear-gradient(180deg, #faf9f5 0%, var(--canvas) 58%, #eceae3 100%);
+}
+
+.legal-topbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 28px;
+  justify-content: space-between;
+  min-height: 72px;
+  padding: 16px 28px;
+}
+
+.legal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 20px;
+}
+
+.legal-nav a {
+  color: var(--brand-dark);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.legal-nav a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.legal-main {
   display: grid;
-  gap: 22px;
+  justify-items: center;
+  padding: 8px 16px 64px;
+}
+
+.legal-doc,
+.privacy-doc {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: 0 18px 48px rgba(21, 21, 24, 0.06);
+  display: grid;
+  gap: 28px;
   max-width: 760px;
-  padding-bottom: 48px;
+  padding: 36px 34px 40px;
   width: min(100%, 760px);
 }
 
-.privacy-doc .portal-panel {
+.legal-masthead {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
-.privacy-doc p,
-.privacy-doc li {
-  color: var(--ink);
+.legal-kicker {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.legal-doc h1,
+.privacy-doc h1 {
+  font-size: 34px;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.legal-lead {
+  color: var(--muted);
+  font-size: 17px;
   line-height: 1.55;
   margin: 0;
 }
 
-.privacy-doc ul {
+.legal-doc h2,
+.privacy-doc h2 {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
+}
+
+.legal-doc section,
+.privacy-doc section {
+  display: grid;
+  gap: 10px;
+}
+
+.privacy-doc p,
+.privacy-doc li,
+.legal-doc p,
+.legal-doc li {
+  color: var(--ink);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.privacy-doc ul,
+.legal-doc ul,
+.legal-steps {
   display: grid;
   gap: 8px;
   margin: 0;
@@ -2174,17 +2261,90 @@ a {
 }
 
 .privacy-toc a,
-.privacy-home {
+.privacy-home,
+.legal-doc a,
+.legal-colophon a {
   color: var(--brand-dark);
   font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
+.legal-colophon {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  display: grid;
+  gap: 8px;
+  padding-top: 18px;
+}
+
+.legal-code-form {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.legal-code-form label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.legal-code-form input {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: inherit;
+  max-width: 100%;
+  padding: 10px 12px;
+  width: min(100%, 420px);
+}
+
+.auth-legal,
+.site-legal {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 18px 0 0;
+  text-align: center;
+}
+
+.site-legal {
+  border-top: 1px solid var(--line);
+  margin: 36px 0 0;
+  padding: 22px 28px 28px;
+}
+
+.site-legal p,
+.auth-legal {
+  margin: 0;
+}
+
+.site-legal a,
+.auth-legal a {
+  color: var(--brand-dark);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.site-legal a:hover,
+.auth-legal a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.portal-legal {
+  background: transparent;
+  margin: 0;
+}
+
 .privacy-skip:focus-visible,
 .privacy-toc a:focus-visible,
 .privacy-home:focus-visible,
-.privacy-doc a:focus-visible {
+.privacy-doc a:focus-visible,
+.legal-nav a:focus-visible,
+.legal-doc a:focus-visible,
+.site-legal a:focus-visible,
+.auth-legal a:focus-visible {
   outline: 3px solid var(--brand-soft);
   outline-offset: 2px;
 }

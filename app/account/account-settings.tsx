@@ -654,14 +654,11 @@ export default function AccountSettings({
           <h3 id="facebook-connect-title">Facebook</h3>
           <p className="portal-lead">
             Connect your Facebook account to prove you control it. This uses
-            consumer Facebook Login and public_profile only, and reads every
-            field Facebook returns on that permission: name, first name, last
-            name, middle name, short name, and a large profile photo. Those
-            values stay on the Facebook connector and do not replace your Open
-            Marketplace email or name. Address, date of birth, phone, and email
-            are not available from
-            Facebook Login. It does not sign you in, import listings, or make
-            you Facebook verified.
+            consumer Facebook Login and public_profile only. Facebook may
+            return a public name and profile photo. Those values stay on the
+            Facebook connector and do not replace your Open Marketplace email
+            or name. It does not sign you in, import listings, or make you
+            Facebook verified.
           </p>
         </div>
         <div className="portal-settings-row">
@@ -717,7 +714,7 @@ export default function AccountSettings({
             </div>
           ) : (
             <p className="portal-settings-note">
-              Facebook Connect is not configured in this environment.
+              Facebook Login is not available on this copy of the site.
             </p>
           )}
         </div>

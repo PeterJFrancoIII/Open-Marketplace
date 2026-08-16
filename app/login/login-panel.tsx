@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
+import Link from "next/link";
 import { authClient } from "../../lib/auth-client";
 import { sanitizeReturnTo } from "../../lib/auth-return-to";
 
@@ -166,6 +167,13 @@ export default function LoginPanel({ returnTo }: { returnTo: string }) {
         {status && <p className="auth-success">{status}</p>}
         {error && <p className="auth-error">{error}</p>}
       </div>
+      <p className="auth-legal">
+        <Link href="/privacy">Privacy</Link>
+        <span aria-hidden="true"> · </span>
+        <Link href="/terms">Terms</Link>
+        <span aria-hidden="true"> · </span>
+        <Link href="/privacy/facebook-data-deletion">Facebook data deletion</Link>
+      </p>
     </section>
   );
 }

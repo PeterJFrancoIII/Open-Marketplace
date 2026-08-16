@@ -95,6 +95,15 @@ export default function PortalShell({
         </nav>
         <main className="portal-main">{children}</main>
       </div>
+      <footer className="site-legal portal-legal">
+        <p>
+          <Link href="/privacy">Privacy</Link>
+          <span aria-hidden="true"> · </span>
+          <Link href="/terms">Terms</Link>
+          <span aria-hidden="true"> · </span>
+          <Link href="/privacy/facebook-data-deletion">Facebook data deletion</Link>
+        </p>
+      </footer>
     </div>
   );
 }

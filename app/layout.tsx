@@ -4,13 +4,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Open Marketplace — a marketplace owned by its community",
   description:
-    "A lightweight, open-source marketplace where listing media stays with sellers.",
-  other: {
-    "codex-preview": "development",
-  },
+    "An independent classifieds site. Browse without an account. Listing photographs stay with sellers.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
+    apple: "/open-marketplace-app-icon.png",
   },
 };
 

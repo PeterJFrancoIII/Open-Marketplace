@@ -78,8 +78,8 @@ export default async function AccountPage() {
         <p className="portal-eyebrow">Your console</p>
         <h1 id="account-welcome">Welcome, {session.user.name}</h1>
         <p className="portal-lead">
-          Manage the listings tied to this signed-in account. Ownership always
-          comes from the server session.
+          These are the listings on this signed-in account. Only this email can
+          change them.
         </p>
 
         <div className="portal-stat-row" aria-label="Listing counts">

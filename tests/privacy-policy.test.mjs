@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function fetchPrivacyHtml() {
+async function fetchHtml(path, label) {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("privacy", `${process.pid}-${Date.now()}`);
+  workerUrl.searchParams.set(label, `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
 
   return worker.fetch(
-    new Request("http://localhost/privacy", {
+    new Request(`http://localhost${path}`, {
       headers: { accept: "text/html" },
     }),
     {
@@ -35,10 +35,11 @@ test("privacy page source stays public and does not import auth or data stores",
   assert.doesNotMatch(source, /from ["'].*\/db/);
   assert.doesNotMatch(source, /requireMarketplaceSession|getDb|authClient|FacebookProvider|socialProviders/);
   assert.doesNotMatch(source, /from ["']better-auth/);
+  assert.doesNotMatch(source, /OM-DEC-|Better Auth|agent handoff/i);
 });
 
 test("renders a public unauthenticated /privacy policy", async () => {
-  const response = await fetchPrivacyHtml();
+  const response = await fetchHtml("/privacy", "privacy");
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
@@ -47,24 +48,24 @@ test("renders a public unauthenticated /privacy policy", async () => {
   assert.match(html, /id=["']identity-and-scope["']/);
   assert.match(html, /independent marketplace/i);
   assert.match(html, /external account providers, not the operator/i);
-  assert.match(html, /Better Auth/i);
   assert.match(html, /payment-destination/i);
   assert.match(html, /Listing image bytes remain on the seller/i);
   assert.match(html, /content hashes/i);
-  assert.match(html, /Facebook Connect is enabled on this non-production account preview/i);
+  assert.match(html, /Signed-in people can choose Connect/i);
   assert.match(html, /public_profile/);
-  assert.match(html, /OM-DEC-017/);
-  assert.match(html, /Connected display/i);
+  assert.match(html, /Connected/i);
   assert.match(html, /Facebook email permission/i);
   assert.match(html, /server-side/i);
   assert.match(html, /does not sell Facebook profile data/i);
-  assert.match(html, /has not adopted a fixed legal retention period/i);
   assert.match(html, /id=["']facebook-data-deletion["']/);
   assert.match(html, /Account Settings offers Disconnect now/i);
   assert.match(html, /leaves the Open Marketplace[\s\S]*account and session intact/i);
-  assert.match(html, /production account portal remains unreleased/i);
-  assert.match(html, /2026-08-16/);
+  assert.doesNotMatch(html, /non-production account preview/i);
+  assert.doesNotMatch(html, /connection-scoped provider identity/i);
+  assert.match(html, /16 August 2026/);
   assert.match(html, /href=["']#facebook-data-deletion["']/);
+  assert.match(html, /href=["']\/privacy\/facebook-data-deletion["']/);
+  assert.match(html, /href=["']\/terms["']/);
   assert.doesNotMatch(html, /Log in to Open Marketplace/i);
   assert.doesNotMatch(html, /government-identity verification, or any “Facebook verified” label[\s\S]*Open Marketplace (claims|provides)/i);
   assert.doesNotMatch(html, /Facebook Login for Business|Marketplace Platform|scrape Facebook/i);
@@ -73,4 +74,41 @@ test("renders a public unauthenticated /privacy policy", async () => {
   assert.doesNotMatch(html, /Facebook Connect is not yet enabled/i);
   assert.doesNotMatch(html, /does not yet offer Disconnect/i);
   assert.doesNotMatch(html, /will provide Disconnect/i);
+  assert.doesNotMatch(html, /OM-DEC-017|Better Auth|agent handoff/i);
+  assert.doesNotMatch(html, /name=["']codex-preview["']/i);
+});
+
+test("renders public terms and Facebook data deletion instructions", async () => {
+  const terms = await fetchHtml("/terms", "terms");
+  assert.equal(terms.status, 200);
+  const termsHtml = await terms.text();
+  assert.match(termsHtml, /<h1[^>]*>Terms of Use<\/h1>/i);
+  assert.match(termsHtml, /does not sign you into Open Marketplace/i);
+  assert.match(termsHtml, /href=["']\/privacy\/facebook-data-deletion["']/);
+  assert.doesNotMatch(termsHtml, /OM-DEC-|Better Auth|agent handoff/i);
+  assert.doesNotMatch(termsHtml, /Continue with Facebook|Sign in with Facebook/i);
+
+  const deletion = await fetchHtml(
+    "/privacy/facebook-data-deletion",
+    "facebook-deletion",
+  );
+  assert.equal(deletion.status, 200);
+  const deletionHtml = await deletion.text();
+  assert.match(deletionHtml, /<h1[^>]*>Facebook data deletion<\/h1>/i);
+  assert.match(deletionHtml, /id=["']facebook-data-deletion["']/);
+  assert.match(deletionHtml, /Account Settings offers Disconnect now/i);
+  assert.match(deletionHtml, /Apps and Websites/i);
+  assert.match(deletionHtml, /Send Request/i);
+  assert.doesNotMatch(deletionHtml, /OM-DEC-|Better Auth|agent handoff/i);
+  assert.doesNotMatch(deletionHtml, /connection-scoped provider identity/i);
+
+  const status = await fetchHtml(
+    "/privacy/facebook-data-deletion/status",
+    "facebook-deletion-status",
+  );
+  assert.equal(status.status, 200);
+  const statusHtml = await status.text();
+  assert.match(statusHtml, /Confirmation code/i);
+  assert.match(statusHtml, /name=["']code["']/);
+  assert.doesNotMatch(statusHtml, /BETTER_AUTH_SECRET|OM-DEC-|agent handoff/i);
 });

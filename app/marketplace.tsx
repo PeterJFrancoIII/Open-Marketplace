@@ -2029,6 +2029,17 @@ export default function Marketplace() {
       )}
 
       {toast && <div className="toast" role="status">{toast}</div>}
+
+      <footer className="site-legal">
+        <p>Open Marketplace is an independent classifieds site.</p>
+        <p>
+          <a href="/privacy">Privacy</a>
+          <span aria-hidden="true"> · </span>
+          <a href="/terms">Terms</a>
+          <span aria-hidden="true"> · </span>
+          <a href="/privacy/facebook-data-deletion">Facebook data deletion</a>
+        </p>
+      </footer>
     </div>
   );
 }

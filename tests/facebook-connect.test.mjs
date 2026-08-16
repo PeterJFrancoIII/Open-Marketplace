@@ -260,8 +260,9 @@ test("login page and panel have no Facebook sign-in", async () => {
     readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/login/login-panel.tsx", import.meta.url), "utf8"),
   ]);
-  assert.doesNotMatch(loginSource, /facebook|linkSocial|signIn\.social/i);
-  assert.doesNotMatch(panelSource, /facebook|linkSocial|signIn\.social/i);
+  assert.doesNotMatch(loginSource, /linkSocial|signIn\.social|Connect Facebook/i);
+  assert.doesNotMatch(panelSource, /linkSocial|signIn\.social|Connect Facebook/i);
+  assert.match(panelSource, /\/privacy\/facebook-data-deletion/);
 
   const worker = await loadWorker("facebook-login-html");
   const response = await workerFetch(worker, createTestEnv(undefined, { facebook: true }), "/login", {

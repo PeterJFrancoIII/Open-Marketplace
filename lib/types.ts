@@ -15,6 +15,7 @@ export type FacebookConnection = {
   middleName: string | null;
   shortName: string | null;
   imageUrl: string | null;
+  profileUrl: string | null;
 };
 
 export type PayPalConnection = {

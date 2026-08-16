@@ -5,6 +5,7 @@ import {
   type DragEvent,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -532,7 +533,7 @@ function socialAccountsFor(listing: Listing): SocialProof[] {
     if (isConnectedFacebookProof(account)) {
       return {
         ...account,
-        url: "",
+        url: account.url,
         handle: account.handle?.trim() || listing.sellerName,
         accountCreatedAt: undefined,
         connectionCount: undefined,
@@ -609,24 +610,50 @@ function SocialAccountFact({
       </span>
     </>
   );
-  if (connectedFacebook || !account.url) {
+  return (
+    <ConnectorAnchor
+      href={account.url}
+      className={statusClass}
+      title={account.healthMessage}
+      label={`Open ${providerName(account.provider)} profile`}
+    >
+      {inner}
+    </ConnectorAnchor>
+  );
+}
+
+function ConnectorAnchor({
+  href,
+  className,
+  title,
+  label,
+  children,
+}: {
+  href?: string;
+  className: string;
+  title?: string;
+  label: string;
+  children: ReactNode;
+}) {
+  if (!href) {
     return (
-      <span className={statusClass} title={account.healthMessage}>
-        {inner}
+      <span className={className} title={title}>
+        {children}
       </span>
     );
   }
   return (
     <a
-      className={statusClass}
-      href={account.url}
+      className={className}
+      href={href}
       target="_blank"
-      rel="noreferrer"
-      title={account.healthMessage}
+      rel="noopener noreferrer"
+      title={title}
+      aria-label={label}
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
     >
-      {inner}
+      {children}
     </a>
   );
 }
@@ -660,6 +687,14 @@ function hasBrokenAccount(listing: Listing) {
 
 function paypalLinkLabel(listing: Listing) {
   return listing.paypalLinked ? "PayPal · Linked" : "PayPal · Not linked";
+}
+
+function paypalConnectorHref(listing: Listing) {
+  const paypal = (listing.paymentDestinations ?? []).find(
+    (destination) => destination.rail === "paypal",
+  );
+  if (!paypal?.destination) return "";
+  return /^https:\/\//i.test(paypal.destination) ? paypal.destination : "";
 }
 
 function healthLabel(health: SocialProof["health"]) {
@@ -1661,8 +1696,15 @@ export default function Marketplace() {
                         <span className="no-social">No social account supplied</span>
                       )}
                       {listing.source === "registry" ? (
-                        <span
+                        <ConnectorAnchor
+                          href={paypalConnectorHref(listing)}
                           className={`social-fact social-connected status-${listing.paypalLinked ? "active" : "unknown"}`}
+                          title={
+                            listing.paypalLinked
+                              ? "Linked with PayPal Login"
+                              : "Seller has not linked PayPal"
+                          }
+                          label="Open PayPal profile"
                         >
                           <span className="proof-mark">pp</span>
                           <span className="social-fact-copy">
@@ -1676,7 +1718,7 @@ export default function Marketplace() {
                           <span className="link-health">
                             {listing.paypalLinked ? "Linked" : "Not linked"}
                           </span>
-                        </span>
+                        </ConnectorAnchor>
                       ) : null}
                     </div>
                   </div>
@@ -2081,8 +2123,15 @@ export default function Marketplace() {
                       <p className="form-note">
                         Public destinations only. The marketplace does not send, hold, escrow, convert, or protect this transfer.
                       </p>
-                      <span
+                      <ConnectorAnchor
+                        href={paypalConnectorHref(selectedListing)}
                         className={`detail-social-account social-connected status-${selectedListing.paypalLinked ? "active" : "unknown"}`}
+                        title={
+                          selectedListing.paypalLinked
+                            ? "This PayPal account is currently linked with PayPal Login."
+                            : "This seller has not linked PayPal."
+                        }
+                        label="Open PayPal profile"
                       >
                         <span className="proof-mark">pp</span>
                         <span>
@@ -2096,7 +2145,7 @@ export default function Marketplace() {
                         <span className="link-health">
                           {selectedListing.paypalLinked ? "Linked" : "Not linked"}
                         </span>
-                      </span>
+                      </ConnectorAnchor>
                       {paymentLinksFor(selectedListing.paymentDestinations ?? []).length
                         ? paymentLinksFor(selectedListing.paymentDestinations ?? []).map((link) => (
                             link.href ? (

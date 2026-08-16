@@ -38,6 +38,27 @@ test("connected Facebook replaces typed Facebook and keeps other profiles", () =
   assert.equal(merged[0].accountCreatedAt, undefined);
   assert.equal(merged[1].provider, "instagram");
   assert.equal(merged[1].url, "https://instagram.com/openmarketplace.test");
+
+  const withOfficialLink = mergeConnectedFacebookProof(
+    [
+      {
+        provider: "facebook",
+        url: "https://www.facebook.com/openmarketplace.seller",
+        handle: "Peter Franco",
+        metricsSource: "oauth",
+      },
+      {
+        provider: "facebook",
+        url: "https://facebook.com/typed.seller",
+        metricsSource: "self-reported",
+      },
+    ],
+    true,
+    "Peter Franco",
+  );
+  assert.equal(withOfficialLink[0].url, "https://www.facebook.com/openmarketplace.seller");
+  assert.equal(withOfficialLink[0].metricsSource, "oauth");
+  assert.doesNotMatch(withOfficialLink[0].url, /typed\.seller/);
 });
 
 test("listings without a Facebook Login row keep typed social only", () => {
@@ -66,7 +87,7 @@ test("listings without a Facebook Login row keep typed social only", () => {
 test("social health does not invent Facebook friends or require a profile URL for Connect", async () => {
   const checked = await checkSocialAccount({
     provider: "facebook",
-    url: "https://facebook.com/spoofed",
+    url: "https://www.facebook.com/openmarketplace.seller",
     handle: "Peter Franco",
     metricsSource: "oauth",
     accountCreatedAt: "2012-06-15",
@@ -74,7 +95,7 @@ test("social health does not invent Facebook friends or require a profile URL fo
   });
   assert.equal(checked.metricsSource, "oauth");
   assert.equal(checked.health, "active");
-  assert.equal(checked.url, "");
+  assert.equal(checked.url, "https://www.facebook.com/openmarketplace.seller");
   assert.equal(checked.connectionCount, undefined);
   assert.equal(checked.accountCreatedAt, undefined);
   assert.match(checked.healthMessage ?? "", /Connected with Facebook Login/);
@@ -84,6 +105,8 @@ test("listing cards show Connected Facebook instead of a typed URL", async () =>
   const marketplace = await readFile(new URL("../app/marketplace.tsx", import.meta.url), "utf8");
   assert.match(marketplace, /Connected with Facebook Login/);
   assert.match(marketplace, /isConnectedFacebookProof/);
+  assert.match(marketplace, /ConnectorAnchor/);
+  assert.match(marketplace, /Open \$\{providerName\(account.provider\)\} profile/);
   assert.match(marketplace, /socialProofs: \[\]/);
   assert.doesNotMatch(marketplace, /Social trust profile/);
 });

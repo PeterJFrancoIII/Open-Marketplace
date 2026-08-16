@@ -1,3 +1,7 @@
+import {
+  isConnectedFacebookProof,
+  publicFacebookProfileUrl,
+} from "./facebook-listing-proof";
 import { checkSocialAccounts } from "./social-health";
 import type { SocialProof } from "./types";
 
@@ -32,7 +36,17 @@ export function parseSocialAccountsJson(
       if (!isSupportedProvider(provider) || typeof url !== "string" || !url.trim()) {
         continue;
       }
-      byProvider.set(provider, asSelfReported(entry as SocialProof));
+      const metricsSource =
+        provider === "facebook" &&
+        (entry as SocialProof).metricsSource === "oauth" &&
+        publicFacebookProfileUrl(url)
+          ? "oauth"
+          : "self-reported";
+      byProvider.set(provider, {
+        ...asSelfReported(entry as SocialProof),
+        metricsSource,
+        url: metricsSource === "oauth" ? publicFacebookProfileUrl(url) : url.trim(),
+      });
     }
     return SOCIAL_PROVIDERS.flatMap((provider) => {
       const saved = byProvider.get(provider);
@@ -104,7 +118,15 @@ export async function normalizeSocialAccountsForProfile(input: unknown): Promise
 export function mergeSocialAccountsForSave(
   incoming: SocialProof[],
   existing: SocialProof[],
+  facebookConnected = false,
 ): SocialProof[] {
+  const others = incoming
+    .filter((account) => account.provider !== "facebook")
+    .map(asSelfReported);
+  if (facebookConnected) {
+    const oauthFacebook = existing.find(isConnectedFacebookProof);
+    return oauthFacebook ? [oauthFacebook, ...others] : others;
+  }
   const incomingHasFacebook = incoming.some(
     (account) => account.provider === "facebook",
   );
@@ -113,6 +135,5 @@ export function mergeSocialAccountsForSave(
       ? incoming.filter((account) => account.provider === "facebook")
       : existing.filter((account) => account.provider === "facebook")
   ).map(asSelfReported);
-  const others = incoming.filter((account) => account.provider !== "facebook");
   return [...facebook, ...others];
 }

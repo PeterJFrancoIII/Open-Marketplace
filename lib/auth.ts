@@ -11,10 +11,19 @@ import {
   authSessions,
   authUsers,
   authVerifications,
+  profiles,
 } from "../db/schema";
+import {
+  FACEBOOK_CONNECT_SCOPES,
+  publicFacebookProfileUrl,
+  upsertConnectedFacebookAccount,
+  withoutConnectedFacebook,
+} from "./facebook-listing-proof";
+import { parseSocialAccountsJson } from "./profile-settings";
 import type { FacebookConnection } from "./types";
 
 export const FACEBOOK_PUBLIC_PROFILE_SCOPE = "public_profile";
+export { FACEBOOK_CONNECT_SCOPES };
 export const FACEBOOK_GRAPH_FIELDS = [
   "id",
   "first_name",
@@ -24,6 +33,7 @@ export const FACEBOOK_GRAPH_FIELDS = [
   "name_format",
   "short_name",
   "picture.type(large)",
+  "link",
 ] as const;
 
 const PRODUCTION_BASE_URL = "https://open-marketplace-demo.pages.dev";
@@ -153,7 +163,7 @@ export async function getMarketplaceAuth(request?: Request) {
             clientId: facebookClientId!,
             clientSecret: facebookClientSecret!,
             disableDefaultScope: true,
-            scope: [FACEBOOK_PUBLIC_PROFILE_SCOPE],
+            scope: [...FACEBOOK_CONNECT_SCOPES],
             disableSignUp: true,
             disableImplicitSignUp: true,
             disableIdTokenSignIn: true,
@@ -255,6 +265,36 @@ export async function getMarketplaceAuth(request?: Request) {
           },
         },
       },
+      account: {
+        create: {
+          after: async (account) => {
+            if (account.providerId !== "facebook") return;
+            const [user] = await db
+              .select({ name: authUsers.name })
+              .from(authUsers)
+              .where(eq(authUsers.id, account.userId))
+              .limit(1);
+            await persistFacebookProfileLink(
+              account.userId,
+              user?.name ?? "Facebook",
+            );
+          },
+        },
+        update: {
+          after: async (account) => {
+            if (account.providerId !== "facebook") return;
+            const [user] = await db
+              .select({ name: authUsers.name })
+              .from(authUsers)
+              .where(eq(authUsers.id, account.userId))
+              .limit(1);
+            await persistFacebookProfileLink(
+              account.userId,
+              user?.name ?? "Facebook",
+            );
+          },
+        },
+      },
     },
     advanced: {
       ipAddress: {
@@ -349,6 +389,7 @@ type FacebookPublicProfile = {
   name_format?: string;
   short_name?: string;
   picture?: { data?: { url?: string } };
+  link?: string;
 };
 
 function trimFacebookName(value?: string | null) {
@@ -408,6 +449,7 @@ async function readFacebookPublicProfile(
       lastName: profile.last_name,
     }),
     image: publicFacebookImageUrl(profile.picture?.data?.url) ?? undefined,
+    link: publicFacebookProfileUrl(profile.link) || undefined,
   };
 }
 
@@ -421,6 +463,7 @@ function publicFacebookConnection(
     middleName?: string | null;
     shortName?: string | null;
     image?: string | null;
+    link?: string | null;
   },
 ): FacebookConnection {
   if (!connected) {
@@ -433,6 +476,7 @@ function publicFacebookConnection(
       middleName: null,
       shortName: null,
       imageUrl: null,
+      profileUrl: null,
     };
   }
   return {
@@ -444,7 +488,76 @@ function publicFacebookConnection(
     middleName: trimFacebookName(profile?.middleName),
     shortName: trimFacebookName(profile?.shortName),
     imageUrl: publicFacebookImageUrl(profile?.image),
+    profileUrl: publicFacebookProfileUrl(profile?.link) || null,
   };
+}
+
+export async function persistFacebookProfileLink(
+  userId: string,
+  displayName: string,
+  knownLink?: string | null,
+) {
+  const db = await getDb();
+  const [facebook] = await db
+    .select({
+      accessToken: authAccounts.accessToken,
+    })
+    .from(authAccounts)
+    .where(
+      and(eq(authAccounts.userId, userId), eq(authAccounts.providerId, "facebook")),
+    )
+    .limit(1);
+
+  const [profileRow] = await db
+    .select()
+    .from(profiles)
+    .where(eq(profiles.id, userId))
+    .limit(1);
+  const current = parseSocialAccountsJson(profileRow?.socialAccountsJson);
+  const next = facebook
+    ? upsertConnectedFacebookAccount(
+        current,
+        displayName,
+        knownLink ?? (await readStoredFacebookProfileUrl(facebook.accessToken)),
+      )
+    : withoutConnectedFacebook(current);
+  const socialAccountsJson = JSON.stringify(next);
+  if (profileRow?.socialAccountsJson === socialAccountsJson) {
+    return publicFacebookProfileUrl(
+      next.find((account) => account.provider === "facebook")?.url,
+    );
+  }
+
+  const updatedAt = new Date().toISOString();
+  if (profileRow) {
+    await db
+      .update(profiles)
+      .set({ socialAccountsJson, updatedAt })
+      .where(eq(profiles.id, userId));
+  } else {
+    await db.insert(profiles).values({
+      id: userId,
+      displayName,
+      socialAccountsJson,
+      updatedAt,
+    });
+  }
+  return publicFacebookProfileUrl(
+    next.find((account) => account.provider === "facebook")?.url,
+  );
+}
+
+async function readStoredFacebookProfileUrl(accessToken?: string | null) {
+  const env = await readWorkerEnv();
+  const clientId = env.FACEBOOK_CLIENT_ID?.trim();
+  const clientSecret = env.FACEBOOK_CLIENT_SECRET?.trim();
+  if (!accessToken || !clientId || !clientSecret) return "";
+  const profile = await readFacebookPublicProfile(
+    accessToken,
+    clientId,
+    clientSecret,
+  );
+  return profile?.link ?? "";
 }
 
 export async function getFacebookConnection(
@@ -488,6 +601,7 @@ export async function getFacebookConnection(
       )
       .limit(1);
     if (!facebook) {
+      await persistFacebookProfileLink(session.user.id, session.user.name);
       return publicFacebookConnection(true, false);
     }
 
@@ -504,6 +618,11 @@ export async function getFacebookConnection(
         clientSecret,
       );
     }
+    await persistFacebookProfileLink(
+      session.user.id,
+      session.user.name,
+      profile?.link ?? "",
+    );
 
     return publicFacebookConnection(true, true, profile ?? undefined);
   } catch {

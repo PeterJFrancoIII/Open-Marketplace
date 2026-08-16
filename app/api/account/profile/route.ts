@@ -134,10 +134,19 @@ export async function PUT(request: Request) {
           { status: 422 },
         );
       }
-      const existingSocial = parseSocialAccountsJson(existing?.socialAccountsJson);
+      const facebookConnection = await getFacebookConnection(request);
+      const [fresh] = await db
+        .select()
+        .from(profiles)
+        .where(eq(profiles.id, session.user.id))
+        .limit(1);
+      const existingSocial = parseSocialAccountsJson(
+        fresh?.socialAccountsJson ?? existing?.socialAccountsJson,
+      );
       nextSocialAccounts = mergeSocialAccountsForSave(
         normalized.accounts,
         existingSocial,
+        facebookConnection.connected,
       );
       nextSocialJson = JSON.stringify(nextSocialAccounts);
     }

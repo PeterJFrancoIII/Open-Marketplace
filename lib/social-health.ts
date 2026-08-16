@@ -23,6 +23,28 @@ const providerRules: Record<
   },
 };
 
+function keepHttpsFacebookUrl(value?: string) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== "https:") return "";
+    if (url.username || url.password || url.port) return "";
+    if (
+      host === "facebook.com" ||
+      host.endsWith(".facebook.com") ||
+      host === "fb.com" ||
+      host.endsWith(".fb.com")
+    ) {
+      url.hash = "";
+      return url.toString();
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
 const deadPageMarkers = [
   "page isn't available",
   "page isn’t available",
@@ -168,7 +190,7 @@ export async function checkSocialAccount(account: SocialProof): Promise<SocialPr
         : "Facebook";
     return {
       provider: "facebook",
-      url: "",
+      url: keepHttpsFacebookUrl(account.url),
       handle,
       metricsSource: "oauth",
       health: "active",

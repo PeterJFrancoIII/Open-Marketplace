@@ -12,7 +12,7 @@ import {
 } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { authAccounts, listings, profiles } from "../../../db/schema";
-import { getMarketplaceSession } from "../../../lib/auth";
+import { getMarketplaceSession, persistFacebookProfileLink } from "../../../lib/auth";
 import { mergeConnectedFacebookProof } from "../../../lib/facebook-listing-proof";
 import { overlayPaypalDestinations } from "../../../lib/paypal-public";
 import { sanitizeImageManifest } from "../../../lib/image-manifest";
@@ -335,6 +335,7 @@ export async function POST(request: Request) {
     const storedDescription = attachPackageToDescription(description, shippingPackage);
 
     const db = await getDb();
+    await persistFacebookProfileLink(sellerId, sellerName);
     const [existingProfile] = await db
       .select()
       .from(profiles)
@@ -491,6 +492,7 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "Only the listing owner can edit this item." }, { status: 403 });
     }
 
+    await persistFacebookProfileLink(sellerId, sellerName);
     const [existingProfile] = await db
       .select()
       .from(profiles)

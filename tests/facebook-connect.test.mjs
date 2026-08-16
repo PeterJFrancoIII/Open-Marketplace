@@ -185,6 +185,7 @@ function installFacebookProfileStub({ id, name, pictureUrl }) {
       assert.ok(fields.includes("middle_name"));
       assert.ok(fields.includes("name"));
       assert.ok(fields.includes("short_name"));
+      assert.ok(fields.includes("link"));
       assert.ok(fields.some((field) => field.startsWith("picture")));
       return new Response(
         JSON.stringify({
@@ -195,6 +196,7 @@ function installFacebookProfileStub({ id, name, pictureUrl }) {
           middle_name: null,
           short_name: name.split(" ")[0] ?? name,
           name_format: "{first} {last}",
+          link: "https://www.facebook.com/openmarketplace.seller",
           picture: { data: { url: pictureUrl, width: 720, height: 720, is_silhouette: false } },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
@@ -342,7 +344,7 @@ test("signed-in Facebook link-social requests public_profile only", async () => 
     provider: "facebook",
     callbackURL: "/account",
     errorCallbackURL: "/account",
-    scopes: ["public_profile"],
+    scopes: ["public_profile", "user_link"],
     disableRedirect: true,
   });
   assert.equal(response.status, 200);
@@ -358,8 +360,9 @@ test("signed-in Facebook link-social requests public_profile only", async () => 
   );
   const scopes = facebookScopes(body.url);
   assert.ok(scopes.includes("public_profile"));
+  assert.ok(scopes.includes("user_link"));
   assert.equal(
-    scopes.every((scope) => scope === "public_profile"),
+    scopes.every((scope) => scope === "public_profile" || scope === "user_link"),
     true,
   );
   assert.equal(scopes.includes("email"), false);
@@ -543,6 +546,7 @@ test("Facebook Graph fields stay public_profile only and never request email", a
   assert.match(authSource, /first_name/);
   assert.match(authSource, /last_name/);
   assert.match(authSource, /picture\.type\(large\)/);
+  assert.match(authSource, /"link"/);
   assert.match(authSource, /getUserInfo:/);
   assert.doesNotMatch(authSource, /fields:\s*\[[^\]]*email/);
   assert.doesNotMatch(authSource, /user_birthday|user_location|user_hometown|user_mobile_phone/);
@@ -627,7 +631,11 @@ test("Facebook identity stays connection-scoped and is not copied into the core 
 });
 
 test("listings show a connected Facebook account without a typed profile URL", async () => {
-  const restoreFetch = installSocialFetchStub();
+  const restoreFetch = installFacebookProfileStub({
+    id: "facebook-app-scoped-id",
+    name: "Listing Owner",
+    pictureUrl: "https://graph.facebook.com/v24.0/me/picture",
+  });
   const d1 = createMemoryD1();
   applyMarketplaceMigrations(d1);
   const worker = await loadWorker("facebook-listing-proof");
@@ -696,7 +704,7 @@ test("listings show a connected Facebook account without a typed profile URL", a
     assert.equal(publishedSocial[0]?.provider, "facebook");
     assert.equal(publishedSocial[0]?.metricsSource, "oauth");
     assert.equal(publishedSocial[0]?.handle, "Listing Owner");
-    assert.equal(publishedSocial[0]?.url, "");
+    assert.equal(publishedSocial[0]?.url, "https://www.facebook.com/openmarketplace.seller");
     assert.equal(publishedSocial[0]?.connectionCount, undefined);
     assert.doesNotMatch(JSON.stringify(publishedSocial), /spoofed\.listing|facebook-app-scoped-id/);
     assertNoSecrets(publishedBody);
@@ -738,6 +746,8 @@ test("account settings source offers Connect, Connected, and Disconnect only", a
   assert.match(source, /linkSocial/);
   assert.match(source, /unlinkAccount/);
   assert.match(source, /public_profile/);
+  assert.match(source, /user_link/);
+  assert.match(source, /Open Facebook profile/);
   assert.doesNotMatch(source, /government verified/i);
   assert.doesNotMatch(source, /user_friends|Marketplace Platform/i);
   assert.match(source, /does not sign[\s\S]*you in[\s\S]*import listings[\s\S]*Facebook verified/);

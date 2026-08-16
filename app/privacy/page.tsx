@@ -96,11 +96,12 @@ export default function PrivacyPage() {
         <h2 id="facebook-connect-disclosure-title">Facebook Login</h2>
         <p>
           Signed-in people can choose Connect. That uses consumer Facebook
-          Login and asks for <code>public_profile</code> only. We use the
-          public name and profile photo Facebook returns so Account settings
-          can show that the account is Connected. Those Facebook details stay
-          with the Facebook link. They do not replace your Open Marketplace
-          name or email.
+          Login and asks for <code>public_profile</code> and{" "}
+          <code>user_link</code>. We use the public name, profile photo, and
+          profile link Facebook returns so Account settings can show that the
+          account is Connected and so a listing connector can open that
+          Facebook profile. Those Facebook details stay with the Facebook
+          link. They do not replace your Open Marketplace name or email.
         </p>
         <p>
           Facebook Login is not a way to create or open an Open Marketplace

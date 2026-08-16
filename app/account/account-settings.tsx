@@ -20,6 +20,7 @@ import {
   type ShippingBrokerConnection,
   type ShippingBrokerId,
 } from "../../lib/shipping-brokers";
+import { FACEBOOK_CONNECT_SCOPES } from "../../lib/facebook-listing-proof";
 import type {
   FacebookConnection,
   PayPalConnection,
@@ -127,7 +128,6 @@ function readOauthError() {
   return "Facebook Connect did not complete. Try again.";
 }
 
-const FACEBOOK_PUBLIC_PROFILE_SCOPE = "public_profile";
 const emptyFacebookConnection: FacebookConnection = {
   available: false,
   connected: false,
@@ -137,6 +137,7 @@ const emptyFacebookConnection: FacebookConnection = {
   middleName: null,
   shortName: null,
   imageUrl: null,
+  profileUrl: null,
 };
 
 const emptyPayPalConnection: PayPalConnection = {
@@ -518,7 +519,7 @@ export default function AccountSettings({
         provider: "facebook",
         callbackURL: "/account",
         errorCallbackURL: "/account",
-        scopes: [FACEBOOK_PUBLIC_PROFILE_SCOPE],
+        scopes: [...FACEBOOK_CONNECT_SCOPES],
       });
       if (result.error) {
         setError(
@@ -558,6 +559,7 @@ export default function AccountSettings({
         middleName: null,
         shortName: null,
         imageUrl: null,
+        profileUrl: null,
       });
       setStatus("Facebook disconnected. Your Open Marketplace account is unchanged.");
       router.refresh();
@@ -720,8 +722,9 @@ export default function AccountSettings({
           <h3 id="facebook-connect-title">Facebook</h3>
           <p className="portal-lead">
             Connect your Facebook account to prove you control it. This uses
-            consumer Facebook Login and public_profile only. Facebook may
-            return a public name and profile photo. Those values stay on the
+            consumer Facebook Login with public_profile and user_link. Facebook
+            may return a public name, profile photo, and a profile link so
+            listings can open that Facebook account. Those values stay on the
             Facebook connector and do not replace your Open Marketplace email
             or name. It does not sign you in, import listings, or make you
             Facebook verified.
@@ -753,6 +756,16 @@ export default function AccountSettings({
                 </p>
               </div>
               <div className="portal-connector-actions">
+                {facebookConnection.profileUrl ? (
+                  <a
+                    className="button button-ghost"
+                    href={facebookConnection.profileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open Facebook profile
+                  </a>
+                ) : null}
                 <button
                   className="button button-ghost"
                   type="button"

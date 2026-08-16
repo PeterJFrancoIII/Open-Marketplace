@@ -10,7 +10,7 @@ completed_at: "2026-08-16T20:28:30Z"
 repository: "PeterJFrancoIII/Open-Marketplace"
 branch: "feature/account-management-portal"
 base_commit: "866497cb0787907cc68c633772b6fbd18d1fbb4f"
-head_commit: "uncommitted_at_handoff_write"
+head_commit: "053ee48c4e8b725c4245263b75fb99c8ede52480"
 authority: "human_owner_explicit_request_2026-08-16"
 shared_memory_refs:
   repository: "PeterJFrancoIII/Open-Marketplace"
@@ -60,6 +60,12 @@ verification:
   - command: "npm test"
     exit_code: 0
     result: "92 tests passed, 0 failed"
+  - command: "cloudflare D1 query on open-marketplace-account-preview-d1 8ddff0ae-f810-4d71-955e-4aab40a00e27 apply drizzle/0004_chat_sale_credit.sql"
+    exit_code: 0
+    result: "preview D1 now has social_credit_score, conversations, conversation_messages, sale_history"
+  - command: "read-only sqlite_master on production D1 6ceb8dfc-4a92-4d4d-832f-ff1a54847326"
+    exit_code: 0
+    result: "no conversation or sale_history tables; production D1 not migrated"
 functional_preview_required: true
 functional_preview:
   status: "ready_after_push"
@@ -77,10 +83,9 @@ owner_manual_checklist:
 owner_manual_result: "not_run"
 blockers: []
 remaining_work:
-  - "Apply drizzle 0004 to preview D1 open-marketplace-account-preview-d1 after this push. Do not apply to production D1."
   - "Codex should assign a canonical OM-FUL task if this owner override should enter TASKS.md."
   - "Bot-report administration remains a later follow-up."
-recommended_next_action: "Owner tests chat, dual confirm, ratings, and Social Credit on the preview URL after 0004 is applied to preview D1. Codex may review. Do not merge PR #21 or deploy production."
+recommended_next_action: "Owner tests chat, dual confirm, ratings, and Social Credit on the preview URL. Codex may review. Do not merge PR #21 or deploy production."
 ---
 
 # Agent Handoff: owner-chat-sale-credit
@@ -138,8 +143,10 @@ rating gates, and the Social Credit formula.
 - This is not localhost and is intended for the human owner.
 - `owner_manual_result: not_run`
 - Preview accounts are separate from the local machine database.
-- Migration `0004` must be applied to preview D1 before Messages will
-  work on that URL.
+- Migration `0004` was applied to preview D1
+  `open-marketplace-account-preview-d1` only. Production D1 was not
+  migrated. The next Pages preview deploy of this branch is needed
+  before the owner URL serves the new Worker.
 
 ## Deviations and risks
 

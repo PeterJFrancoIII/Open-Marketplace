@@ -8,7 +8,6 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
-    apple: "/open-marketplace-app-icon.png",
   },
 };
 

@@ -2103,6 +2103,36 @@ a.detail-social-account.social-connected:hover,
   margin-top: 6px;
 }
 
+.portal-tracking-updates {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.portal-tracking-updates h4 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.portal-tracking-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.portal-tracking-embed,
+.portal-tracking-frame {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  min-height: 280px;
+  width: 100%;
+}
+
+.portal-tracking-frame {
+  height: 420px;
+}
+
 .portal-error {
   color: var(--danger);
   font-weight: 700;

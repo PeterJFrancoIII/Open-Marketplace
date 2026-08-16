@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   MESSAGE_MAX_LENGTH,
@@ -11,6 +11,10 @@ import {
   saleStatusLabel,
 } from "../../../lib/conversation-limits";
 import { getLocalMediaUrl, storeMedia } from "../../../lib/media-store";
+import {
+  TRACKING_EMBED_SCRIPT,
+  saleTrackingDetails,
+} from "../../../lib/tracking-embed";
 import type { MediaManifest } from "../../../lib/types";
 
 type Rating = { score: number; note: string };
@@ -112,6 +116,124 @@ function SaleProof({
         {label}: {photo.name}
       </figcaption>
     </figure>
+  );
+}
+
+function TrackingUpdates({ trackingNumber }: { trackingNumber: string }) {
+  const reactId = useId().replace(/:/g, "");
+  const containerId = `yq-${reactId}`;
+  const [liveNumber, setLiveNumber] = useState(trackingNumber);
+  const [useFallback, setUseFallback] = useState(false);
+  const details = useMemo(() => saleTrackingDetails(liveNumber), [liveNumber]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setLiveNumber(trackingNumber), 700);
+    return () => window.clearTimeout(timer);
+  }, [trackingNumber]);
+
+  useEffect(() => {
+    if (!details || details.kind !== "carrier") return;
+    let cancelled = false;
+    const compact = details.number.replace(/[\s-]/g, "");
+
+    function start() {
+      const trackSingle = (
+        window as Window & {
+          YQV5?: { trackSingle?: (options: Record<string, string | number>) => void };
+        }
+      ).YQV5?.trackSingle;
+      if (!trackSingle || cancelled) return;
+      trackSingle({
+        YQ_ContainerId: containerId,
+        YQ_Height: 420,
+        YQ_Fc: "0",
+        YQ_Lang: "en",
+        YQ_Num: compact,
+      });
+    }
+
+    const existing = document.querySelector<HTMLScriptElement>(
+      "script[data-om-17track='1']",
+    );
+    if (existing) {
+      if (
+        (window as Window & { YQV5?: { trackSingle?: unknown } }).YQV5?.trackSingle
+      ) {
+        start();
+      } else {
+        existing.addEventListener("load", start, { once: true });
+      }
+    } else {
+      const script = document.createElement("script");
+      script.src = TRACKING_EMBED_SCRIPT;
+      script.async = true;
+      script.dataset.om17track = "1";
+      script.addEventListener("load", start, { once: true });
+      script.addEventListener("error", () => {
+        if (!cancelled) setUseFallback(true);
+      });
+      document.body.appendChild(script);
+    }
+
+    const failTimer = window.setTimeout(() => {
+      if (
+        !cancelled &&
+        !(window as Window & { YQV5?: unknown }).YQV5
+      ) {
+        setUseFallback(true);
+      }
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(failTimer);
+    };
+  }, [containerId, details]);
+
+  if (!details) return null;
+  if (details.kind === "pickup") {
+    return (
+      <p className="portal-settings-note">
+        In-person pickup. No carrier tracking.
+      </p>
+    );
+  }
+
+  return (
+    <div className="portal-tracking-updates">
+      <h4>Tracking updates</h4>
+      <p className="portal-settings-note">
+        {details.carrier === "unknown"
+          ? "Carrier will be identified from the tracking number."
+          : `${details.carrierLabel} ${details.number}`}
+      </p>
+      <div className="portal-tracking-links">
+        {details.officialHref ? (
+          <a href={details.officialHref} target="_blank" rel="noreferrer">
+            Open official {details.carrierLabel} tracking
+          </a>
+        ) : null}
+        {details.aftershipHref ? (
+          <a href={details.aftershipHref} target="_blank" rel="noreferrer">
+            Open AfterShip
+          </a>
+        ) : null}
+      </div>
+      <div id={containerId} className="portal-tracking-embed" />
+      {useFallback && details.embedHref ? (
+        <iframe
+          className="portal-tracking-frame"
+          title={`17TRACK updates for ${details.number}`}
+          src={details.embedHref}
+          sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+          referrerPolicy="no-referrer"
+        />
+      ) : null}
+      <p className="portal-settings-note">
+        Live updates use 17TRACK&apos;s official embed. Official carrier
+        pages stay the source of truth.
+      </p>
+    </div>
   );
 }
 
@@ -563,6 +685,13 @@ export default function MessagesClient({
                   Tracking number: {conversation.trackingNumber ?? "Not added yet"}
                 </p>
               )}
+              <TrackingUpdates
+                trackingNumber={
+                  conversation.myRole === "seller"
+                    ? trackingValue
+                    : conversation.trackingNumber ?? ""
+                }
+              />
               {conversation.myRole === "buyer" && conversation.mySaleStatus !== "complete" ? (
                 <div className="portal-form">
                   <label className="portal-field">

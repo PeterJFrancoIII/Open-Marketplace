@@ -260,9 +260,11 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   assert.match(messagesUi, /Friends and Family/);
   assert.match(messagesUi, /\/api\/conversations\/paypal/);
   assert.match(messagesUi, /Tracking number/);
+  assert.match(messagesUi, /Tracking updates/);
   assert.match(messagesUi, /Payment receipt/);
   assert.match(messagesUi, /Photo of the packaging/);
   assert.match(messagesUi, /\/api\/conversations\/evidence/);
+  assert.match(messagesUi, /17TRACK/);
 });
 
 test("sale proof sanitizers keep hashes and reject missing In-Transfer or Complete files", () => {

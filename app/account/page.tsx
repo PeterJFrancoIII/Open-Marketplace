@@ -1,4 +1,5 @@
 import { count, desc, eq } from "drizzle-orm";
+import Link from "next/link";
 import { headers } from "next/headers";
 import { getDb } from "../../db";
 import { listings, profiles } from "../../db/schema";
@@ -42,7 +43,7 @@ export default async function AccountPage() {
       .from(listings)
       .where(eq(listings.sellerId, session.user.id))
       .orderBy(desc(listings.createdAt))
-      .limit(8),
+      .limit(200),
     db
       .select()
       .from(profiles)
@@ -123,7 +124,14 @@ export default async function AccountPage() {
               <tbody>
                 {recent.map((listing) => (
                   <tr key={listing.id}>
-                    <td>{listing.title}</td>
+                    <td>
+                      <Link
+                        className="portal-listing-link"
+                        href={`/?listing=${encodeURIComponent(listing.id)}`}
+                      >
+                        {listing.title}
+                      </Link>
+                    </td>
                     <td>{listing.status}</td>
                     <td>{formatPrice(listing.priceCents)}</td>
                     <td>{listing.updatedAt}</td>

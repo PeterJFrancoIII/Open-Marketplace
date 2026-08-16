@@ -435,7 +435,11 @@ test("account totals cover every owned listing and preserve cent prices", async 
   assert.match(html, /<strong>2<\/strong>\s*<span>Draft<\/span>/i);
   assert.match(html, /<strong>1<\/strong>\s*<span>Sold<\/span>/i);
   assert.match(html, /\$0\.10/);
+  assert.match(html, /href=["']\/\?listing=owned-active-51["']/);
+  assert.match(html, /href=["']\/\?listing=owned-sold["']/);
+  assert.equal([...html.matchAll(/href=["']\/\?listing=/g)].length, 55);
   assert.doesNotMatch(html, /Other seller item/i);
+  assert.doesNotMatch(html, /listing=other-seller/);
 });
 
 test("account settings update the name and password and can sign out", async () => {

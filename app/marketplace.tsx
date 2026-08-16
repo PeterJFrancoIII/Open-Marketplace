@@ -355,6 +355,35 @@ type RegistryRow = Partial<Listing> & {
 
 type ModalName = "create" | "donate" | "detail" | null;
 
+type SocialDraft = {
+  provider: "facebook" | "instagram" | "tiktok";
+  url: string;
+  accountCreatedAt: string;
+  connectionCount: string;
+  health?: SocialProof["health"];
+  healthMessage?: string;
+};
+
+const emptySocialDrafts: SocialDraft[] = [
+  { provider: "facebook", url: "", accountCreatedAt: "", connectionCount: "" },
+  { provider: "instagram", url: "", accountCreatedAt: "", connectionCount: "" },
+  { provider: "tiktok", url: "", accountCreatedAt: "", connectionCount: "" },
+];
+
+function draftsFromSocialProofs(accounts: SocialProof[]): SocialDraft[] {
+  return emptySocialDrafts.map((draft) => {
+    const saved = accounts.find((account) => account.provider === draft.provider);
+    if (!saved?.url) return { ...draft };
+    return {
+      ...draft,
+      url: saved.url,
+      accountCreatedAt: saved.accountCreatedAt ?? "",
+      connectionCount:
+        saved.connectionCount == null ? "" : String(saved.connectionCount),
+    };
+  });
+}
+
 type ComposeSeed = {
   title: string;
   price: string;
@@ -610,6 +639,12 @@ export default function Marketplace() {
   const [localMedia, setLocalMedia] = useState<Record<string, string>>({});
   const [toast, setToast] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [socialDrafts, setSocialDrafts] = useState<SocialDraft[]>(
+    emptySocialDrafts.map((account) => ({ ...account })),
+  );
+  const [profileSocialDrafts, setProfileSocialDrafts] = useState<SocialDraft[]>(
+    emptySocialDrafts.map((account) => ({ ...account })),
+  );
   const [composeOpened, setComposeOpened] = useState(false);
   const [editOpened, setEditOpened] = useState(false);
   const [editingListingId, setEditingListingId] = useState<string | null>(null);
@@ -659,6 +694,7 @@ export default function Marketplace() {
       setEditingListingId(listing.id);
       setComposeSeed(composeSeedFromListing(listing));
       setComposeDelivery(listing.delivery);
+      setSocialDrafts(draftsFromSocialProofs(listing.socialProofs));
       setPhotoDrafts(photoDraftsFromManifest(listing.imageManifest));
       setSelectedListing(listing);
       setModal("create");
@@ -673,6 +709,27 @@ export default function Marketplace() {
       window.cancelAnimationFrame(frame);
     };
   }, [editOpened, listings, session?.user.id, sessionPending, signedIn]);
+
+  useEffect(() => {
+    if (!signedIn) return;
+
+    let cancelled = false;
+    void (async () => {
+      const response = await fetch("/api/account/profile", {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok || cancelled) return;
+      const payload = (await response.json()) as { socialAccounts?: SocialProof[] };
+      const drafts = draftsFromSocialProofs(payload.socialAccounts ?? []);
+      if (cancelled) return;
+      setProfileSocialDrafts(drafts);
+      setSocialDrafts(drafts.map((account) => ({ ...account })));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
 
   const requestSocialHealth = useCallback(async (accounts: SocialProof[]) => {
     if (!accounts.length) return [];
@@ -895,6 +952,7 @@ export default function Marketplace() {
     setEditingListingId(null);
     setComposeSeed(null);
     setComposeDelivery("Pickup");
+    setSocialDrafts(profileSocialDrafts.map((account) => ({ ...account })));
     photoDrafts.forEach(revokePhotoDraft);
     setPhotoDrafts([]);
     setShippingQuotes([]);
@@ -917,6 +975,7 @@ export default function Marketplace() {
     setEditingListingId(listing.id);
     setComposeSeed(composeSeedFromListing(listing));
     setComposeDelivery(listing.delivery);
+    setSocialDrafts(draftsFromSocialProofs(listing.socialProofs));
     photoDrafts.forEach(revokePhotoDraft);
     setPhotoDrafts(photoDraftsFromManifest(listing.imageManifest));
     setShippingQuotes([]);
@@ -951,6 +1010,68 @@ export default function Marketplace() {
     setPhotoDrafts((current) => movePhotoDraft(current, from, to));
   }
 
+  function updateSocialDraft(
+    index: number,
+    key: "url" | "accountCreatedAt" | "connectionCount",
+    value: string,
+  ) {
+    setSocialDrafts((current) =>
+      current.map((account, accountIndex) =>
+        accountIndex === index
+          ? { ...account, [key]: value, health: undefined, healthMessage: undefined }
+          : account,
+      ),
+    );
+  }
+
+  function removeSocialDraft(index: number) {
+    setSocialDrafts((current) =>
+      current.map((account, accountIndex) =>
+        accountIndex === index
+          ? {
+              ...account,
+              url: "",
+              accountCreatedAt: "",
+              connectionCount: "",
+              health: undefined,
+              healthMessage: undefined,
+            }
+          : account,
+      ),
+    );
+  }
+
+  async function validateSocialDrafts() {
+    const candidates = socialDrafts
+      .filter((account) => account.url.trim())
+      .map<SocialProof>((account) => ({
+        provider: account.provider,
+        url: account.url.trim(),
+        accountCreatedAt: account.accountCreatedAt,
+        connectionCount:
+          account.connectionCount === "" ? undefined : Number(account.connectionCount),
+        connectionLabel: account.provider === "facebook" ? "friends" : "followers",
+        metricsSource: "self-reported",
+        health: "checking",
+      }));
+    const checked = await requestSocialHealth(candidates);
+    const byProvider = new Map(checked.map((account) => [account.provider, account]));
+    setSocialDrafts((current) =>
+      current.map((account) => {
+        const result = byProvider.get(account.provider);
+        return result
+          ? {
+              ...account,
+              url: result.url,
+              health: result.health,
+              healthMessage: result.healthMessage,
+            }
+          : account;
+      }),
+    );
+    return checked;
+  }
+
   async function submitListing(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
@@ -966,6 +1087,15 @@ export default function Marketplace() {
 
     setSubmitting(true);
     try {
+      const socialProofs = await validateSocialDrafts();
+      const brokenAccount = socialProofs.find(
+        (account) => account.health === "dead" || account.health === "invalid",
+      );
+      if (brokenAccount) {
+        setToast("Fix or remove the highlighted social link before publishing.");
+        return;
+      }
+
       const imageManifest = await manifestsFromPhotoDrafts(photoDrafts, storeMedia);
 
       const payload = {
@@ -983,7 +1113,7 @@ export default function Marketplace() {
         shippingPackage: usesShipping(composeDelivery)
           ? optionalPackageFromForm(formData)
           : null,
-        socialProofs: [],
+        socialProofs,
         imageManifest,
         endingAt:
           String(formData.get("format")) === "Auction"
@@ -1022,10 +1152,20 @@ export default function Marketplace() {
           return;
         }
         if (response.status === 422) {
-          setToast(
-            result.error ??
-              "Fix Social Media Connectors in Account settings before publishing.",
-          );
+          if (result.account) {
+            setSocialDrafts((current) =>
+              current.map((account) =>
+                account.provider === result.account?.provider
+                  ? {
+                      ...account,
+                      health: result.account.health,
+                      healthMessage: result.account.healthMessage,
+                    }
+                  : account,
+              ),
+            );
+          }
+          setToast(result.error ?? "Fix or remove the unavailable social link.");
           return;
         }
         if (!response.ok || !result.listing) throw new Error("Registry write failed");
@@ -1057,6 +1197,7 @@ export default function Marketplace() {
         setLocalMedia((current) => ({ ...current, [listing.id]: photoDrafts[0].previewUrl as string }));
       }
       setPhotoDrafts([]);
+      setSocialDrafts(profileSocialDrafts.map((account) => ({ ...account })));
       setEditingListingId(null);
       setComposeSeed(null);
       setModal(editingListingId ? "detail" : null);
@@ -1693,12 +1834,71 @@ export default function Marketplace() {
                       aria-describedby="sellerAccountHelp"
                     />
                     <small id="sellerAccountHelp">
-                      Listing ownership comes from your signed-in account. Social trust comes from Social Media Connectors in Account settings.
+                      Listing ownership comes from your signed-in account.
                     </small>
+                  </div>
+                  <div className="field field-full social-editor">
+                    <div className="social-editor-head">
+                      <div>
+                        <strong>Social trust profile</strong>
+                        <span>Defaults come from your saved account settings. Links are checked live. Account dates and connection counts are public and self-reported.</span>
+                      </div>
+                      <span className="live-check-pill">↻ checked on publish</span>
+                    </div>
+                    {socialDrafts.map((account, index) => (
+                      <div
+                        className={`social-edit-row status-${account.health ?? "unchecked"}`}
+                        key={account.provider}
+                      >
+                        <div className="social-edit-provider">
+                          <span className="proof-mark">{socialLabel(account.provider)}</span>
+                          <strong>{providerName(account.provider)}</strong>
+                        </div>
+                        <input
+                          type="url"
+                          placeholder={`https://${account.provider}.com/your-profile`}
+                          value={account.url}
+                          onChange={(event) => updateSocialDraft(index, "url", event.target.value)}
+                          aria-label={`${providerName(account.provider)} profile URL`}
+                        />
+                        <label>
+                          <span>Account created</span>
+                          <input
+                            type="date"
+                            value={account.accountCreatedAt}
+                            onChange={(event) => updateSocialDraft(index, "accountCreatedAt", event.target.value)}
+                            disabled={!account.url}
+                          />
+                        </label>
+                        <label>
+                          <span>{account.provider === "facebook" ? "Friends" : "Followers"}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            placeholder="0"
+                            value={account.connectionCount}
+                            onChange={(event) => updateSocialDraft(index, "connectionCount", event.target.value)}
+                            disabled={!account.url}
+                          />
+                        </label>
+                        <div className="social-edit-action">
+                          {account.url && (
+                            <button type="button" onClick={() => removeSocialDraft(index)}>Remove</button>
+                          )}
+                          {account.health && (
+                            <span className="social-edit-status">{healthLabel(account.health)}</span>
+                          )}
+                        </div>
+                        {account.healthMessage && (
+                          <p className="social-edit-message">{account.healthMessage}</p>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <p className="form-note">
-                  Publishing confirms the item is lawful where offered. Social trust is copied from Social Media Connectors in Account settings, not entered on this form.
+                  Publishing confirms the item is lawful where offered. A dead or malformed social link blocks publication until you fix it or remove it. Connection counts and creation dates are self-reported until provider OAuth confirms them.
                 </p>
                 <div className="modal-actions">
                   <button

@@ -91,6 +91,4 @@ test("compose UI lets owners add, remove, and reorder assigned photos", async ()
   assert.match(marketplace, /Remove photo/);
   assert.match(marketplace, /Add photos/);
   assert.match(marketplace, /manifestsFromPhotoDrafts/);
-  assert.doesNotMatch(marketplace, /Social trust profile/);
-  assert.doesNotMatch(marketplace, /social-editor/);
 });

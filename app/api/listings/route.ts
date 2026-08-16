@@ -21,6 +21,7 @@ import {
 } from "../../../lib/shipping-package";
 import { parseSocialAccountsJson } from "../../../lib/profile-settings";
 import { checkSocialAccounts } from "../../../lib/social-health";
+import type { SocialProof } from "../../../lib/types";
 
 const conditions = ["New", "Like new", "Good", "Fair"] as const;
 const formats = ["Fixed price", "Auction"] as const;
@@ -68,6 +69,12 @@ function parseListingWrite(payload: Record<string, unknown>) {
   const condition = String(payload.condition ?? "");
   const format = String(payload.format ?? "");
   const delivery = String(payload.delivery ?? "");
+  const incomingSocialProofs = Array.isArray(payload.socialProofs)
+    ? (payload.socialProofs as SocialProof[])
+        .filter((account) => typeof account?.url === "string" && account.url.trim())
+        .slice(0, 3)
+        .map((account) => ({ ...account, metricsSource: "self-reported" as const }))
+    : [];
   const imageManifest = Array.isArray(payload.imageManifest)
     ? payload.imageManifest.slice(0, 6)
     : [];
@@ -148,6 +155,7 @@ function parseListingWrite(payload: Record<string, unknown>) {
     condition,
     format,
     delivery,
+    incomingSocialProofs,
     imageManifest,
     shippingPackage,
     endingAt: typeof payload.endingAt === "string" ? payload.endingAt : null,
@@ -275,6 +283,7 @@ export async function POST(request: Request) {
       condition,
       format,
       delivery,
+      incomingSocialProofs,
       imageManifest,
       shippingPackage,
       endingAt,
@@ -290,8 +299,11 @@ export async function POST(request: Request) {
     const storedSocialProofs = parseSocialAccountsJson(
       existingProfile?.socialAccountsJson,
     );
-    const checkedSocialProofs = storedSocialProofs.length
-      ? (await checkSocialAccounts(storedSocialProofs)).map((account) => ({
+    const socialSource = incomingSocialProofs.length
+      ? incomingSocialProofs
+      : storedSocialProofs;
+    const checkedSocialProofs = socialSource.length
+      ? (await checkSocialAccounts(socialSource)).map((account) => ({
           ...account,
           metricsSource: "self-reported" as const,
         }))
@@ -311,7 +323,9 @@ export async function POST(request: Request) {
 
     const id = crypto.randomUUID();
     const updatedAt = new Date().toISOString();
-    const socialAccountsJson = existingProfile?.socialAccountsJson ?? "[]";
+    const socialAccountsJson = JSON.stringify(
+      incomingSocialProofs.length ? checkedSocialProofs : storedSocialProofs,
+    );
     const paymentDestinationsJson = JSON.stringify(
       parsePaymentDestinationsJson(existingProfile?.paymentDestinationsJson),
     );
@@ -328,6 +342,7 @@ export async function POST(request: Request) {
         target: profiles.id,
         set: {
           displayName: sellerName,
+          ...(incomingSocialProofs.length ? { socialAccountsJson } : {}),
           updatedAt,
         },
       });
@@ -408,6 +423,7 @@ export async function PATCH(request: Request) {
       condition,
       format,
       delivery,
+      incomingSocialProofs,
       imageManifest,
       shippingPackage,
       endingAt,
@@ -435,8 +451,11 @@ export async function PATCH(request: Request) {
     const storedSocialProofs = parseSocialAccountsJson(
       existingProfile?.socialAccountsJson,
     );
-    const checkedSocialProofs = storedSocialProofs.length
-      ? (await checkSocialAccounts(storedSocialProofs)).map((account) => ({
+    const socialSource = incomingSocialProofs.length
+      ? incomingSocialProofs
+      : storedSocialProofs;
+    const checkedSocialProofs = socialSource.length
+      ? (await checkSocialAccounts(socialSource)).map((account) => ({
           ...account,
           metricsSource: "self-reported" as const,
         }))

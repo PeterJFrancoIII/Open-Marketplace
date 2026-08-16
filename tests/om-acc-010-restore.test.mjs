@@ -5,8 +5,8 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
-test("unassigned pay-to, shipping, and listing-edit files stay removed", async () => {
-  const removed = [
+test("owner-restored listing tools stay present without a spoofable social editor", async () => {
+  const restored = [
     "app/api/shipping/quotes/route.ts",
     "lib/parcel-monkey.ts",
     "lib/payment-links.ts",
@@ -17,21 +17,29 @@ test("unassigned pay-to, shipping, and listing-edit files stay removed", async (
     "tests/shipping-quotes.test.mjs",
     "tests/listing-photos.test.mjs",
   ];
-  for (const relative of removed) {
-    assert.equal(existsSync(new URL(relative, root)), false, relative);
+  for (const relative of restored) {
+    assert.equal(existsSync(new URL(relative, root)), true, relative);
   }
 
   const marketplace = await readFile(new URL("app/marketplace.tsx", root), "utf8");
-  assert.doesNotMatch(marketplace, /Pay the seller/);
-  assert.doesNotMatch(marketplace, /Get estimates/);
-  assert.doesNotMatch(marketplace, /parcelMonkey|pirateShip/);
-  assert.doesNotMatch(marketplace, /editingListingId/);
-  assert.doesNotMatch(marketplace, /photoDraftsFromExisting/);
+  assert.match(marketplace, /Pay the seller/);
+  assert.match(marketplace, /Get estimates/);
+  assert.match(marketplace, /editingListingId/);
+  assert.match(marketplace, /photoDraftsFromExisting/);
+  assert.match(marketplace, /Edit listing/);
+  assert.match(marketplace, /socialProofs: \[\]/);
+  assert.doesNotMatch(marketplace, /Social trust profile/);
+  assert.doesNotMatch(marketplace, /social-editor/);
 
   const listingsRoute = await readFile(
     new URL("app/api/listings/route.ts", root),
     "utf8",
   );
-  assert.doesNotMatch(listingsRoute, /export async function PATCH/);
-  assert.doesNotMatch(listingsRoute, /parcel-monkey|payment-links|shipping-package/);
+  assert.match(listingsRoute, /export async function PATCH/);
+  assert.match(listingsRoute, /storedSocialProofs/);
+  assert.doesNotMatch(listingsRoute, /incomingSocialProofs/);
+
+  const authSource = await readFile(new URL("lib/auth.ts", root), "utf8");
+  assert.doesNotMatch(authSource, /fillEmptyProfileFromFacebook/);
+  assert.match(authSource, /updateUserInfoOnLink:\s*false/);
 });

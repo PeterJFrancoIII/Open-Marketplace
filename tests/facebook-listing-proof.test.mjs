@@ -33,7 +33,7 @@ test("connected Facebook replaces typed Facebook and keeps other profiles", () =
   assert.equal(merged[0].provider, "facebook");
   assert.equal(merged[0].metricsSource, "oauth");
   assert.equal(merged[0].handle, "Peter Franco");
-  assert.equal(merged[0].url, "");
+  assert.equal(merged[0].url, "https://facebook.com/typed.seller");
   assert.equal(merged[0].connectionCount, undefined);
   assert.equal(merged[0].accountCreatedAt, undefined);
   assert.equal(merged[1].provider, "instagram");
@@ -110,5 +110,6 @@ test("listing cards show Connected Facebook instead of a typed URL", async () =>
   assert.match(marketplace, /closest\("a, button"\)/);
   assert.match(marketplace, /paymentLinkFor/);
   assert.match(marketplace, /socialProofs: \[\]/);
+  assert.match(marketplace, /demoSocial/);
   assert.doesNotMatch(marketplace, /Social trust profile/);
 });

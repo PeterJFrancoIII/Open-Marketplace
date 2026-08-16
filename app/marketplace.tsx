@@ -62,6 +62,22 @@ const categoryVisuals: Record<string, { glyph: string; tone: string }> = {
   Collectibles: { glyph: "CO", tone: "mint" },
 };
 
+function demoSocial(
+  sellerId: string,
+  providers: Array<SocialProof["provider"]>,
+): SocialProof[] {
+  const handle = sellerId.replace(/^demo-/, "").replace(/[^a-z0-9]+/g, "");
+  return providers.map((provider) => ({
+    provider,
+    url:
+      provider === "tiktok"
+        ? `https://www.tiktok.com/@${handle}`
+        : provider === "instagram"
+          ? `https://www.instagram.com/${handle}`
+          : `https://www.facebook.com/${handle}`,
+  }));
+}
+
 const demoListings: Listing[] = [
   {
     id: "demo-record-console",
@@ -78,10 +94,7 @@ const demoListings: Listing[] = [
     delivery: "Pickup",
     sellerId: "demo-mina",
     sellerName: "Mina R.",
-    socialProofs: [
-      { provider: "instagram", url: "https://instagram.com" },
-      { provider: "facebook", url: "https://facebook.com" },
-    ],
+    socialProofs: demoSocial("demo-mina", ["instagram", "facebook"]),
     imageManifest: [],
     mediaAvailability: "online",
     createdAt: "2026-08-05T13:30:00.000Z",
@@ -103,10 +116,7 @@ const demoListings: Listing[] = [
     delivery: "Pickup",
     sellerId: "demo-jon",
     sellerName: "Jon Bell",
-    socialProofs: [
-      { provider: "tiktok", url: "https://tiktok.com" },
-      { provider: "instagram", url: "https://instagram.com" },
-    ],
+    socialProofs: demoSocial("demo-jon", ["tiktok", "instagram"]),
     imageManifest: [],
     mediaAvailability: "online",
     createdAt: "2026-08-05T11:10:00.000Z",
@@ -128,11 +138,7 @@ const demoListings: Listing[] = [
     delivery: "Both",
     sellerId: "demo-lena",
     sellerName: "Lena K.",
-    socialProofs: [
-      { provider: "instagram", url: "https://instagram.com" },
-      { provider: "facebook", url: "https://facebook.com" },
-      { provider: "tiktok", url: "https://tiktok.com" },
-    ],
+    socialProofs: demoSocial("demo-lena", ["instagram", "facebook", "tiktok"]),
     imageManifest: [],
     mediaAvailability: "online",
     createdAt: "2026-08-04T20:40:00.000Z",
@@ -154,7 +160,7 @@ const demoListings: Listing[] = [
     delivery: "Pickup",
     sellerId: "demo-caro",
     sellerName: "Caro S.",
-    socialProofs: [{ provider: "facebook", url: "https://facebook.com" }],
+    socialProofs: demoSocial("demo-caro", ["facebook"]),
     imageManifest: [],
     mediaAvailability: "online",
     createdAt: "2026-08-04T17:25:00.000Z",
@@ -176,10 +182,7 @@ const demoListings: Listing[] = [
     delivery: "Both",
     sellerId: "demo-noah",
     sellerName: "Noah D.",
-    socialProofs: [
-      { provider: "instagram", url: "https://instagram.com" },
-      { provider: "tiktok", url: "https://tiktok.com" },
-    ],
+    socialProofs: demoSocial("demo-noah", ["instagram", "tiktok"]),
     imageManifest: [],
     mediaAvailability: "online",
     createdAt: "2026-08-04T14:00:00.000Z",
@@ -201,7 +204,7 @@ const demoListings: Listing[] = [
     delivery: "Both",
     sellerId: "demo-marcus",
     sellerName: "Marcus W.",
-    socialProofs: [{ provider: "instagram", url: "https://instagram.com" }],
+    socialProofs: demoSocial("demo-marcus", ["instagram"]),
     imageManifest: [],
     mediaAvailability: "online",
     createdAt: "2026-08-03T18:40:00.000Z",
@@ -223,10 +226,7 @@ const demoListings: Listing[] = [
     delivery: "Pickup",
     sellerId: "demo-ray",
     sellerName: "Ray P.",
-    socialProofs: [
-      { provider: "facebook", url: "https://facebook.com" },
-      { provider: "tiktok", url: "https://tiktok.com" },
-    ],
+    socialProofs: demoSocial("demo-ray", ["facebook", "tiktok"]),
     imageManifest: [],
     mediaAvailability: "offline",
     createdAt: "2026-08-03T13:20:00.000Z",
@@ -248,7 +248,7 @@ const demoListings: Listing[] = [
     delivery: "Pickup",
     sellerId: "demo-avi",
     sellerName: "Avi T.",
-    socialProofs: [{ provider: "instagram", url: "https://instagram.com" }],
+    socialProofs: demoSocial("demo-avi", ["instagram"]),
     imageManifest: [],
     mediaAvailability: "online",
     createdAt: "2026-08-02T19:15:00.000Z",
@@ -270,10 +270,7 @@ const demoListings: Listing[] = [
     delivery: "Both",
     sellerId: "demo-ana",
     sellerName: "Ana M.",
-    socialProofs: [
-      { provider: "instagram", url: "https://instagram.com" },
-      { provider: "facebook", url: "https://facebook.com" },
-    ],
+    socialProofs: demoSocial("demo-ana", ["instagram", "facebook"]),
     imageManifest: [],
     mediaAvailability: "online",
     createdAt: "2026-08-02T12:30:00.000Z",
@@ -295,7 +292,7 @@ const demoListings: Listing[] = [
     delivery: "Shipping",
     sellerId: "demo-dev",
     sellerName: "Devon H.",
-    socialProofs: [{ provider: "tiktok", url: "https://tiktok.com" }],
+    socialProofs: demoSocial("demo-dev", ["tiktok"]),
     imageManifest: [],
     mediaAvailability: "online",
     createdAt: "2026-08-01T16:45:00.000Z",
@@ -317,10 +314,7 @@ const demoListings: Listing[] = [
     delivery: "Both",
     sellerId: "demo-ellis",
     sellerName: "Ellis Works",
-    socialProofs: [
-      { provider: "instagram", url: "https://instagram.com" },
-      { provider: "facebook", url: "https://facebook.com" },
-    ],
+    socialProofs: demoSocial("demo-ellis", ["instagram", "facebook"]),
     imageManifest: [],
     mediaAvailability: "online",
     createdAt: "2026-07-31T10:00:00.000Z",
@@ -342,10 +336,7 @@ const demoListings: Listing[] = [
     delivery: "Both",
     sellerId: "demo-sam",
     sellerName: "Sam O.",
-    socialProofs: [
-      { provider: "instagram", url: "https://instagram.com" },
-      { provider: "tiktok", url: "https://tiktok.com" },
-    ],
+    socialProofs: demoSocial("demo-sam", ["instagram", "tiktok"]),
     imageManifest: [],
     mediaAvailability: "offline",
     createdAt: "2026-07-30T21:10:00.000Z",

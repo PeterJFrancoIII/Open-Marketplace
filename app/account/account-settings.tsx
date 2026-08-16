@@ -30,7 +30,7 @@ import type {
 } from "../../lib/types";
 
 type SocialDraft = {
-  provider: "instagram" | "tiktok";
+  provider: "facebook" | "instagram" | "tiktok";
   url: string;
   accountCreatedAt: string;
   connectionCount: string;
@@ -39,6 +39,7 @@ type SocialDraft = {
 };
 
 const emptySocialDrafts: SocialDraft[] = [
+  { provider: "facebook", url: "", accountCreatedAt: "", connectionCount: "" },
   { provider: "instagram", url: "", accountCreatedAt: "", connectionCount: "" },
   { provider: "tiktok", url: "", accountCreatedAt: "", connectionCount: "" },
 ];
@@ -167,9 +168,16 @@ export default function AccountSettings({
   const [name, setName] = useState(initialName);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [socialDrafts, setSocialDrafts] = useState(() =>
-    draftsFromAccounts(initialSocialAccounts),
-  );
+  const [socialDrafts, setSocialDrafts] = useState(() => {
+    const drafts = draftsFromAccounts(initialSocialAccounts);
+    const facebookUrl =
+      initialFacebookConnection?.profileUrl ??
+      drafts.find((account) => account.provider === "facebook")?.url ??
+      "";
+    return drafts.map((account) =>
+      account.provider === "facebook" ? { ...account, url: facebookUrl } : account,
+    );
+  });
   const [paymentDrafts, setPaymentDrafts] = useState(() =>
     destinationsByRail(initialPaymentDestinations),
   );
@@ -344,35 +352,41 @@ export default function AccountSettings({
     try {
       const result = await saveProfile(
         {
-          socialAccounts: [
-            ...socialDrafts
-              .filter((account) => account.url.trim())
-              .map((account) => ({
-                provider: account.provider,
-                url: account.url.trim(),
-                accountCreatedAt: account.accountCreatedAt,
-                connectionCount:
-                  account.connectionCount === ""
-                    ? undefined
-                    : Number(account.connectionCount),
-                connectionLabel: "followers" as const,
-                metricsSource: "self-reported" as const,
-              })),
-            ...(facebookConnection.connected && facebookProfileDraft.trim()
-              ? [
-                  {
-                    provider: "facebook" as const,
-                    url: facebookProfileDraft.trim(),
-                  },
-                ]
-              : []),
-          ],
+          socialAccounts: socialDrafts
+            .map((account) => ({
+              ...account,
+              url:
+                account.provider === "facebook"
+                  ? facebookProfileDraft.trim() || account.url.trim()
+                  : account.url.trim(),
+            }))
+            .filter((account) => account.url)
+            .map((account) => ({
+              provider: account.provider,
+              url: account.url,
+              accountCreatedAt: account.accountCreatedAt,
+              connectionCount:
+                account.connectionCount === ""
+                  ? undefined
+                  : Number(account.connectionCount),
+              connectionLabel:
+                account.provider === "facebook"
+                  ? ("friends" as const)
+                  : ("followers" as const),
+              metricsSource: "self-reported" as const,
+            })),
         },
         "social",
       );
       if (!result) return;
       setSocialDrafts(draftsFromAccounts(result.socialAccounts ?? []));
-      setStatus("Social media links saved. A resolving URL is not a verified identity.");
+      const savedFacebook = result.socialAccounts?.find(
+        (account) => account.provider === "facebook",
+      );
+      if (savedFacebook?.url) setFacebookProfileDraft(savedFacebook.url);
+      setStatus(
+        "Social media links saved. Buyers can open these pages from your listings.",
+      );
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -539,7 +553,7 @@ export default function AccountSettings({
         {
           socialAccounts: [
             ...socialDrafts
-              .filter((account) => account.url.trim())
+              .filter((account) => account.provider !== "facebook" && account.url.trim())
               .map((account) => ({
                 provider: account.provider,
                 url: account.url.trim(),
@@ -624,6 +638,11 @@ export default function AccountSettings({
         profileUrl: null,
       });
       setFacebookProfileDraft("");
+      setSocialDrafts((current) =>
+        current.map((row) =>
+          row.provider === "facebook" ? { ...row, url: "" } : row,
+        ),
+      );
       setStatus("Facebook disconnected. Your Open Marketplace account is unchanged.");
       router.refresh();
     } catch (submitError) {
@@ -823,7 +842,15 @@ export default function AccountSettings({
                 <input
                   type="url"
                   value={facebookProfileDraft}
-                  onChange={(event) => setFacebookProfileDraft(event.target.value)}
+                  onChange={(event) => {
+                    const url = event.target.value;
+                    setFacebookProfileDraft(url);
+                    setSocialDrafts((current) =>
+                      current.map((row) =>
+                        row.provider === "facebook" ? { ...row, url } : row,
+                      ),
+                    );
+                  }}
                   placeholder="https://facebook.com/your-profile"
                   disabled={pending !== null || Boolean(facebookConnection.profileUrl)}
                 />
@@ -900,10 +927,10 @@ export default function AccountSettings({
         <div>
           <h3 id="social-media-title">Social media</h3>
           <p className="portal-lead">
-            Instagram and TikTok still use typed profile URLs. A resolving URL
-            is link-health evidence only. Those connectors cannot supply a
-            photo, name, address, date of birth, or phone. It does not verify
-            identity or count as a provider-connected Facebook account.
+            Paste the public Facebook, Instagram, and TikTok pages buyers
+            should open from your listings. Connect Facebook Login above to
+            mark Facebook as Connected. A resolving URL is not a verified
+            identity.
           </p>
         </div>
         {socialDrafts.map((account, index) => (
@@ -920,25 +947,47 @@ export default function AccountSettings({
               <span>Profile URL</span>
               <input
                 type="url"
-                value={account.url}
-                onChange={(event) =>
+                value={
+                  account.provider === "facebook"
+                    ? facebookProfileDraft
+                    : account.url
+                }
+                onChange={(event) => {
+                  const url = event.target.value;
+                  if (account.provider === "facebook") {
+                    setFacebookProfileDraft(url);
+                  }
                   setSocialDrafts((current) =>
                     current.map((row, rowIndex) =>
                       rowIndex === index
                         ? {
                             ...row,
-                            url: event.target.value,
+                            url,
                             health: undefined,
                             healthMessage: undefined,
                           }
                         : row,
                     ),
-                  )
+                  );
+                }}
+                placeholder={
+                  account.provider === "tiktok"
+                    ? "https://tiktok.com/@your-profile"
+                    : `https://${account.provider}.com/your-profile`
                 }
-                placeholder={`https://${account.provider}.com/your-profile`}
-                disabled={pending !== null}
+                disabled={
+                  pending !== null ||
+                  (account.provider === "facebook" &&
+                    Boolean(facebookConnection.profileUrl))
+                }
               />
             </label>
+            {account.provider === "facebook" ? (
+              <p className="portal-settings-note">
+                Buyers click Facebook on your listing to open this page. Use
+                your profile, not facebook.com.
+              </p>
+            ) : null}
             <div className="portal-settings-inline">
               <label className="portal-field">
                 <span>Account created</span>
@@ -981,7 +1030,10 @@ export default function AccountSettings({
               <button
                 className="button button-ghost"
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  if (account.provider === "facebook") {
+                    setFacebookProfileDraft("");
+                  }
                   setSocialDrafts((current) =>
                     current.map((row, rowIndex) =>
                       rowIndex === index
@@ -995,9 +1047,13 @@ export default function AccountSettings({
                           }
                         : row,
                     ),
-                  )
+                  );
+                }}
+                disabled={
+                  pending !== null ||
+                  (account.provider === "facebook" &&
+                    Boolean(facebookConnection.profileUrl))
                 }
-                disabled={pending !== null}
               >
                 Remove {providerName(account.provider)}
               </button>
@@ -1012,7 +1068,7 @@ export default function AccountSettings({
           type="submit"
           disabled={pending !== null}
         >
-          {pending === "social" ? "Saving…" : "Save social media"}
+          {pending === "social" ? "Connecting…" : "Connect social media"}
         </button>
       </form>
 

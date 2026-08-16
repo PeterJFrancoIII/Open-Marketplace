@@ -749,10 +749,10 @@ test("account settings source offers Connect, Connected, and Disconnect only", a
   assert.match(source, /user_link/);
   assert.match(source, /Open Facebook profile/);
   assert.match(source, /Save Facebook profile/);
+  assert.match(source, /Connect social media/);
   assert.doesNotMatch(source, /government verified/i);
   assert.doesNotMatch(source, /user_friends|Marketplace Platform/i);
   assert.match(source, /does not sign[\s\S]*you in[\s\S]*import listings[\s\S]*Facebook verified/);
-  assert.doesNotMatch(source, /provider: "facebook", url:/);
 });
 
 test("preview Facebook credentials stay off the production Pages config", async () => {

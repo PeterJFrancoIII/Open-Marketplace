@@ -80,8 +80,11 @@ export function mergeConnectedFacebookProof(
     return [...typedFacebook, ...others];
   }
   const oauthFacebook = accounts.find(isConnectedFacebookProof);
+  const url =
+    publicFacebookProfileUrl(oauthFacebook?.url) ||
+    publicFacebookProfileUrl(typedFacebook[0]?.url);
   return [
-    connectedFacebookSocialProof(sellerName, oauthFacebook?.url ?? ""),
+    connectedFacebookSocialProof(sellerName, url),
     ...others,
   ];
 }

@@ -11,6 +11,7 @@ from typing import Any
 
 DEFAULT_MIN_REPLICAS = 3
 DEFAULT_SHARD_COUNT = 16
+FIRST_HOST_ID = "open-marketplace-first-public-database-host"
 DECREE_KIND = "open-marketplace-host-decree"
 OBJECT_KINDS = ("listing", "profile")
 FORBIDDEN_OBJECT_KEYS = {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  FIRST_HOST_ID,
   assignShardsForScaleDown,
   canDropObject,
   chooseHost,
@@ -11,7 +12,7 @@ import {
 } from "../lib/replica-policy.ts";
 
 test("first host genesis stays in full-copy mode with a 3-copy floor", () => {
-  const decree = genesisDecree("synology-nas-001", "https://nas.example");
+  const decree = genesisDecree(FIRST_HOST_ID, "https://nas.example");
   assert.equal(validateDecree(decree).ok, true);
   assert.equal(decree.minReplicas, 3);
   assert.equal(decree.mode, "full");
@@ -19,13 +20,13 @@ test("first host genesis stays in full-copy mode with a 3-copy floor", () => {
 });
 
 test("Main cannot shard until the replica floor is met", () => {
-  const tooSoon = genesisDecree("synology-nas-001");
+  const tooSoon = genesisDecree(FIRST_HOST_ID);
   tooSoon.mode = "sharded";
   assert.deepEqual(validateDecree(tooSoon), {
     ok: false,
     reason: "below_replica_floor",
   });
-  assert.equal(assignShardsForScaleDown(["synology-nas-001"], 3), null);
+  assert.equal(assignShardsForScaleDown([FIRST_HOST_ID], 3), null);
 
   const hosts = assignShardsForScaleDown(["a", "b", "c"], 3, 8);
   assert.ok(hosts);
@@ -43,11 +44,11 @@ test("Main cannot shard until the replica floor is met", () => {
 });
 
 test("hosts refuse to drop the last copies", () => {
-  const decree = genesisDecree("synology-nas-001");
+  const decree = genesisDecree(FIRST_HOST_ID);
   const blocked = canDropObject(
-    "synology-nas-001",
+    FIRST_HOST_ID,
     "listing:one",
-    { "synology-nas-001": ["listing:one"] },
+    { [FIRST_HOST_ID]: ["listing:one"] },
     decree,
   );
   assert.equal(blocked.ok, false);
@@ -76,6 +77,7 @@ test("account settings describe the first full host and keep secrets off it", as
     "utf8",
   );
   assert.match(settings, /First database host/);
+  assert.match(settings, /open-marketplace-first-public-database-host/);
   assert.match(settings, /Synology Arch Linux/);
   assert.match(settings, /Passwords and Facebook tokens/);
   assert.match(settings, /scale-down decree/);
@@ -90,7 +92,11 @@ test("account settings describe the first full host and keep secrets off it", as
     "utf8",
   );
   assert.match(server, /full-replica/);
-  assert.match(server, /synology-nas-001/);
+  assert.match(hostPolicy, /FIRST_HOST_ID = "open-marketplace-first-public-database-host"/);
+  assert.match(
+    await readFile(new URL("../hosting-node/compose.yaml", import.meta.url), "utf8"),
+    /container_name: open-marketplace-first-public-database-host/,
+  );
   assert.match(hostPolicy, /below_replica_floor/);
   assert.doesNotMatch(server, /BETTER_AUTH_SECRET|FACEBOOK_CLIENT_SECRET/);
   assert.doesNotMatch(hostPolicy, /BETTER_AUTH_SECRET|FACEBOOK_CLIENT_SECRET/);

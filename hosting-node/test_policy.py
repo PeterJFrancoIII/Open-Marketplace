@@ -2,20 +2,20 @@ import unittest
 
 import policy
 
+FIRST = policy.FIRST_HOST_ID
+
 
 class ReplicaPolicyTests(unittest.TestCase):
     def test_genesis_is_full_copy_on_first_host(self):
-        decree = policy.genesis_decree("synology-nas-001", "https://nas.example")
+        decree = policy.genesis_decree(FIRST, "https://nas.example")
         ok, reason = policy.validate_decree(decree)
         self.assertTrue(ok, reason)
         self.assertEqual(decree["minReplicas"], 3)
         self.assertEqual(decree["mode"], "full")
-        self.assertTrue(
-            policy.host_should_store("synology-nas-001", "listing:abc", decree)
-        )
+        self.assertTrue(policy.host_should_store(FIRST, "listing:abc", decree))
 
     def test_sharded_decree_rejected_below_floor(self):
-        decree = policy.genesis_decree("synology-nas-001")
+        decree = policy.genesis_decree(FIRST)
         decree["mode"] = "sharded"
         ok, reason = policy.validate_decree(decree)
         self.assertFalse(ok)
@@ -47,10 +47,10 @@ class ReplicaPolicyTests(unittest.TestCase):
         self.assertTrue(ok, reason)
 
     def test_drop_refuses_when_only_one_copy_exists(self):
-        decree = policy.genesis_decree("synology-nas-001")
-        inventories = {"synology-nas-001": {"listing:one"}}
+        decree = policy.genesis_decree(FIRST)
+        inventories = {FIRST: {"listing:one"}}
         allowed, reason = policy.can_drop_object(
-            "synology-nas-001",
+            FIRST,
             "listing:one",
             inventories,
             decree,

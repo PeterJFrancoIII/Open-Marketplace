@@ -41,7 +41,7 @@ def write_token() -> str:
 
 
 def host_id() -> str:
-    return (os.environ.get("HOST_ID") or "synology-nas-001").strip() or "synology-nas-001"
+    return (os.environ.get("HOST_ID") or policy.FIRST_HOST_ID).strip() or policy.FIRST_HOST_ID
 
 
 def host_origin() -> str:

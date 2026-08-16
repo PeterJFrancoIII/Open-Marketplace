@@ -1,5 +1,6 @@
 export const DEFAULT_MIN_REPLICAS = 3;
 export const DEFAULT_SHARD_COUNT = 16;
+export const FIRST_HOST_ID = "open-marketplace-first-public-database-host";
 export const DECREE_KIND = "open-marketplace-host-decree";
 export const OBJECT_KINDS = ["listing", "profile"] as const;
 

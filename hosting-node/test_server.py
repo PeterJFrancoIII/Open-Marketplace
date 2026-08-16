@@ -16,7 +16,7 @@ class HostServerTests(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         os.environ["MEDIA_NODE_DATA"] = cls.tmp.name
         os.environ["MEDIA_NODE_WRITE_TOKEN"] = "test-token"
-        os.environ["HOST_ID"] = "synology-nas-001"
+        os.environ["HOST_ID"] = "open-marketplace-first-public-database-host"
         os.environ["HOST_MIN_REPLICAS"] = "3"
         os.environ["HOST_SYNC_INTERVAL_SECONDS"] = "0"
         os.environ.pop("SOURCE_REGISTRY_URL", None)
@@ -56,7 +56,7 @@ class HostServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(body["ok"])
         self.assertEqual(body["role"], "full-replica")
-        self.assertEqual(body["hostId"], "synology-nas-001")
+        self.assertEqual(body["hostId"], "open-marketplace-first-public-database-host")
         self.assertEqual(body["minReplicas"], 3)
         self.assertEqual(body["mode"], "full")
 
@@ -102,7 +102,7 @@ class HostServerTests(unittest.TestCase):
                     "minReplicas": 3,
                     "mode": "sharded",
                     "shardCount": 16,
-                    "hosts": [{"hostId": "synology-nas-001", "shards": ["*"]}],
+                    "hosts": [{"hostId": "open-marketplace-first-public-database-host", "shards": ["*"]}],
                 }
             },
         )

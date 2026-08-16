@@ -1,12 +1,12 @@
 services:
-  open-marketplace-host:
+  open-marketplace-first-public-database-host:
     build: .
-    container_name: open-marketplace-host
+    container_name: open-marketplace-first-public-database-host
     restart: unless-stopped
     ports:
       - "8788:8788"
     environment:
-      HOST_ID: ${HOST_ID:-synology-nas-001}
+      HOST_ID: ${HOST_ID:-open-marketplace-first-public-database-host}
       HOST_ORIGIN: ${HOST_ORIGIN:-}
       HOST_MIN_REPLICAS: ${HOST_MIN_REPLICAS:-3}
       HOST_WRITE_TOKEN: ${HOST_WRITE_TOKEN:-}

@@ -1112,7 +1112,7 @@ export default function AccountSettings({
         </label>
         {replicaStatus && (
           <p className="portal-lead">
-            Host {replicaStatus.hostId || "synology-nas-001"} ·{" "}
+            Host {replicaStatus.hostId || "open-marketplace-first-public-database-host"} ·{" "}
             {replicaStatus.hostCount} live host
             {replicaStatus.hostCount === 1 ? "" : "s"} · minimum{" "}
             {replicaStatus.minReplicas} copies · mode {replicaStatus.mode}

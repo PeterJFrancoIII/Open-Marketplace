@@ -27,7 +27,6 @@ import {
   laterTimestamp,
 } from "./evidence-limits";
 import {
-  hasSalePhoto,
   parseSalePhotoJson,
   saleEvidenceMissing,
   sanitizeSalePhotos,
@@ -963,13 +962,6 @@ export async function acceptSaleEvidence(
   const shippingMissing = saleEvidenceMissing("seller", "in_transfer", nextEvidence);
   if (shippingMissing) {
     return { ok: false as const, status: 409, error: shippingMissing };
-  }
-  if (!hasSalePhoto(nextEvidence.paymentReceipt)) {
-    return {
-      ok: false as const,
-      status: 400,
-      error: "Upload a copy of the payment receipt before accepting this evidence.",
-    };
   }
   const stored = await storeEvidencePhotos(db, conversationId, "buyer", evidence);
   if (!stored.ok) {

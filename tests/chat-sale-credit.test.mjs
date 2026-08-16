@@ -296,7 +296,7 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   assert.match(messagesUi, /Photos of the packaging/);
   assert.match(messagesUi, /Photos of the shipping box/);
   assert.match(messagesUi, /Shipping evidence/);
-  assert.match(messagesUi, /Accept Evidence/);
+  assert.match(messagesUi, /Accept Transit Evidence/);
   assert.match(messagesUi, /Ask for additional evidence/);
   assert.match(messagesUi, /Evidence metadata/);
   assert.match(messagesUi, /Inspect /);
@@ -713,44 +713,6 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   assert.equal(sellerInTransferAgain.status, 200);
   assert.equal((await sellerInTransferAgain.json()).conversation.mySaleStatus, "in_transfer");
 
-  const buyerAcceptNoReceipt = await postJson(
-    worker,
-    env,
-    "/api/conversations/evidence",
-    buyerJar,
-    {
-      conversationId: conversation.id,
-      action: "accept",
-    },
-  );
-  assert.equal(buyerAcceptNoReceipt.status, 400);
-
-  const buyerReceipt = await postJson(
-    worker,
-    env,
-    "/api/conversations/evidence",
-    buyerJar,
-    {
-      conversationId: conversation.id,
-      paymentReceipt: salePhoto("receipt.jpg"),
-    },
-  );
-  assert.equal(buyerReceipt.status, 200);
-  const receiptBody = await buyerReceipt.json();
-  assert.equal(receiptBody.conversation.paymentReceipt[0].name, "receipt.jpg");
-  assert.equal(receiptBody.conversation.paymentReceipt[0].bytes, undefined);
-  assert.doesNotMatch(JSON.stringify(receiptBody), /SECRET_SALE_PHOTO_BYTES/);
-
-  const publicAfterReceipt = await getJson(worker, env, "/api/listings?limit=80");
-  const publicAfterReceiptJson = JSON.stringify(await publicAfterReceipt.json());
-  assert.doesNotMatch(publicAfterReceiptJson, /receipt\.jpg/);
-  assert.doesNotMatch(publicAfterReceiptJson, /SECRET_SALE_PHOTO_BYTES/);
-  assert.doesNotMatch(publicAfterReceiptJson, /data:image\/jpeg;base64,/);
-  assert.doesNotMatch(
-    publicAfterReceiptJson,
-    new RegExp(receiptBody.conversation.paymentReceipt[0].hash),
-  );
-
   const buyerCompleteBeforeAccept = await postJson(
     worker,
     env,
@@ -777,6 +739,32 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   );
   assert.equal(buyerAccept.status, 200);
   assert.equal((await buyerAccept.json()).conversation.mySaleStatus, "in_transfer");
+
+  const buyerReceipt = await postJson(
+    worker,
+    env,
+    "/api/conversations/evidence",
+    buyerJar,
+    {
+      conversationId: conversation.id,
+      paymentReceipt: salePhoto("receipt.jpg"),
+    },
+  );
+  assert.equal(buyerReceipt.status, 200);
+  const receiptBody = await buyerReceipt.json();
+  assert.equal(receiptBody.conversation.paymentReceipt[0].name, "receipt.jpg");
+  assert.equal(receiptBody.conversation.paymentReceipt[0].bytes, undefined);
+  assert.doesNotMatch(JSON.stringify(receiptBody), /SECRET_SALE_PHOTO_BYTES/);
+
+  const publicAfterReceipt = await getJson(worker, env, "/api/listings?limit=80");
+  const publicAfterReceiptJson = JSON.stringify(await publicAfterReceipt.json());
+  assert.doesNotMatch(publicAfterReceiptJson, /receipt\.jpg/);
+  assert.doesNotMatch(publicAfterReceiptJson, /SECRET_SALE_PHOTO_BYTES/);
+  assert.doesNotMatch(publicAfterReceiptJson, /data:image\/jpeg;base64,/);
+  assert.doesNotMatch(
+    publicAfterReceiptJson,
+    new RegExp(receiptBody.conversation.paymentReceipt[0].hash),
+  );
 
   const sellerLocked = await postJson(
     worker,

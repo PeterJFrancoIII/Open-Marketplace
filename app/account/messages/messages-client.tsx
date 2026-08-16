@@ -1106,8 +1106,8 @@ export default function MessagesClient({
               {conversation.myRole === "buyer" ? (
                 <p className="portal-settings-note">
                   Only the seller can click In-Transfer. After they submit
-                  shipping evidence in this window, use Accept Evidence or ask
-                  for additional evidence.
+                  shipping evidence in this window, use Accept Transit Evidence
+                  or ask for additional evidence.
                 </p>
               ) : null}
               {conversation.completed ? (
@@ -1416,8 +1416,8 @@ export default function MessagesClient({
                       <p className="portal-settings-note">
                         {conversation.otherSaleStatus === "in_transfer" ||
                         conversation.otherSaleStatus === "complete"
-                          ? "Choose Accept Evidence if this shipment looks correct."
-                          : "Accept Evidence is available after the seller submits In-Transfer shipping details."}
+                          ? "Choose Accept Transit Evidence if this shipment looks correct."
+                          : "Accept Transit Evidence is available after the seller submits In-Transfer shipping details."}
                       </p>
                       <button
                         className="button button-primary"
@@ -1429,8 +1429,9 @@ export default function MessagesClient({
                         }
                         onClick={() => void acceptCurrentEvidence()}
                       >
-                        {busy === "evidence" ? "Saving…" : "Accept Evidence"}
+                        {busy === "evidence" ? "Saving…" : "Accept Transit Evidence"}
                       </button>
+                      {error ? <p className="portal-error">{error}</p> : null}
                     </>
                   )}
                   {conversation.otherSaleStatus === "in_transfer" ? (
@@ -1467,8 +1468,9 @@ export default function MessagesClient({
             <div className="portal-sale-box">
               <h3>Delivery proof</h3>
               <p className="portal-settings-note">
-                Accept Evidence needs the buyer payment receipt. Complete needs
-                a photo of the product received and a photo of the packaging.
+                Accept Transit Evidence confirms the seller tracking number and
+                shipment photos. Complete still needs the payment receipt plus
+                photos of the product received and the packaging.
               </p>
               {conversation.myRole === "buyer" && conversation.mySaleStatus !== "complete" ? (
                 <div className="portal-form">

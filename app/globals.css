@@ -690,14 +690,20 @@ a {
   border-color: var(--brand);
 }
 
-.social-fact.social-connected,
-.detail-social-account.social-connected {
+a.social-fact,
+a.detail-social-account {
+  cursor: pointer;
+}
+
+.social-fact.social-connected:not(a),
+.detail-social-account.social-connected:not(a) {
   cursor: default;
 }
 
-.social-fact.social-connected:hover,
-.detail-social-account.social-connected:hover {
-  border-color: var(--line);
+a.social-fact.social-connected:hover,
+a.detail-social-account.social-connected:hover,
+.social-fact:hover {
+  border-color: var(--brand);
 }
 
 .social-fact-copy {

@@ -124,8 +124,27 @@ export function mergeSocialAccountsForSave(
     .filter((account) => account.provider !== "facebook")
     .map(asSelfReported);
   if (facebookConnected) {
-    const oauthFacebook = existing.find(isConnectedFacebookProof);
-    return oauthFacebook ? [oauthFacebook, ...others] : others;
+    const existingOauth = existing.find(isConnectedFacebookProof);
+    const incomingFacebook = incoming.find(
+      (account) => account.provider === "facebook",
+    );
+    const url =
+      publicFacebookProfileUrl(existingOauth?.url) ||
+      publicFacebookProfileUrl(incomingFacebook?.url);
+    if (!url && !existingOauth) return others;
+    return [
+      {
+        ...(existingOauth ?? incomingFacebook),
+        provider: "facebook",
+        url,
+        handle: existingOauth?.handle ?? incomingFacebook?.handle ?? "Facebook",
+        metricsSource: "oauth",
+        health: "active",
+        healthMessage: "Connected with Facebook Login.",
+        connectionLabel: "friends",
+      },
+      ...others,
+    ];
   }
   const incomingHasFacebook = incoming.some(
     (account) => account.provider === "facebook",

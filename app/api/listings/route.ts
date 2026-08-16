@@ -13,7 +13,11 @@ import {
 import { getDb } from "../../../db";
 import { authAccounts, listings, profiles } from "../../../db/schema";
 import { getMarketplaceSession, persistFacebookProfileLink } from "../../../lib/auth";
-import { mergeConnectedFacebookProof } from "../../../lib/facebook-listing-proof";
+import {
+  isConnectedFacebookProof,
+  mergeConnectedFacebookProof,
+  publicFacebookProfileUrl,
+} from "../../../lib/facebook-listing-proof";
 import { overlayPaypalDestinations } from "../../../lib/paypal-public";
 import { sanitizeImageManifest } from "../../../lib/image-manifest";
 import { parsePaymentDestinationsJson } from "../../../lib/payment-destinations";
@@ -86,6 +90,44 @@ function publicPaymentDestinations(
     parsePaymentDestinationsJson(profilePaymentJson),
     paypalConnected,
   );
+}
+
+async function refreshMissingFacebookProfileLinks(
+  db: Awaited<ReturnType<typeof getDb>>,
+  sellerIds: string[],
+  facebookSellerIds: Set<string>,
+  profileById: Map<string, (typeof profiles)["$inferSelect"]>,
+  rows: Array<{ sellerId: string; sellerName: string }>,
+) {
+  const missing = sellerIds.filter((sellerId) => {
+    if (!facebookSellerIds.has(sellerId)) return false;
+    const accounts = parseSocialAccountsJson(
+      profileById.get(sellerId)?.socialAccountsJson,
+    );
+    return !publicFacebookProfileUrl(
+      accounts.find(isConnectedFacebookProof)?.url,
+    );
+  });
+  if (!missing.length) return profileById;
+  await Promise.all(
+    missing.map((sellerId) =>
+      persistFacebookProfileLink(
+        sellerId,
+        profileById.get(sellerId)?.displayName ??
+          rows.find((row) => row.sellerId === sellerId)?.sellerName ??
+          "Facebook",
+      ),
+    ),
+  );
+  const refreshed = await db
+    .select()
+    .from(profiles)
+    .where(inArray(profiles.id, missing));
+  const next = new Map(profileById);
+  for (const profile of refreshed) {
+    next.set(profile.id, profile);
+  }
+  return next;
 }
 
 function publicSocialProofsJson(
@@ -259,11 +301,17 @@ export async function GET(request: Request) {
           .from(profiles)
           .where(inArray(profiles.id, sellerIds))
       : [];
-    const profileById = new Map(profileRows.map((profile) => [profile.id, profile]));
     const [facebookSellerIds, paypalSellerIds] = await Promise.all([
       connectedProviderUserIds(db, "facebook", sellerIds),
       connectedProviderUserIds(db, "paypal", sellerIds),
     ]);
+    const profileById = await refreshMissingFacebookProfileLinks(
+      db,
+      sellerIds,
+      facebookSellerIds,
+      new Map(profileRows.map((profile) => [profile.id, profile])),
+      rows,
+    );
 
     return Response.json({
       listings: rows.map((listing) => {

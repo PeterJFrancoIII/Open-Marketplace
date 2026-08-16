@@ -514,12 +514,15 @@ export async function persistFacebookProfileLink(
     .where(eq(profiles.id, userId))
     .limit(1);
   const current = parseSocialAccountsJson(profileRow?.socialAccountsJson);
+  const fetchedLink =
+    knownLink ??
+    (facebook
+      ? await readStoredFacebookProfileUrl(facebook.accessToken)
+      : "");
   const next = facebook
-    ? upsertConnectedFacebookAccount(
-        current,
-        displayName,
-        knownLink ?? (await readStoredFacebookProfileUrl(facebook.accessToken)),
-      )
+    ? publicFacebookProfileUrl(fetchedLink)
+      ? upsertConnectedFacebookAccount(current, displayName, fetchedLink)
+      : current
     : withoutConnectedFacebook(current);
   const socialAccountsJson = JSON.stringify(next);
   if (profileRow?.socialAccountsJson === socialAccountsJson) {

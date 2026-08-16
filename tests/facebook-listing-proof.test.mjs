@@ -106,7 +106,9 @@ test("listing cards show Connected Facebook instead of a typed URL", async () =>
   assert.match(marketplace, /Connected with Facebook Login/);
   assert.match(marketplace, /isConnectedFacebookProof/);
   assert.match(marketplace, /ConnectorAnchor/);
-  assert.match(marketplace, /Open \$\{providerName\(account.provider\)\} profile/);
+  assert.match(marketplace, /socialProfileHref/);
+  assert.match(marketplace, /closest\("a, button"\)/);
+  assert.match(marketplace, /paymentLinkFor/);
   assert.match(marketplace, /socialProofs: \[\]/);
   assert.doesNotMatch(marketplace, /Social trust profile/);
 });

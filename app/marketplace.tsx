@@ -29,7 +29,7 @@ import { readMediaNodeConfig } from "../lib/media-node";
 import { publicMediaOriginsFromManifests } from "../lib/image-manifest";
 import { getLocalMediaUrl, pinListingMediaToHost, storeMedia } from "../lib/media-store";
 import { fetchReplicaCatalog, publishReplicaSnapshot } from "../lib/replica-host";
-import { paymentLinksFor } from "../lib/payment-links";
+import { paymentLinkFor, paymentLinksFor } from "../lib/payment-links";
 import { parsePaymentDestinationsJson } from "../lib/payment-destinations";
 import {
   parcelMonkeyCalculatorUrl,
@@ -612,7 +612,7 @@ function SocialAccountFact({
   );
   return (
     <ConnectorAnchor
-      href={account.url}
+      href={socialProfileHref(account.url)}
       className={statusClass}
       title={account.healthMessage}
       label={`Open ${providerName(account.provider)} profile`}
@@ -689,12 +689,24 @@ function paypalLinkLabel(listing: Listing) {
   return listing.paypalLinked ? "PayPal · Linked" : "PayPal · Not linked";
 }
 
+function socialProfileHref(value?: string) {
+  if (!value?.trim()) return "";
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return "";
+    const path = url.pathname.replace(/\/+$/, "");
+    if (!path) return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
 function paypalConnectorHref(listing: Listing) {
   const paypal = (listing.paymentDestinations ?? []).find(
     (destination) => destination.rail === "paypal",
   );
-  if (!paypal?.destination) return "";
-  return /^https:\/\//i.test(paypal.destination) ? paypal.destination : "";
+  return paypal ? paymentLinkFor(paypal).href ?? "" : "";
 }
 
 function healthLabel(health: SocialProof["health"]) {
@@ -1151,6 +1163,8 @@ export default function Marketplace() {
   }
 
   function handleCardKey(event: KeyboardEvent<HTMLElement>, listing: Listing) {
+    const target = event.target as HTMLElement;
+    if (target.closest("a, button")) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       openDetail(listing);
@@ -1637,9 +1651,12 @@ export default function Marketplace() {
                   className="listing-card"
                   key={listing.id}
                   tabIndex={0}
-                  role="button"
                   aria-label={`View ${listing.title}`}
-                  onClick={() => openDetail(listing)}
+                  onClick={(event) => {
+                    const target = event.target as HTMLElement;
+                    if (target.closest("a, button")) return;
+                    openDetail(listing);
+                  }}
                   onKeyDown={(event) => handleCardKey(event, listing)}
                 >
                   <div className={`listing-media tone-${visual.tone}`}>

@@ -179,6 +179,12 @@ export default function AccountSettings({
   const [facebookConnection, setFacebookConnection] = useState(
     initialFacebookConnection ?? emptyFacebookConnection,
   );
+  const [facebookProfileDraft, setFacebookProfileDraft] = useState(
+    initialFacebookConnection?.profileUrl ??
+      initialSocialAccounts.find((account) => account.provider === "facebook")
+        ?.url ??
+      "",
+  );
   const [paypalConnection, setPaypalConnection] = useState(
     initialPayPalConnection ?? emptyPayPalConnection,
   );
@@ -190,6 +196,7 @@ export default function AccountSettings({
     | "payment"
     | "shipping"
     | "facebook-connect"
+    | "facebook-profile"
     | "facebook-disconnect"
     | "paypal-connect"
     | "paypal-disconnect"
@@ -299,6 +306,9 @@ export default function AccountSettings({
     };
     if (result.facebookConnection) {
       setFacebookConnection(result.facebookConnection);
+      if (result.facebookConnection.profileUrl) {
+        setFacebookProfileDraft(result.facebookConnection.profileUrl);
+      }
     }
     if (result.paypalConnection) {
       setPaypalConnection(result.paypalConnection);
@@ -334,19 +344,29 @@ export default function AccountSettings({
     try {
       const result = await saveProfile(
         {
-          socialAccounts: socialDrafts
-            .filter((account) => account.url.trim())
-            .map((account) => ({
-              provider: account.provider,
-              url: account.url.trim(),
-              accountCreatedAt: account.accountCreatedAt,
-              connectionCount:
-                account.connectionCount === ""
-                  ? undefined
-                  : Number(account.connectionCount),
-              connectionLabel: "followers",
-              metricsSource: "self-reported",
-            })),
+          socialAccounts: [
+            ...socialDrafts
+              .filter((account) => account.url.trim())
+              .map((account) => ({
+                provider: account.provider,
+                url: account.url.trim(),
+                accountCreatedAt: account.accountCreatedAt,
+                connectionCount:
+                  account.connectionCount === ""
+                    ? undefined
+                    : Number(account.connectionCount),
+                connectionLabel: "followers" as const,
+                metricsSource: "self-reported" as const,
+              })),
+            ...(facebookConnection.connected && facebookProfileDraft.trim()
+              ? [
+                  {
+                    provider: "facebook" as const,
+                    url: facebookProfileDraft.trim(),
+                  },
+                ]
+              : []),
+          ],
         },
         "social",
       );
@@ -510,6 +530,48 @@ export default function AccountSettings({
     }
   }
 
+  async function onSaveFacebookProfile() {
+    setPending("facebook-profile");
+    setStatus("");
+    setError("");
+    try {
+      const result = await saveProfile(
+        {
+          socialAccounts: [
+            ...socialDrafts
+              .filter((account) => account.url.trim())
+              .map((account) => ({
+                provider: account.provider,
+                url: account.url.trim(),
+                connectionLabel: "followers" as const,
+                metricsSource: "self-reported" as const,
+              })),
+            {
+              provider: "facebook" as const,
+              url: facebookProfileDraft.trim(),
+            },
+          ],
+        },
+        "social",
+      );
+      if (!result) return;
+      setSocialDrafts(draftsFromAccounts(result.socialAccounts ?? []));
+      const savedFacebook = result.socialAccounts?.find(
+        (account) => account.provider === "facebook",
+      );
+      if (savedFacebook?.url) setFacebookProfileDraft(savedFacebook.url);
+      setStatus("Facebook profile link saved. Listings can open that profile.");
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Could not save the Facebook profile link.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
   async function onConnectFacebook() {
     setPending("facebook-connect");
     setStatus("");
@@ -561,6 +623,7 @@ export default function AccountSettings({
         imageUrl: null,
         profileUrl: null,
       });
+      setFacebookProfileDraft("");
       setStatus("Facebook disconnected. Your Open Marketplace account is unchanged.");
       router.refresh();
     } catch (submitError) {
@@ -755,16 +818,45 @@ export default function AccountSettings({
                     : "Facebook account connected."}
                 </p>
               </div>
+              <label className="portal-field">
+                <span>Public Facebook profile</span>
+                <input
+                  type="url"
+                  value={facebookProfileDraft}
+                  onChange={(event) => setFacebookProfileDraft(event.target.value)}
+                  placeholder="https://facebook.com/your-profile"
+                  disabled={pending !== null || Boolean(facebookConnection.profileUrl)}
+                />
+              </label>
+              <p className="portal-settings-note">
+                Listings open this Facebook profile so people can see the
+                account exists. Facebook Login does not always return a public
+                profile link.
+              </p>
               <div className="portal-connector-actions">
-                {facebookConnection.profileUrl ? (
+                {facebookConnection.profileUrl || facebookProfileDraft ? (
                   <a
                     className="button button-ghost"
-                    href={facebookConnection.profileUrl}
+                    href={
+                      facebookConnection.profileUrl || facebookProfileDraft
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                   >
                     Open Facebook profile
                   </a>
+                ) : null}
+                {!facebookConnection.profileUrl ? (
+                  <button
+                    className="button button-dark"
+                    type="button"
+                    onClick={() => void onSaveFacebookProfile()}
+                    disabled={pending !== null || !facebookProfileDraft.trim()}
+                  >
+                    {pending === "facebook-profile"
+                      ? "Saving…"
+                      : "Save Facebook profile"}
+                  </button>
                 ) : null}
                 <button
                   className="button button-ghost"

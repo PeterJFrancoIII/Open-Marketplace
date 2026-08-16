@@ -86,6 +86,8 @@ test("compose UI lets owners add, remove, and reorder assigned photos", async ()
     "utf8",
   );
   assert.match(marketplace, /photoDraftsFromExisting/);
+  assert.match(marketplace, /pinListingMediaToHost/);
+  assert.match(marketplace, /listingPhotoLoader/);
   assert.match(marketplace, /Move photo left/);
   assert.match(marketplace, /Move photo right/);
   assert.match(marketplace, /Remove photo/);

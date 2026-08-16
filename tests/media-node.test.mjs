@@ -48,7 +48,7 @@ test("account settings and compose keep photos off the public registry", async (
 
   const store = await readFile(new URL("../lib/media-store.ts", import.meta.url), "utf8");
   assert.match(store, /publishMediaToNode/);
-  assert.match(store, /fetchMediaFromNode/);
+  assert.match(store, /fetchMediaFromOrigins/);
   assert.doesNotMatch(store, /\/api\/listings/);
 
   const listings = await readFile(

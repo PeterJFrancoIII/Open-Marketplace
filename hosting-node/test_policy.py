@@ -46,6 +46,39 @@ class ReplicaPolicyTests(unittest.TestCase):
         ok, reason = policy.validate_decree(decree)
         self.assertTrue(ok, reason)
 
+    def test_owner_items_are_never_dropped(self):
+        decree = {
+            "v": 1,
+            "kind": policy.DECREE_KIND,
+            "issuedAt": "",
+            "issuedBy": "main",
+            "minReplicas": 3,
+            "mode": "sharded",
+            "shardCount": 1,
+            "hosts": [
+                {"hostId": "a", "shards": [0]},
+                {"hostId": "b", "shards": [0]},
+                {"hostId": "c", "shards": [0]},
+                {"hostId": "d", "shards": []},
+            ],
+        }
+        inventories = {
+            "a": {"listing:mine"},
+            "b": {"listing:mine"},
+            "c": {"listing:mine"},
+            "d": {"listing:mine"},
+        }
+        allowed, reason = policy.can_drop_object(
+            "d",
+            "listing:mine",
+            inventories,
+            decree,
+            {"listing:mine"},
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "owner_pinned")
+        self.assertTrue(policy.host_should_store("d", "listing:mine", decree, {"listing:mine"}))
+
     def test_drop_refuses_when_only_one_copy_exists(self):
         decree = policy.genesis_decree(FIRST)
         inventories = {FIRST: {"listing:one"}}

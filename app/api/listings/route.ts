@@ -13,6 +13,7 @@ import {
 import { getDb } from "../../../db";
 import { listings, profiles } from "../../../db/schema";
 import { getMarketplaceSession } from "../../../lib/auth";
+import { sanitizeImageManifest } from "../../../lib/image-manifest";
 import { parsePaymentDestinationsJson } from "../../../lib/payment-destinations";
 import {
   attachPackageToDescription,
@@ -68,9 +69,7 @@ function parseListingWrite(payload: Record<string, unknown>) {
   const condition = String(payload.condition ?? "");
   const format = String(payload.format ?? "");
   const delivery = String(payload.delivery ?? "");
-  const imageManifest = Array.isArray(payload.imageManifest)
-    ? payload.imageManifest.slice(0, 6)
-    : [];
+  const imageManifest = sanitizeImageManifest(payload.imageManifest);
 
   if (!title || title.length > 90) {
     return {

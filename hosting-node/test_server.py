@@ -88,7 +88,7 @@ class HostServerTests(unittest.TestCase):
         )
         status, body = self._json("DELETE", "/v1/objects/listing/keep-me")
         self.assertEqual(status, 409)
-        self.assertEqual(body["error"], "below_replica_floor")
+        self.assertIn(body["error"], {"owner_pinned", "below_replica_floor"})
 
     def test_refuses_sharded_decree_from_single_host(self):
         status, body = self._json(

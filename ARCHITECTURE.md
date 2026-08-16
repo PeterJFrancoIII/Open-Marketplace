@@ -53,11 +53,14 @@ The first trusted full host is a Synology Arch Linux container
 (`hosting-node/`). It stores the public marketplace dataset: listing
 metadata, public seller profiles, and content-addressed photos. It does not
 store passwords, sessions, Facebook tokens, or identity documents. Cloudflare
-D1 remains the public preview registry. While fewer than three hosts are
-live, every host keeps a complete copy. Adding hosts spreads read traffic by
-`hash(objectId) % hostCount`. After the replica floor is met, Main may issue
-a sharded decree; hosts then scale down only when at least three duplicates
-of each record remain.
+D1 remains the public preview registry. A host always keeps its operator's
+own listings and photos, even after a later scale-down decree. Listings may
+advertise the host's public HTTPS origin as an availability hint so other
+browsers can fetch photos by hash. While fewer than three hosts are live,
+every host also keeps a complete copy of the public set. Adding hosts spreads
+read traffic by `hash(objectId) % hostCount`. After the replica floor is met,
+Main may issue a sharded decree; hosts then scale down only when at least
+three duplicates of each record remain and never drop owner-pinned items.
 
 ## Identity proofs
 

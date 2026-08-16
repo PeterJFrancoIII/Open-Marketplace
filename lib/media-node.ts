@@ -92,6 +92,25 @@ export async function assertBlobMatchesHash(hash: string, blob: Blob) {
   }
 }
 
+export async function fetchMediaFromOrigins(
+  hash: string,
+  origins: string[],
+): Promise<Blob | null> {
+  const seen = new Set<string>();
+  for (const origin of origins) {
+    const parsed = parseMediaNodeOrigin(origin);
+    if (!parsed || seen.has(parsed)) continue;
+    seen.add(parsed);
+    try {
+      const blob = await fetchMediaFromNode(parsed, hash);
+      if (blob) return blob;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 export async function fetchMediaFromNode(
   origin: string,
   hash: string,

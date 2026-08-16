@@ -7,7 +7,11 @@ a record below that floor.
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
+
+MEDIA_HASH_RE = re.compile(r"^sha256:([a-f0-9]{64})$", re.I)
 
 DEFAULT_MIN_REPLICAS = 3
 DEFAULT_SHARD_COUNT = 16
@@ -140,7 +144,14 @@ def validate_decree(decree: Any) -> tuple[bool, str]:
     return True, "ok"
 
 
-def host_should_store(host_id: str, object_id: str, decree: dict[str, Any]) -> bool:
+def host_should_store(
+    host_id: str,
+    object_id: str,
+    decree: dict[str, Any],
+    pinned: set[str] | None = None,
+) -> bool:
+    if pinned and object_id in pinned:
+        return True
     if decree.get("mode") != "sharded":
         return True
     shard_count = int(decree.get("shardCount") or DEFAULT_SHARD_COUNT)
@@ -160,6 +171,30 @@ def host_should_store(host_id: str, object_id: str, decree: dict[str, Any]) -> b
     return shard_for(object_id, shard_count) in assigned
 
 
+def pin_ids_for_listing(record: dict[str, Any]) -> set[str]:
+    record_id = str(record.get("id") or "").strip()
+    pins: set[str] = set()
+    if record_id:
+        pins.add(f"listing:{record_id}")
+    seller_id = str(record.get("sellerId") or "").strip()
+    if seller_id:
+        pins.add(f"profile:{seller_id}")
+    manifest = record.get("imageManifest") or record.get("imageManifestJson")
+    if isinstance(manifest, str):
+        try:
+            manifest = json.loads(manifest)
+        except json.JSONDecodeError:
+            manifest = []
+    if isinstance(manifest, list):
+        for item in manifest:
+            if not isinstance(item, dict):
+                continue
+            match = MEDIA_HASH_RE.match(str(item.get("hash") or ""))
+            if match:
+                pins.add(f"media:{match.group(1).lower()}")
+    return pins
+
+
 def replica_count(object_id: str, inventories: dict[str, set[str]]) -> int:
     return sum(1 for held in inventories.values() if object_id in held)
 
@@ -169,7 +204,10 @@ def can_drop_object(
     object_id: str,
     inventories: dict[str, set[str]],
     decree: dict[str, Any],
+    pinned: set[str] | None = None,
 ) -> tuple[bool, str]:
+    if pinned and object_id in pinned:
+        return False, "owner_pinned"
     ok, reason = validate_decree(decree)
     if not ok:
         return False, reason

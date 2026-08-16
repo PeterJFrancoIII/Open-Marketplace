@@ -1,5 +1,6 @@
+import { attachMediaHosts } from "./image-manifest";
 import {
-  fetchMediaFromNode,
+  fetchMediaFromOrigins,
   publishMediaToNode,
   readMediaNodeConfig,
   toSha256Hash,
@@ -53,6 +54,11 @@ function getAsset(database: IDBDatabase, hash: string): Promise<StoredAsset | un
   });
 }
 
+function hostOriginsFor(extraOrigins: string[] = []): string[] {
+  const node = readMediaNodeConfig();
+  return [node?.origin, ...extraOrigins].filter((origin): origin is string => Boolean(origin));
+}
+
 export async function storeMedia(files: File[]): Promise<MediaManifest[]> {
   if (!files.length) return [];
 
@@ -72,14 +78,14 @@ export async function storeMedia(files: File[]): Promise<MediaManifest[]> {
         blob: file,
         storedAt: new Date().toISOString(),
       });
-      if (node) {
+      if (node?.writeToken) {
         try {
           await publishMediaToNode(node, manifest.hash, file);
         } catch {
-          // Local vault remains; the node copy is retried the next time this photo is stored.
+          // pinListingMediaToHost retries from the local vault after hashing.
         }
       }
-      manifests.push(manifest);
+      manifests.push(node ? attachMediaHosts(manifest, [node.origin]) : manifest);
     }
     return manifests;
   } finally {
@@ -87,15 +93,16 @@ export async function storeMedia(files: File[]): Promise<MediaManifest[]> {
   }
 }
 
-export async function getLocalMediaUrl(hash: string): Promise<string | null> {
+export async function getLocalMediaUrl(
+  hash: string,
+  extraOrigins: string[] = [],
+): Promise<string | null> {
   const database = await openMediaDatabase();
   try {
     const local = await getAsset(database, hash);
     if (local?.blob) return URL.createObjectURL(local.blob);
 
-    const node = readMediaNodeConfig();
-    if (!node) return null;
-    const remote = await fetchMediaFromNode(node.origin, hash);
+    const remote = await fetchMediaFromOrigins(hash, hostOriginsFor(extraOrigins));
     if (!remote) return null;
     await putAsset(database, {
       hash,
@@ -106,6 +113,39 @@ export async function getLocalMediaUrl(hash: string): Promise<string | null> {
       storedAt: new Date().toISOString(),
     });
     return URL.createObjectURL(remote);
+  } finally {
+    database.close();
+  }
+}
+
+export async function pinListingMediaToHost(
+  manifests: MediaManifest[],
+): Promise<MediaManifest[]> {
+  const node = readMediaNodeConfig();
+  if (!node?.writeToken || !manifests.length) {
+    return manifests.map((manifest) => ({ ...manifest }));
+  }
+  const database = await openMediaDatabase();
+  try {
+    const pinned: MediaManifest[] = [];
+    for (const manifest of manifests) {
+      const local = await getAsset(database, manifest.hash);
+      const blob =
+        local?.blob ??
+        (await fetchMediaFromOrigins(manifest.hash, hostOriginsFor(manifest.hosts)));
+      if (blob) {
+        await publishMediaToNode(node, manifest.hash, blob);
+        if (!local?.blob) {
+          await putAsset(database, {
+            ...manifest,
+            blob,
+            storedAt: new Date().toISOString(),
+          });
+        }
+      }
+      pinned.push(attachMediaHosts(manifest, [node.origin]));
+    }
+    return pinned;
   } finally {
     database.close();
   }

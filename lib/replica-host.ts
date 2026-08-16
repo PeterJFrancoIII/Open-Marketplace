@@ -45,6 +45,7 @@ export function publicListingRecord(listing: Listing): Record<string, unknown> {
     buyerRatingCount: listing.buyerRatingCount ?? 0,
     socialProofs: listing.socialProofs,
     imageManifest: listing.imageManifest,
+    pinned: true,
     paymentDestinations: listing.paymentDestinations ?? [],
     shippingPackage: listing.shippingPackage ?? null,
     createdAt: listing.createdAt,

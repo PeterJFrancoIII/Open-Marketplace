@@ -148,6 +148,9 @@ def pull_public_registry(source: str) -> dict:
         try:
             listing = policy.sanitize_public_record("listing", row)
             store.put_object("listing", listing["id"], listing)
+            operator_id = (os.environ.get("HOST_OPERATOR_SELLER_ID") or "").strip()
+            if operator_id and str(listing.get("sellerId") or "") == operator_id:
+                store.add_pins(policy.pin_ids_for_listing(listing))
             stored += 1
         except ValueError:
             continue
@@ -201,6 +204,7 @@ def scale_down() -> dict:
                 object_id,
                 inventories,
                 decree,
+                store.get_pins(),
             )
             if allowed:
                 store.delete_object(kind, record["id"])
@@ -394,6 +398,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(400, {"error": "id_mismatch"}, origin)
                 return
             store.put_object(object_ref[0], record["id"], record)
+            if object_ref[0] == "listing":
+                store.add_pins(policy.pin_ids_for_listing(record))
+            elif object_ref[0] == "profile":
+                store.add_pins({f"profile:{record['id']}"})
             self._json(201, {"ok": True, "kind": object_ref[0], "id": record["id"]}, origin)
             return
         hex_digest = self._hash_from_path(path)
@@ -411,6 +419,7 @@ class Handler(BaseHTTPRequestHandler):
         target = store.media_path(hex_digest)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(body)
+        store.add_pins({f"media:{hex_digest}"})
         self._json(201, {"ok": True, "hash": f"sha256:{hex_digest}"}, origin)
 
     def do_POST(self) -> None:  # noqa: N802
@@ -470,6 +479,7 @@ class Handler(BaseHTTPRequestHandler):
             object_id,
             local_inventory_map(),
             current_decree(),
+            store.get_pins(),
         )
         if not allowed:
             self._json(409, {"error": reason}, origin)

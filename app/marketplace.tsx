@@ -22,7 +22,8 @@ import {
   type PhotoDraft,
 } from "../lib/listing-photos";
 import { readMediaNodeConfig } from "../lib/media-node";
-import { getLocalMediaUrl, storeMedia } from "../lib/media-store";
+import { publicMediaOriginsFromManifests } from "../lib/image-manifest";
+import { getLocalMediaUrl, pinListingMediaToHost, storeMedia } from "../lib/media-store";
 import { fetchReplicaCatalog, publishReplicaSnapshot } from "../lib/replica-host";
 import { paymentLinksFor } from "../lib/payment-links";
 import { parsePaymentDestinationsJson } from "../lib/payment-destinations";
@@ -473,6 +474,11 @@ function normalizeRegistryListing(row: RegistryRow): Listing {
   };
 }
 
+function listingPhotoLoader(listing: Listing) {
+  const origins = publicMediaOriginsFromManifests(listing.imageManifest);
+  return (hash: string) => getLocalMediaUrl(hash, origins);
+}
+
 function formatPrice(listing: Listing): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -664,11 +670,16 @@ export default function Marketplace() {
       setPhotoDrafts(photoDraftsFromManifest(listing.imageManifest));
       setSelectedListing(listing);
       setModal("create");
-      void photoDraftsFromExisting(listing.imageManifest, getLocalMediaUrl).then(
-        (drafts) => {
-          if (!cancelled) setPhotoDrafts(drafts);
-        },
-      );
+      void (async () => {
+        const pinned = await pinListingMediaToHost(listing.imageManifest).catch(
+          () => listing.imageManifest,
+        );
+        const drafts = await photoDraftsFromExisting(pinned, listingPhotoLoader({
+          ...listing,
+          imageManifest: pinned,
+        }));
+        if (!cancelled) setPhotoDrafts(drafts);
+      })();
     });
     return () => {
       cancelled = true;
@@ -729,13 +740,27 @@ export default function Marketplace() {
         if (node) {
           try {
             const catalog = await fetchReplicaCatalog(node.origin);
-            const seen = new Set(registryListings.map((listing) => listing.id));
+            const seen = new Map(registryListings.map((listing) => [listing.id, listing]));
             for (const row of catalog.listings) {
               const extra = normalizeRegistryListing(row);
-              if (!seen.has(extra.id)) {
-                seen.add(extra.id);
+              const current = seen.get(extra.id);
+              if (!current) {
+                seen.set(extra.id, extra);
                 registryListings.push(extra);
+                continue;
               }
+              const hosts = publicMediaOriginsFromManifests(extra.imageManifest);
+              if (!hosts.length) continue;
+              current.imageManifest = current.imageManifest.map((asset, index) => ({
+                ...asset,
+                hosts: [
+                  ...new Set([
+                    ...(asset.hosts ?? []),
+                    ...(extra.imageManifest[index]?.hosts ?? []),
+                    ...hosts,
+                  ]),
+                ],
+              }));
             }
           } catch {
             // The Synology host is optional; Cloudflare D1 or demo data still works.
@@ -771,10 +796,14 @@ export default function Marketplace() {
         }
         void refreshSocialHealth(registryListings);
 
+        const ownerId = session?.user.id;
         for (const listing of registryListings) {
           const firstAsset = listing.imageManifest[0];
           if (!firstAsset) continue;
-          const url = await getLocalMediaUrl(firstAsset.hash).catch(() => null);
+          const url = await getLocalMediaUrl(
+            firstAsset.hash,
+            publicMediaOriginsFromManifests(listing.imageManifest),
+          ).catch(() => null);
           if (url && !cancelled) {
             setLocalMedia((current) => ({ ...current, [listing.id]: url }));
             setListings((current) =>
@@ -784,6 +813,9 @@ export default function Marketplace() {
                   : item,
               ),
             );
+            if (ownerId && listing.sellerId === ownerId) {
+              void pinListingMediaToHost(listing.imageManifest).catch(() => {});
+            }
           }
         }
       } catch {
@@ -795,7 +827,7 @@ export default function Marketplace() {
     return () => {
       cancelled = true;
     };
-  }, [refreshSocialHealth]);
+  }, [refreshSocialHealth, session?.user.id]);
 
   useEffect(() => {
     const overlayOpen = Boolean(modal || filtersOpen);
@@ -940,7 +972,15 @@ export default function Marketplace() {
     setShippingQuoteMessage("");
     setSelectedListing(listing);
     setModal("create");
-    void photoDraftsFromExisting(listing.imageManifest, getLocalMediaUrl).then(setPhotoDrafts);
+    void (async () => {
+      const pinned = await pinListingMediaToHost(listing.imageManifest).catch(
+        () => listing.imageManifest,
+      );
+      setPhotoDrafts(await photoDraftsFromExisting(pinned, listingPhotoLoader({
+        ...listing,
+        imageManifest: pinned,
+      })));
+    })();
   }
 
   function handleCardKey(event: KeyboardEvent<HTMLElement>, listing: Listing) {
@@ -983,7 +1023,13 @@ export default function Marketplace() {
 
     setSubmitting(true);
     try {
-      const imageManifest = await manifestsFromPhotoDrafts(photoDrafts, storeMedia);
+      let imageManifest = await manifestsFromPhotoDrafts(photoDrafts, storeMedia);
+      let hostCopyFailed = false;
+      try {
+        imageManifest = await pinListingMediaToHost(imageManifest);
+      } catch {
+        hostCopyFailed = true;
+      }
 
       const payload = {
         ...(editingListingId ? { id: editingListingId } : {}),
@@ -1047,6 +1093,7 @@ export default function Marketplace() {
         }
         if (!response.ok || !result.listing) throw new Error("Registry write failed");
         listing = normalizeRegistryListing(result.listing);
+        listing.imageManifest = imageManifest;
         listing.mediaAvailability = imageManifest.length ? "local" : "offline";
       } catch {
         if (editingListingId) {
@@ -1081,8 +1128,12 @@ export default function Marketplace() {
       setToast(
         listing.source === "registry"
           ? editingListingId
-            ? "Listing updated. A public copy goes to the first database host when it is connected."
-            : "Listing published. A public copy goes to the first database host when it is connected."
+            ? hostCopyFailed
+              ? "Listing updated. Photos could not be copied to your database host."
+              : "Listing updated. Your host kept a copy of this item and its photos."
+            : hostCopyFailed
+              ? "Listing published. Photos could not be copied to your database host."
+              : "Listing published. Your host kept a copy of this item and its photos."
           : "Saved on this device; the registry is not connected in this preview.",
       );
     } catch {
@@ -1693,7 +1744,7 @@ export default function Marketplace() {
                         <span className="upload-copy">
                           <strong>Add photos</strong>
                           <span>
-                            {photoDrafts.length} of {LISTING_PHOTO_LIMIT} · hashed locally · copied to your trusted media node when connected · never uploaded to the registry
+                            {photoDrafts.length} of {LISTING_PHOTO_LIMIT} · hashed locally · copied to your first database host when connected · never uploaded to the registry
                           </span>
                         </span>
                         <input type="file" accept="image/*" multiple onChange={handleFiles} />

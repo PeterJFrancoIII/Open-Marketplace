@@ -160,3 +160,16 @@ def counts() -> dict[str, int]:
     tallies = {kind: len(list_objects(kind)) for kind in OBJECT_KINDS}
     tallies["media"] = len(list_media_hashes())
     return tallies
+
+
+def get_pins() -> set[str]:
+    raw = read_json("pins.json", [])
+    if not isinstance(raw, list):
+        return set()
+    return {str(item) for item in raw if item}
+
+
+def add_pins(ids: set[str]) -> None:
+    pins = get_pins()
+    pins.update(item for item in ids if item)
+    write_json("pins.json", sorted(pins))

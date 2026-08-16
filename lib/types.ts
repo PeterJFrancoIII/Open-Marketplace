@@ -3,6 +3,7 @@ export type MediaManifest = {
   name: string;
   size: number;
   type: string;
+  hosts?: string[];
 };
 
 export type FacebookConnection = {

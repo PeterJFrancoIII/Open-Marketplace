@@ -143,7 +143,9 @@ export function hostShouldStore(
   hostId: string,
   objectId: string,
   decree: HostDecree,
+  pinned: Iterable<string> = [],
 ): boolean {
+  if (new Set(pinned).has(objectId)) return true;
   if (decree.mode !== "sharded") return true;
   const host = decree.hosts.find((item) => item.hostId === hostId);
   if (!host) return true;
@@ -165,7 +167,11 @@ export function canDropObject(
   objectId: string,
   inventories: Record<string, Iterable<string>>,
   decree: HostDecree,
+  pinned: Iterable<string> = [],
 ): { ok: boolean; reason: string } {
+  if (new Set(pinned).has(objectId)) {
+    return { ok: false, reason: "owner_pinned" };
+  }
   const valid = validateDecree(decree);
   if (!valid.ok) return valid;
   const others: Record<string, Iterable<string>> = {};

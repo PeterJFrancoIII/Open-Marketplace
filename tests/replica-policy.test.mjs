@@ -43,6 +43,31 @@ test("Main cannot shard until the replica floor is met", () => {
   assert.equal(validateDecree(ready).ok, true);
 });
 
+test("a host never drops its own pinned listings", () => {
+  const decree = genesisDecree(FIRST_HOST_ID);
+  decree.mode = "sharded";
+  decree.hosts = [
+    { hostId: "a", shards: [0] },
+    { hostId: "b", shards: [0] },
+    { hostId: "c", shards: [0] },
+    { hostId: FIRST_HOST_ID, shards: [] },
+  ];
+  const blocked = canDropObject(
+    FIRST_HOST_ID,
+    "listing:mine",
+    {
+      a: ["listing:mine"],
+      b: ["listing:mine"],
+      c: ["listing:mine"],
+      [FIRST_HOST_ID]: ["listing:mine"],
+    },
+    decree,
+    ["listing:mine"],
+  );
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.reason, "owner_pinned");
+});
+
 test("hosts refuse to drop the last copies", () => {
   const decree = genesisDecree(FIRST_HOST_ID);
   const blocked = canDropObject(

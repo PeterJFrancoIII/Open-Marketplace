@@ -329,7 +329,7 @@ test("signed-in users can open /account", async () => {
   assert.match(html, /Instagram/i);
   assert.match(html, /TikTok/i);
   assert.match(html, /Payment options/i);
-  assert.match(html, /Shipping connectors/i);
+  assert.match(html, /Payment methods/i);
   assert.match(html, /PayPal/i);
   assert.match(html, /Venmo/i);
   assert.match(html, /Cash App/i);
@@ -350,20 +350,10 @@ test("signed-in users can open /account", async () => {
   assert.match(html, /Tether \(USDT\) · Ethereum Mainnet \(ERC-20\)/i);
   assert.match(html, /BNB · BNB Smart Chain Mainnet/i);
   assert.match(html, /USDC · Ethereum Mainnet \(ERC-20\)/i);
-  assert.match(html, /Pirate Ship/i);
-  assert.match(html, /Parcel Monkey/i);
-  assert.match(html, /USPS/i);
-  assert.match(html, /UPS/i);
-  assert.match(html, /FedEx/i);
-  assert.match(html, /DHL/i);
-  assert.match(html, /Open(?:<!-- -->|\s)+PayPal/i);
-  assert.match(html, /Connect(?:<!-- -->|\s)+Pirate Ship/i);
   assert.equal(
     [...html.matchAll(/value="user@example.com"/g)].length,
     1,
   );
-  assert.doesNotMatch(html, /<h2[^>]*>Profile<\/h2>/i);
-  assert.doesNotMatch(html, /Payment methods/i);
   assert.doesNotMatch(html, /Solana/i);
   assert.doesNotMatch(html, /Apple Pay|Stripe|Plaid/i);
 });
@@ -739,7 +729,6 @@ test("payment destinations stay on the recovered allowlist and reject unsafe val
   assert.equal(empty.status, 200);
   const emptyBody = await empty.json();
   assert.deepEqual(emptyBody.paymentDestinations, []);
-  assert.deepEqual(emptyBody.shippingBrokers, []);
   assert.equal(
     emptyBody.paymentDestinations.some(
       (item) => item.destination === "payment-owner@example.com",

@@ -4,7 +4,6 @@ import { getDb } from "../../db";
 import { listings, profiles } from "../../db/schema";
 import { parsePaymentDestinationsJson } from "../../lib/payment-destinations";
 import { parseSocialAccountsJson } from "../../lib/profile-settings";
-import { parseShippingBrokersJson } from "../../lib/shipping-brokers";
 import {
   fillEmptyProfileFromFacebook,
   getFacebookConnection,
@@ -82,7 +81,7 @@ export default async function AccountPage() {
     >
       <section className="portal-panel" aria-labelledby="account-welcome">
         <p className="portal-eyebrow">Your console</p>
-        <h1 id="account-welcome">Welcome, {identity.name ?? session.user.name}</h1>
+        <h1 id="account-welcome">Welcome, {session.user.name}</h1>
         <p className="portal-lead">
           Manage the listings tied to this signed-in account. Ownership always
           comes from the server session.
@@ -141,14 +140,39 @@ export default async function AccountPage() {
         )}
       </section>
 
+      <section className="portal-panel" aria-labelledby="account-profile-title">
+        <h2 id="account-profile-title">Profile</h2>
+        <dl className="portal-definition-list">
+          {identity.image ? (
+            <div>
+              <dt>Photo</dt>
+              <dd>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={identity.image}
+                  alt=""
+                  width={48}
+                  height={48}
+                />
+              </dd>
+            </div>
+          ) : null}
+          <div>
+            <dt>Name</dt>
+            <dd>{identity.name ?? session.user.name}</dd>
+          </div>
+          <div>
+            <dt>Email</dt>
+            <dd>{session.user.email}</dd>
+          </div>
+        </dl>
+      </section>
+
       <AccountSettings
         initialName={identity.name ?? session.user.name}
         email={session.user.email}
         initialSocialAccounts={parseSocialAccountsJson(profile?.socialAccountsJson)}
         initialPaymentDestinations={parsePaymentDestinationsJson(
-          profile?.paymentDestinationsJson,
-        )}
-        initialShippingBrokers={parseShippingBrokersJson(
           profile?.paymentDestinationsJson,
         )}
         initialFacebookConnection={facebookConnection}

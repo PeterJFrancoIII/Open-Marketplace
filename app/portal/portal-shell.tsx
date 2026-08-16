@@ -65,10 +65,8 @@ export default function PortalShell({
                 height={32}
               />
             ) : null}
-            <span className="portal-user-copy">
-              <span className="portal-user-name">{user.name}</span>
-              <span className="portal-user-email">{user.email}</span>
-            </span>
+            <span className="portal-user-name">{user.name}</span>
+            <span className="portal-user-email">{user.email}</span>
           </p>
           <Link className="button button-ghost portal-back" href="/">
             Back to marketplace

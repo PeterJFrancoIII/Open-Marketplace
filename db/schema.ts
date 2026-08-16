@@ -230,6 +230,30 @@ export const conversations = sqliteTable(
   ],
 );
 
+export const conversationMedia = sqliteTable(
+  "conversation_media",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    hash: text("hash").notNull(),
+    kind: text("kind").notNull(),
+    name: text("name").notNull(),
+    type: text("type").notNull(),
+    size: integer("size").notNull(),
+    bytesBase64: text("bytes_base64").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex("conversation_media_kind_idx").on(
+      table.conversationId,
+      table.kind,
+    ),
+    index("conversation_media_hash_idx").on(table.conversationId, table.hash),
+  ],
+);
+
 export const conversationMessages = sqliteTable(
   "conversation_messages",
   {

@@ -12,6 +12,7 @@ import {
   type SaleStatus,
   saleStatusLabel,
 } from "../../../lib/conversation-limits";
+import { prepareEvidenceFile, readAsDataUrl } from "../../../lib/evidence-photo";
 import { getLocalMediaUrl, storeMedia } from "../../../lib/media-store";
 import {
   TRACKING_EMBED_SCRIPT,
@@ -77,34 +78,53 @@ function formatMoney(cents: number, currency = "USD") {
 }
 
 function SaleProof({
+  conversationId,
   label,
   photo,
 }: {
+  conversationId: string;
   label: string;
-  photo: MediaManifest | null;
+  photo: (MediaManifest & { dataUrl?: string }) | null;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const photoKey = photo
-    ? `${photo.hash}:${(photo.hosts ?? []).join(",")}`
+    ? `${conversationId}:${photo.hash}:${photo.dataUrl ? "draft" : "saved"}:${(photo.hosts ?? []).join(",")}`
     : "";
 
   useEffect(() => {
     if (!photoKey || !photo) return;
     let objectUrl: string | null = null;
     let cancelled = false;
-    void getLocalMediaUrl(photo.hash, photo.hosts ?? []).then((next) => {
-      if (cancelled) {
-        if (next) URL.revokeObjectURL(next);
+    void (async () => {
+      if (photo.dataUrl) {
+        setUrl(photo.dataUrl);
         return;
       }
-      objectUrl = next;
-      setUrl(next);
-    });
+      const local = await getLocalMediaUrl(photo.hash, photo.hosts ?? []);
+      if (cancelled) {
+        if (local) URL.revokeObjectURL(local);
+        return;
+      }
+      if (local) {
+        objectUrl = local;
+        setUrl(local);
+        return;
+      }
+      const response = await fetch(
+        `/api/conversations/evidence/media?conversationId=${encodeURIComponent(conversationId)}&hash=${encodeURIComponent(photo.hash)}`,
+        { headers: { accept: photo.type || "image/*" } },
+      );
+      if (!response.ok || cancelled) return;
+      const blob = await response.blob();
+      if (cancelled) return;
+      objectUrl = URL.createObjectURL(blob);
+      setUrl(objectUrl);
+    })();
     return () => {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [photo, photoKey]);
+  }, [conversationId, photo, photoKey]);
 
   if (!photo) {
     return <p className="portal-empty">{label}: not uploaded yet.</p>;
@@ -318,11 +338,12 @@ export default function MessagesClient({
   const [trackingDirty, setTrackingDirty] = useState(false);
   const [showTransferPrompt, setShowTransferPrompt] = useState(false);
   const [evidenceRequestDraft, setEvidenceRequestDraft] = useState("");
-  const [shippedItemDraft, setShippedItemDraft] = useState<MediaManifest | null>(
-    null,
-  );
-  const [shippedPackagingDraft, setShippedPackagingDraft] =
-    useState<MediaManifest | null>(null);
+  const [shippedItemDraft, setShippedItemDraft] = useState<
+    (MediaManifest & { dataUrl?: string }) | null
+  >(null);
+  const [shippedPackagingDraft, setShippedPackagingDraft] = useState<
+    (MediaManifest & { dataUrl?: string }) | null
+  >(null);
   const trackingValue = trackingDirty
     ? trackingDraft
     : conversation?.trackingNumber ?? "";
@@ -491,14 +512,17 @@ export default function MessagesClient({
     setBusy("evidence");
     setError("");
     try {
-      const [manifest] = await storeMedia([file]);
+      const prepared = await prepareEvidenceFile(file);
+      const [manifest] = await storeMedia([prepared]);
       if (!manifest) {
         setError("Could not store that photo on this device.");
         return;
       }
-      if (kind === "shippedItem") setShippedItemDraft(manifest);
-      if (kind === "shippedPackaging") setShippedPackagingDraft(manifest);
-      if (persist) await persistSaleEvidence({ [kind]: manifest });
+      const dataUrl = await readAsDataUrl(prepared);
+      const evidencePhoto = { ...manifest, dataUrl };
+      if (kind === "shippedItem") setShippedItemDraft(evidencePhoto);
+      if (kind === "shippedPackaging") setShippedPackagingDraft(evidencePhoto);
+      if (persist) await persistSaleEvidence({ [kind]: evidencePhoto });
     } catch {
       setError("Could not store that photo on this device.");
     } finally {
@@ -874,10 +898,12 @@ export default function MessagesClient({
                     />
                   </label>
                   <SaleProof
+                    conversationId={conversation.id}
                     label="Item photo"
                     photo={shippedItemDraft ?? conversation.shippedItem}
                   />
                   <SaleProof
+                    conversationId={conversation.id}
                     label="Shipping box"
                     photo={shippedPackagingDraft ?? conversation.shippedPackaging}
                   />
@@ -1002,10 +1028,12 @@ export default function MessagesClient({
               ) ? (
                 <>
                   <SaleProof
+                    conversationId={conversation.id}
                     label="Item photo"
                     photo={conversation.shippedItem}
                   />
                   <SaleProof
+                    conversationId={conversation.id}
                     label="Shipping box"
                     photo={conversation.shippedPackaging}
                   />
@@ -1118,9 +1146,21 @@ export default function MessagesClient({
                   </label>
                 </div>
               ) : null}
-              <SaleProof label="Payment receipt" photo={conversation.paymentReceipt} />
-              <SaleProof label="Product received" photo={conversation.receivedItem} />
-              <SaleProof label="Packaging received" photo={conversation.receivedPackaging} />
+              <SaleProof
+                conversationId={conversation.id}
+                label="Payment receipt"
+                photo={conversation.paymentReceipt}
+              />
+              <SaleProof
+                conversationId={conversation.id}
+                label="Product received"
+                photo={conversation.receivedItem}
+              />
+              <SaleProof
+                conversationId={conversation.id}
+                label="Packaging received"
+                photo={conversation.receivedPackaging}
+              />
             </div>
 
             <div className="portal-sale-box">

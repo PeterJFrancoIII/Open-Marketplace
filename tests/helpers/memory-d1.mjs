@@ -102,6 +102,7 @@ export function applyMarketplaceMigrations(d1) {
     "drizzle/0006_paypal_sale_price.sql",
     "drizzle/0007_sale_evidence.sql",
     "drizzle/0008_shipping_evidence.sql",
+    "drizzle/0009_conversation_media.sql",
   ];
   for (const relativePath of files) {
     const sql = readFileSync(join(repoRoot, relativePath), "utf8");

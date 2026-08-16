@@ -2,6 +2,7 @@ import { and, desc, eq, gte, inArray, or } from "drizzle-orm";
 import { getDb } from "../db";
 import {
   authUsers,
+  conversationMedia,
   conversationMessages,
   conversations,
   listings,
@@ -26,6 +27,8 @@ import {
   saleEvidenceMissing,
   sanitizeSalePhoto,
   serializeSalePhoto,
+  verifySalePhotoUpload,
+  type SalePhotoKind,
 } from "./sale-evidence";
 import { requireActualTrackingNumber } from "./tracking-number";
 import { computeSocialCreditScore } from "./social-credit";
@@ -394,6 +397,90 @@ function readEvidencePatch(
   return { ok: true, patch };
 }
 
+async function storeEvidencePhotos(
+  db: Db,
+  conversationId: string,
+  role: "buyer" | "seller",
+  input: SaleEvidenceInput | undefined,
+) {
+  if (!input) return { ok: true as const };
+  const fields: Array<[keyof SaleEvidenceInput, SalePhotoKind]> =
+    role === "seller"
+      ? [
+          ["shippedItem", "shippedItem"],
+          ["shippedPackaging", "shippedPackaging"],
+        ]
+      : [
+          ["paymentReceipt", "paymentReceipt"],
+          ["receivedItem", "receivedItem"],
+          ["receivedPackaging", "receivedPackaging"],
+        ];
+  for (const [key, kind] of fields) {
+    if (input[key] === undefined) continue;
+    const verified = await verifySalePhotoUpload(input[key], kind);
+    if (!verified.ok) {
+      return { ok: false as const, status: 400, error: verified.error };
+    }
+    await db
+      .delete(conversationMedia)
+      .where(
+        and(
+          eq(conversationMedia.conversationId, conversationId),
+          eq(conversationMedia.kind, kind),
+        ),
+      );
+    await db.insert(conversationMedia).values({
+      id: crypto.randomUUID(),
+      conversationId,
+      hash: verified.manifest.hash,
+      kind,
+      name: verified.manifest.name,
+      type: verified.manifest.type,
+      size: verified.manifest.size,
+      bytesBase64: verified.bytesBase64,
+    });
+  }
+  return { ok: true as const };
+}
+
+export async function getConversationMedia(
+  db: Db,
+  actor: ConversationActor,
+  conversationId: string,
+  hash: string,
+) {
+  const [row] = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  if (!row || (row.buyerId !== actor.id && row.sellerId !== actor.id)) {
+    return { ok: false as const, status: 404, error: "Conversation not found." };
+  }
+  const [media] = await db
+    .select()
+    .from(conversationMedia)
+    .where(
+      and(
+        eq(conversationMedia.conversationId, conversationId),
+        eq(conversationMedia.hash, hash),
+      ),
+    )
+    .limit(1);
+  if (!media) {
+    return { ok: false as const, status: 404, error: "Sale photo not found." };
+  }
+  const bytes = Uint8Array.from(atob(media.bytesBase64), (char) =>
+    char.charCodeAt(0),
+  );
+  return {
+    ok: true as const,
+    name: media.name,
+    type: media.type,
+    bytes,
+  };
+}
+
 export async function updateSaleEvidence(
   db: Db,
   actor: ConversationActor,
@@ -455,6 +542,10 @@ export async function updateSaleEvidence(
   if (role === "seller" && isShippingEvidencePatch(parsed.patch)) {
     nextPatch.evidenceRequestNote = null;
     nextPatch.evidenceRequestedAt = null;
+  }
+  const stored = await storeEvidencePhotos(db, conversationId, role, input);
+  if (!stored.ok) {
+    return { ok: false as const, status: stored.status, error: stored.error };
   }
   await db
     .update(conversations)
@@ -555,6 +646,10 @@ export async function setSaleStatus(
   if (role === "seller" && isShippingEvidencePatch(parsed.patch)) {
     parsed.patch.evidenceRequestNote = null;
     parsed.patch.evidenceRequestedAt = null;
+  }
+  const stored = await storeEvidencePhotos(db, conversationId, role, evidence);
+  if (!stored.ok) {
+    return { ok: false as const, status: stored.status, error: stored.error };
   }
 
   if (myStatus === status && !Object.keys(parsed.patch).length) {
@@ -669,6 +764,10 @@ export async function acceptSaleEvidence(
       status: 400,
       error: "Upload a copy of the payment receipt before accepting this evidence.",
     };
+  }
+  const stored = await storeEvidencePhotos(db, conversationId, "buyer", evidence);
+  if (!stored.ok) {
+    return { ok: false as const, status: stored.status, error: stored.error };
   }
 
   const now = new Date().toISOString();

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { register } from "node:module";
 import test from "node:test";
@@ -153,13 +154,14 @@ async function getJson(worker, env, path, cookieJar) {
 }
 
 function salePhoto(name) {
+  const payload = Buffer.from(`OM-SALE-PHOTO:${name}`);
   return {
-    hash: `sha256:${"ab".repeat(32)}`,
+    hash: `sha256:${createHash("sha256").update(payload).digest("hex")}`,
     name,
-    size: 2048,
+    size: payload.length,
     type: "image/jpeg",
     bytes: "SECRET_SALE_PHOTO_BYTES",
-    dataUrl: "data:image/jpeg;base64,aaaa",
+    dataUrl: `data:image/jpeg;base64,${payload.toString("base64")}`,
   };
 }
 
@@ -242,6 +244,8 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   assert.doesNotMatch(listingsRoute, /received_item/);
   assert.doesNotMatch(listingsRoute, /shipped_item/);
   assert.doesNotMatch(listingsRoute, /evidence_request/);
+  assert.doesNotMatch(listingsRoute, /conversation_media/);
+  assert.doesNotMatch(listingsRoute, /bytes_base64/);
   assert.doesNotMatch(listingsRoute, /tracking_number/);
 
   const replica = await readFile(new URL("../lib/replica-host.ts", import.meta.url), "utf8");
@@ -279,6 +283,7 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   assert.match(messagesUi, /Accept Evidence/);
   assert.match(messagesUi, /Ask for additional evidence/);
   assert.match(messagesUi, /\/api\/conversations\/evidence/);
+  assert.match(messagesUi, /\/api\/conversations\/evidence\/media/);
   assert.match(messagesUi, /17TRACK/);
   assert.doesNotMatch(messagesUi, /PICKUP/);
 });
@@ -371,6 +376,14 @@ test("signed-out chat, sale, and rating requests are rejected", async () => {
     trackingNumber: "1Z999AA10123456784",
   });
   assert.equal(evidence.status, 401);
+
+  const media = await workerFetch(
+    worker,
+    env,
+    "/api/conversations/evidence/media?conversationId=missing&hash=sha256:dead",
+    { headers: { accept: "image/jpeg" } },
+  );
+  assert.equal(media.status, 401);
 
   const accept = await postJson(worker, env, "/api/conversations/evidence", undefined, {
     conversationId: "missing",
@@ -590,7 +603,35 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   assert.equal(sellerInTransferBody.conversation.shippedItem.name, "shipped-item.jpg");
   assert.equal(sellerInTransferBody.conversation.shippedPackaging.name, "shipped-box.jpg");
   assert.equal(sellerInTransferBody.conversation.shippedItem.bytes, undefined);
+  assert.equal(sellerInTransferBody.conversation.shippedItem.dataUrl, undefined);
   assert.doesNotMatch(JSON.stringify(sellerInTransferBody), /SECRET_SALE_PHOTO_BYTES/);
+  assert.doesNotMatch(JSON.stringify(sellerInTransferBody), /data:image\/jpeg;base64,/);
+  assert.doesNotMatch(JSON.stringify(sellerInTransferBody), /bytes_base64/);
+
+  const buyerSeesItem = await workerFetch(
+    worker,
+    env,
+    `/api/conversations/evidence/media?conversationId=${conversation.id}&hash=${encodeURIComponent(sellerInTransferBody.conversation.shippedItem.hash)}`,
+    {
+      headers: { accept: "image/jpeg" },
+      cookieJar: buyerJar,
+    },
+  );
+  assert.equal(buyerSeesItem.status, 200);
+  assert.match(buyerSeesItem.headers.get("content-type") ?? "", /image\/jpeg/);
+  const buyerItemBytes = Buffer.from(await buyerSeesItem.arrayBuffer());
+  assert.equal(buyerItemBytes.toString(), "OM-SALE-PHOTO:shipped-item.jpg");
+
+  const strangerMedia = await workerFetch(
+    worker,
+    env,
+    `/api/conversations/evidence/media?conversationId=${conversation.id}&hash=${encodeURIComponent(sellerInTransferBody.conversation.shippedItem.hash)}`,
+    {
+      headers: { accept: "image/jpeg" },
+      cookieJar: otherBuyerJar,
+    },
+  );
+  assert.equal(strangerMedia.status, 404);
 
   const publicAfterShip = await getJson(worker, env, "/api/listings?limit=80");
   const publicAfterShipJson = JSON.stringify(await publicAfterShip.json());
@@ -650,7 +691,11 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   const publicAfterReceiptJson = JSON.stringify(await publicAfterReceipt.json());
   assert.doesNotMatch(publicAfterReceiptJson, /receipt\.jpg/);
   assert.doesNotMatch(publicAfterReceiptJson, /SECRET_SALE_PHOTO_BYTES/);
-  assert.doesNotMatch(publicAfterReceiptJson, /sha256:abababababababababababababababababababababababababababababababab/);
+  assert.doesNotMatch(publicAfterReceiptJson, /data:image\/jpeg;base64,/);
+  assert.doesNotMatch(
+    publicAfterReceiptJson,
+    new RegExp(receiptBody.conversation.paymentReceipt.hash),
+  );
 
   const buyerCompleteBeforeAccept = await postJson(
     worker,

@@ -1,4 +1,5 @@
 import { sanitizeImageManifest } from "./image-manifest.ts";
+import { toSha256Hash } from "./media-node.ts";
 import {
   TRACKING_MAX,
   TRACKING_MIN,
@@ -45,6 +46,77 @@ export function sanitizeSalePhoto(
     size: manifest.size,
     type: manifest.type,
     hosts: manifest.hosts,
+  };
+}
+
+export const EVIDENCE_PHOTO_MAX_BYTES = 600_000;
+
+function decodeBase64Bytes(value: string): Uint8Array | null {
+  try {
+    const binary = atob(value);
+    if (binary.length > EVIDENCE_PHOTO_MAX_BYTES) return null;
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+export function readSalePhotoBytes(value: unknown): Uint8Array | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.dataUrl === "string") {
+    const match = /^data:[a-z0-9.+/-]+;base64,([A-Za-z0-9+/]+={0,2})$/i.exec(
+      row.dataUrl.trim(),
+    );
+    return match ? decodeBase64Bytes(match[1]) : null;
+  }
+  return null;
+}
+
+export function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+export async function verifySalePhotoUpload(
+  value: unknown,
+  kind: SalePhotoKind,
+): Promise<
+  | { ok: true; manifest: MediaManifest; bytes: Uint8Array; bytesBase64: string }
+  | { ok: false; error: string }
+> {
+  const manifest = sanitizeSalePhoto(value, kind);
+  if (!manifest) {
+    return {
+      ok: false,
+      error: "Upload a photo of the item. Image bytes stay off the public registry.",
+    };
+  }
+  const bytes = readSalePhotoBytes(value);
+  if (!bytes) {
+    return {
+      ok: false,
+      error: "Upload the photo file so the other person can see it.",
+    };
+  }
+  const digestSource = bytes.slice();
+  const hash = await toSha256Hash(digestSource.buffer);
+  if (hash !== manifest.hash) {
+    return {
+      ok: false,
+      error: "Photo bytes do not match the evidence hash.",
+    };
+  }
+  return {
+    ok: true,
+    manifest: { ...manifest, size: bytes.length },
+    bytes,
+    bytesBase64: bytesToBase64(bytes),
   };
 }
 

@@ -13,7 +13,7 @@ This repository is an MVP framework, not a promise that a browser can serve phot
 - Sorts for best match, newest, ending soon, price, and distance.
 - Fixed-price and auction-shaped listings.
 - Listing composer with local image previews.
-- SHA-256 image manifests; image blobs are stored in IndexedDB and never sent to `/api/listings`.
+- SHA-256 image manifests; image blobs are stored in IndexedDB and never sent to `/api/listings`. An optional first database host (`hosting-node/`, Synology Arch Linux) can hold a full public replica of listings, public profiles, and photos. Auth secrets stay off that host. Until three hosts exist, each host keeps a complete copy.
 - Cloudflare D1 metadata registry with indexed listing fields.
 - D1-backed accounts and sessions via Better Auth (email + password).
 - Server-session ownership for listing writes; browser-supplied seller identity is ignored.

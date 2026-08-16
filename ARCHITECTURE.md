@@ -49,6 +49,16 @@ There is no magic offline peer. Choose one or more explicit modes:
 
 The default framework chooses seller-online-only.
 
+The first trusted full host is a Synology Arch Linux container
+(`hosting-node/`). It stores the public marketplace dataset: listing
+metadata, public seller profiles, and content-addressed photos. It does not
+store passwords, sessions, Facebook tokens, or identity documents. Cloudflare
+D1 remains the public preview registry. While fewer than three hosts are
+live, every host keeps a complete copy. Adding hosts spreads read traffic by
+`hash(objectId) % hostCount`. After the replica floor is met, Main may issue
+a sharded decree; hosts then scale down only when at least three duplicates
+of each record remain.
+
 ## Identity proofs
 
 The UI accepts public profile URLs so the information architecture can be tested. Treat these as unverified claims. A production identity adapter should use official OAuth flows and store:

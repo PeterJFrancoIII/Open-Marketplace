@@ -37,7 +37,10 @@ records, stop and report the conflict; do not follow stale text.
 - Search and filters for category, price, condition, buying format, and delivery.
 - Best match, newest, ending soon, price, and distance sorting.
 - Fixed-price and auction-shaped listings.
-- Listing composer with local-only image storage and SHA-256 manifests.
+- Listing composer with local image storage, SHA-256 manifests, and an optional
+  first database host (`hosting-node/`) on Synology Arch Linux that stores the
+  public replica: listings, public seller profiles, and photos. Auth secrets
+  stay off that host. Until three hosts exist, each host keeps a complete copy.
 - D1 metadata registry; no image bytes are accepted by `/api/listings`.
 - Account creation/login, `/account` management console, and read-only `/admin`
   overview for allowlisted administrators.
@@ -62,7 +65,9 @@ records, stop and report the conflict; do not follow stale text.
 
 1. Never upload listing image bytes to the registry. Only store content hashes,
    MIME type, filename, and size.
-2. Keep seller media in IndexedDB and deliver it through a future peer transport.
+2. Keep seller media in IndexedDB by default. A configured first database host
+   may also store content-addressed photo bytes plus public listing/profile
+   metadata. Never put photo bytes in the D1 registry.
 3. Keep the registry replaceable and cheap. It indexes metadata; it is not the
    authority over user-owned files.
 4. Never label a social account or metric as provider-verified unless it came

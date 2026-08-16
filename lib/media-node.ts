@@ -138,6 +138,8 @@ export async function publishMediaToNode(
   }
 }
 
+const HOST_ROLES = new Set(["full-replica", "trusted-media-node"]);
+
 export async function probeMediaNode(origin: string): Promise<boolean> {
   const parsedOrigin = parseMediaNodeOrigin(origin);
   if (!parsedOrigin) return false;
@@ -146,5 +148,5 @@ export async function probeMediaNode(origin: string): Promise<boolean> {
   });
   if (!response.ok) return false;
   const body = (await response.json()) as { ok?: unknown; role?: unknown };
-  return body.ok === true && body.role === "trusted-media-node";
+  return body.ok === true && HOST_ROLES.has(String(body.role ?? ""));
 }

@@ -9,6 +9,11 @@ import {
   readMediaNodeConfig,
   writeMediaNodeConfig,
 } from "../../lib/media-node";
+import {
+  fetchReplicaStatus,
+  replicaStatusSummary,
+  type ReplicaStatus,
+} from "../../lib/replica-host";
 import { PAYMENT_RAILS } from "../../lib/payment-destinations";
 import {
   SHIPPING_BROKERS,
@@ -181,6 +186,7 @@ export default function AccountSettings({
   const [mediaNodeToken, setMediaNodeToken] = useState(
     () => readMediaNodeConfig()?.writeToken ?? "",
   );
+  const [replicaStatus, setReplicaStatus] = useState<ReplicaStatus | null>(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const oauthError = useSyncExternalStore(
@@ -422,26 +428,27 @@ export default function AccountSettings({
       if (!origin) {
         writeMediaNodeConfig(null);
         setMediaNodeToken("");
-        setStatus("Trusted media node disconnected on this device.");
+        setReplicaStatus(null);
+        setStatus("First database host disconnected on this device.");
         return;
       }
       const parsed = parseMediaNodeOrigin(origin);
       if (!parsed) {
         setError(
-          "Use an https origin for the Synology node, or http://localhost for local testing.",
+          "Use an https origin for the Synology host, or http://localhost for local testing.",
         );
         return;
       }
       writeMediaNodeConfig({ origin: parsed, writeToken: mediaNodeToken });
       setMediaNodeOrigin(parsed);
       setStatus(
-        "Trusted media node saved on this device. Listing photos will be copied there and loaded from there when this browser does not have them. The public registry still stores hashes only.",
+        "First database host saved on this device. Public listings, public seller profiles, and listing photos are copied there. Passwords and Facebook tokens are not. The public registry still stores hashes, not photo bytes.",
       );
     } catch (submitError) {
       setError(
         submitError instanceof Error
           ? submitError.message
-          : "Could not save the trusted media node.",
+          : "Could not save the first database host.",
       );
     } finally {
       setPending(null);
@@ -456,21 +463,27 @@ export default function AccountSettings({
       const parsed = parseMediaNodeOrigin(mediaNodeOrigin);
       if (!parsed) {
         setError(
-          "Use an https origin for the Synology node, or http://localhost for local testing.",
+          "Use an https origin for the Synology host, or http://localhost for local testing.",
         );
         return;
       }
       const ok = await probeMediaNode(parsed);
       if (!ok) {
         setError(
-          "The node did not answer as a trusted media node. Check HTTPS, CORS, and that the container is running.",
+          "The host did not answer as a full replica. Check HTTPS, CORS, and that the Arch Linux container is running.",
         );
         return;
       }
-      setStatus("Trusted media node is reachable from this browser.");
+      const replica = await fetchReplicaStatus(parsed).catch(() => null);
+      setReplicaStatus(replica);
+      setStatus(
+        replica
+          ? `First database host is reachable. ${replicaStatusSummary(replica)}`
+          : "First database host is reachable from this browser.",
+      );
     } catch {
       setError(
-        "This browser could not reach the media node. The live preview needs an https origin.",
+        "This browser could not reach the host. The live preview needs an https origin.",
       );
     } finally {
       setPending(null);
@@ -1058,25 +1071,29 @@ export default function AccountSettings({
 
       <form
         className="portal-form"
-        id="trusted-media-node-settings"
+        id="first-database-host-settings"
         onSubmit={onSaveMediaNode}
-        aria-labelledby="trusted-media-node-title"
+        aria-labelledby="first-database-host-title"
       >
         <div>
-          <h3 id="trusted-media-node-title">Trusted media node</h3>
+          <h3 id="first-database-host-title">First database host</h3>
           <p className="portal-lead">
-            This is the first hosting-node copy of listing photos. Run the
-            Synology container from <code>hosting-node/</code>, put HTTPS in
-            front of it, then save that origin here. Photo bytes stay off the
-            public registry. The write token is stored only in this browser.
+            Your Synology Arch Linux container is the first full host of the
+            public marketplace database: listings, public seller profiles, and
+            listing photos. Run <code>hosting-node/</code>, put HTTPS in front
+            of it, then save that origin here. Passwords and Facebook tokens
+            stay off this host. The write token is stored only in this browser.
+            Until three hosts are online, every host keeps a complete copy.
+            After that, Main can issue a scale-down decree that shrinks each
+            host only while at least three duplicates remain.
           </p>
         </div>
         <label className="portal-field">
-          <span>Node origin</span>
+          <span>Host origin</span>
           <input
             type="url"
             name="mediaNodeOrigin"
-            placeholder="https://photos.your-nas.example"
+            placeholder="https://host.your-nas.example"
             value={mediaNodeOrigin}
             onChange={(event) => setMediaNodeOrigin(event.target.value)}
             disabled={pending !== null}
@@ -1093,6 +1110,17 @@ export default function AccountSettings({
             disabled={pending !== null}
           />
         </label>
+        {replicaStatus && (
+          <p className="portal-lead">
+            Host {replicaStatus.hostId || "synology-nas-001"} ·{" "}
+            {replicaStatus.hostCount} live host
+            {replicaStatus.hostCount === 1 ? "" : "s"} · minimum{" "}
+            {replicaStatus.minReplicas} copies · mode {replicaStatus.mode}
+            {replicaStatus.counts
+              ? ` · ${replicaStatus.counts.listing ?? 0} listings, ${replicaStatus.counts.profile ?? 0} profiles, ${replicaStatus.counts.media ?? 0} photos`
+              : ""}
+          </p>
+        )}
         <div className="portal-connector-actions">
           <button
             className="button button-ghost"
@@ -1107,7 +1135,7 @@ export default function AccountSettings({
             type="submit"
             disabled={pending !== null}
           >
-            {pending === "media-node" ? "Saving…" : "Save media node"}
+            {pending === "media-node" ? "Saving…" : "Save first database host"}
           </button>
         </div>
       </form>

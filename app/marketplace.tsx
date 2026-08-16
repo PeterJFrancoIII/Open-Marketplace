@@ -21,7 +21,9 @@ import {
   revokePhotoDraft,
   type PhotoDraft,
 } from "../lib/listing-photos";
+import { readMediaNodeConfig } from "../lib/media-node";
 import { getLocalMediaUrl, storeMedia } from "../lib/media-store";
+import { fetchReplicaCatalog, publishReplicaSnapshot } from "../lib/replica-host";
 import { paymentLinksFor } from "../lib/payment-links";
 import { parsePaymentDestinationsJson } from "../lib/payment-destinations";
 import {
@@ -718,12 +720,27 @@ export default function Marketplace() {
         const response = await fetch("/api/listings?limit=80", {
           headers: { accept: "application/json" },
         });
-        if (!response.ok && !listingId) return;
         const payload = response.ok
           ? ((await response.json()) as { listings?: RegistryRow[] })
           : { listings: [] };
         if (cancelled) return;
         let registryListings = (payload.listings ?? []).map(normalizeRegistryListing);
+        const node = readMediaNodeConfig();
+        if (node) {
+          try {
+            const catalog = await fetchReplicaCatalog(node.origin);
+            const seen = new Set(registryListings.map((listing) => listing.id));
+            for (const row of catalog.listings) {
+              const extra = normalizeRegistryListing(row);
+              if (!seen.has(extra.id)) {
+                seen.add(extra.id);
+                registryListings.push(extra);
+              }
+            }
+          } catch {
+            // The Synology host is optional; Cloudflare D1 or demo data still works.
+          }
+        }
         if (
           listingId &&
           !registryListings.some((listing) => listing.id === listingId)
@@ -1046,6 +1063,7 @@ export default function Marketplace() {
           mediaAvailability: imageManifest.length ? "local" : "offline",
         } as Listing;
       }
+      void publishReplicaSnapshot(listing).catch(() => {});
 
       setListings((current) =>
         editingListingId
@@ -1063,8 +1081,8 @@ export default function Marketplace() {
       setToast(
         listing.source === "registry"
           ? editingListingId
-            ? "Listing updated. Image bytes remain on this device."
-            : "Listing published. Image bytes remain on this device."
+            ? "Listing updated. A public copy goes to the first database host when it is connected."
+            : "Listing published. A public copy goes to the first database host when it is connected."
           : "Saved on this device; the registry is not connected in this preview.",
       );
     } catch {
@@ -1637,7 +1655,7 @@ export default function Marketplace() {
                             ) : (
                               <div className="photo-draft-missing">
                                 <strong>{photo.name || `Photo ${index + 1}`}</strong>
-                                <span>Not on this device or trusted media node</span>
+                                <span>Not on this device or first database host</span>
                               </div>
                             )}
                             <div className="photo-draft-actions">

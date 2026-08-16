@@ -1,15 +1,21 @@
 services:
-  open-marketplace-media-node:
+  open-marketplace-host:
     build: .
-    container_name: open-marketplace-media-node
+    container_name: open-marketplace-host
     restart: unless-stopped
     ports:
       - "8788:8788"
     environment:
+      HOST_ID: ${HOST_ID:-synology-nas-001}
+      HOST_ORIGIN: ${HOST_ORIGIN:-}
+      HOST_MIN_REPLICAS: ${HOST_MIN_REPLICAS:-3}
+      HOST_WRITE_TOKEN: ${HOST_WRITE_TOKEN:-}
       MEDIA_NODE_WRITE_TOKEN: ${MEDIA_NODE_WRITE_TOKEN}
       MEDIA_NODE_CORS_ORIGINS: ${MEDIA_NODE_CORS_ORIGINS:-https://feature-account-management-p.open-marketplace-demo.pages.dev,http://localhost:5173}
+      SOURCE_REGISTRY_URL: ${SOURCE_REGISTRY_URL:-https://feature-account-management-p.open-marketplace-demo.pages.dev}
+      HOST_SYNC_INTERVAL_SECONDS: ${HOST_SYNC_INTERVAL_SECONDS:-300}
     volumes:
-      - media-data:/data
+      - host-data:/data
 
 volumes:
-  media-data:
+  host-data:

@@ -41,7 +41,7 @@ test("account settings and compose keep photos off the public registry", async (
     new URL("../app/account/account-settings.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(settings, /Trusted media node/);
+  assert.match(settings, /First database host/);
   assert.match(settings, /writeMediaNodeConfig/);
   assert.match(settings, /probeMediaNode/);
   assert.doesNotMatch(settings, /filled from Facebook/);

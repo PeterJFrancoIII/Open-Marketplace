@@ -74,6 +74,17 @@ export type Listing = {
   createdAt: string;
   endingAt: string | null;
   source: "demo" | "registry" | "device";
+  paymentDestinations?: PaymentDestination[];
+  shippingPackage?: {
+    weightLb: number;
+    lengthIn: number;
+    widthIn: number;
+    heightIn: number;
+    originPostal: string;
+    originCountry: string;
+    destPostal: string;
+    destCountry: string;
+  } | null;
 };
 
 export type ListingDraft = Omit<

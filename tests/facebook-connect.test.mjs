@@ -661,6 +661,8 @@ test("preview Facebook credentials stay off the production Pages config", async 
   assert.deepEqual(Object.keys(withFacebook.production.env_vars), ["RELEASE_MODE"]);
   assert.equal(withFacebook.production.env_vars.FACEBOOK_CLIENT_ID, undefined);
   assert.equal(withFacebook.production.env_vars.FACEBOOK_CLIENT_SECRET, undefined);
+  assert.equal(withFacebook.production.env_vars.PARCEL_MONKEY_USER_ID, undefined);
+  assert.equal(withFacebook.production.env_vars.PARCEL_MONKEY_API_TOKEN, undefined);
   assert.equal(
     withFacebook.production.d1_databases.DB.id,
     "6ceb8dfc-4a92-4d4d-832f-ff1a54847326",

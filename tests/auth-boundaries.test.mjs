@@ -127,6 +127,44 @@ test("keeps public listing reads available without a session", async () => {
   assert.ok(payload);
 });
 
+test("rejects unauthenticated shipping quote requests", async () => {
+  const worker = await loadWorker("shipping-quote-boundary");
+  const response = await worker.fetch(
+    new Request("http://localhost/api/shipping/quotes", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        package: {
+          weightLb: 2,
+          lengthIn: 12,
+          widthIn: 9,
+          heightIn: 6,
+          originPostal: "11215",
+          destPostal: "10001",
+          originCountry: "US",
+          destCountry: "US",
+        },
+      }),
+    }),
+    {
+      ASSETS: emptyAssets,
+      DB: undefined,
+    },
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+    },
+  );
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), {
+    error: "Log in to request shipping estimates.",
+  });
+});
+
 test("rejects unauthenticated account profile reads and writes", async () => {
   const worker = await loadWorker("profile-write-boundary");
   const read = await worker.fetch(

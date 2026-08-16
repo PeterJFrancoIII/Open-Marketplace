@@ -11,6 +11,12 @@ import {
 } from "react";
 import { authClient } from "../lib/auth-client";
 import { getLocalMediaUrl, storeMedia } from "../lib/media-store";
+import { paymentLinksFor } from "../lib/payment-links";
+import { parsePaymentDestinationsJson } from "../lib/payment-destinations";
+import {
+  parcelMonkeyCalculatorUrl,
+  pirateShipCalculatorUrl,
+} from "../lib/shipping-package";
 import type { Listing, SocialProof } from "../lib/types";
 
 const categories = [
@@ -331,6 +337,7 @@ const demoListings: Listing[] = [
 type RegistryRow = Partial<Listing> & {
   socialProofsJson?: string;
   imageManifestJson?: string;
+  paymentDestinationsJson?: string;
   distanceMiles?: number | string | null;
   priceCents?: number | string;
 };
@@ -445,6 +452,10 @@ function normalizeRegistryListing(row: RegistryRow): Listing {
     imageManifest: parseJsonArray<Listing["imageManifest"][number]>(
       row.imageManifest ?? row.imageManifestJson,
     ),
+    paymentDestinations:
+      row.paymentDestinations ??
+      parsePaymentDestinationsJson(row.paymentDestinationsJson),
+    shippingPackage: row.shippingPackage ?? null,
     mediaAvailability: "offline",
     createdAt: String(row.createdAt ?? new Date().toISOString()),
     endingAt: row.endingAt ? String(row.endingAt) : null,
@@ -549,6 +560,29 @@ function providerName(provider: SocialProof["provider"]) {
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
+function usesShipping(delivery: string) {
+  return delivery === "Shipping" || delivery === "Both";
+}
+
+function packageFromForm(formData: FormData) {
+  return {
+    weightLb: Number(formData.get("weightLb")),
+    lengthIn: Number(formData.get("lengthIn")),
+    widthIn: Number(formData.get("widthIn")),
+    heightIn: Number(formData.get("heightIn")),
+    originPostal: String(formData.get("originPostal") ?? ""),
+    destPostal: String(formData.get("destPostal") ?? ""),
+    originCountry: String(formData.get("originCountry") ?? "US"),
+    destCountry: String(formData.get("destCountry") ?? "US"),
+  };
+}
+
+function optionalPackageFromForm(formData: FormData) {
+  const filled = ["weightLb", "lengthIn", "widthIn", "heightIn", "originPostal", "destPostal"]
+    .some((key) => String(formData.get(key) ?? "").trim());
+  return filled ? packageFromForm(formData) : null;
+}
+
 export default function Marketplace() {
   const { data: session, isPending: sessionPending } = authClient.useSession();
   const [listings, setListings] = useState<Listing[]>(demoListings);
@@ -576,6 +610,12 @@ export default function Marketplace() {
     emptySocialDrafts.map((account) => ({ ...account })),
   );
   const [composeOpened, setComposeOpened] = useState(false);
+  const [composeDelivery, setComposeDelivery] = useState("Pickup");
+  const [shippingQuotes, setShippingQuotes] = useState<
+    { carrier: string; serviceName: string; description: string; totalPrice: string }[]
+  >([]);
+  const [shippingQuoteMessage, setShippingQuoteMessage] = useState("");
+  const [quoting, setQuoting] = useState(false);
 
   const donationUrl = process.env.NEXT_PUBLIC_DONATION_URL ?? "";
   const signedIn = Boolean(session?.user);
@@ -904,7 +944,10 @@ export default function Marketplace() {
         locationLabel: String(formData.get("location") ?? "").trim(),
         distanceMiles: null,
         format: String(formData.get("format") ?? "Fixed price"),
-        delivery: String(formData.get("delivery") ?? "Pickup"),
+        delivery: composeDelivery,
+        shippingPackage: usesShipping(composeDelivery)
+          ? optionalPackageFromForm(formData)
+          : null,
         socialProofs,
         imageManifest,
         endingAt:
@@ -1004,6 +1047,56 @@ export default function Marketplace() {
         ? "A dead link was found. The seller must fix or remove it."
         : "Social links rechecked.",
     );
+  }
+
+  async function requestShippingEstimates(form: HTMLFormElement) {
+    if (quoting) return;
+    setQuoting(true);
+    setShippingQuotes([]);
+    try {
+      const formData = new FormData(form);
+      const response = await fetch("/api/shipping/quotes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          package: packageFromForm(formData),
+          goodsValueUsd: Number(formData.get("price") ?? 0),
+        }),
+      });
+      const result = (await response.json()) as {
+        quotes?: { carrier: string; serviceName: string; description: string; totalPrice: string }[];
+        message?: string;
+        error?: string;
+        pirateShipUrl?: string;
+        parcelMonkeyCalculatorUrl?: string;
+      };
+      if (response.status === 401) {
+        setToast("Log in to request shipping estimates.");
+        return;
+      }
+      if (!response.ok) {
+        setShippingQuoteMessage(result.error ?? "Estimates are unavailable. Use the official calculators.");
+        return;
+      }
+      setShippingQuotes(result.quotes ?? []);
+      setShippingQuoteMessage(
+        result.message ??
+          "Use the official calculators if live quotes are not configured.",
+      );
+    } catch {
+      setShippingQuoteMessage("Estimates are unavailable. Use the official calculators.");
+    } finally {
+      setQuoting(false);
+    }
+  }
+
+  async function copyText(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setToast(`${label} copied.`);
+    } catch {
+      setToast("Copy is unavailable in this browser.");
+    }
   }
 
   async function shareListing(listing: Listing) {
@@ -1359,7 +1452,16 @@ export default function Marketplace() {
                   </div>
                   <div className="field">
                     <label htmlFor="delivery">Fulfillment</label>
-                    <select id="delivery" name="delivery" defaultValue="Pickup">
+                    <select
+                      id="delivery"
+                      name="delivery"
+                      value={composeDelivery}
+                      onChange={(event) => {
+                        setComposeDelivery(event.target.value);
+                        setShippingQuotes([]);
+                        setShippingQuoteMessage("");
+                      }}
+                    >
                       <option>Pickup</option>
                       <option>Shipping</option>
                       <option>Both</option>
@@ -1369,6 +1471,78 @@ export default function Marketplace() {
                     <label htmlFor="location">Area</label>
                     <input id="location" name="location" required placeholder="Brooklyn, NY" />
                   </div>
+                  {usesShipping(composeDelivery) && (
+                    <div className="field field-full">
+                      <strong>Package for estimates</strong>
+                      <p className="form-note">
+                        Optional. Used for Parcel Monkey quotes and official calculator links. This is not a booking, and the marketplace does not ship the item.
+                      </p>
+                      <div className="form-grid">
+                        <div className="field">
+                          <label htmlFor="weightLb">Weight (lb)</label>
+                          <input id="weightLb" name="weightLb" type="number" min="0.1" max="70" step="0.1" placeholder="2" />
+                        </div>
+                        <div className="field">
+                          <label htmlFor="lengthIn">Length (in)</label>
+                          <input id="lengthIn" name="lengthIn" type="number" min="1" max="80" step="0.1" placeholder="12" />
+                        </div>
+                        <div className="field">
+                          <label htmlFor="widthIn">Width (in)</label>
+                          <input id="widthIn" name="widthIn" type="number" min="1" max="80" step="0.1" placeholder="9" />
+                        </div>
+                        <div className="field">
+                          <label htmlFor="heightIn">Height (in)</label>
+                          <input id="heightIn" name="heightIn" type="number" min="1" max="80" step="0.1" placeholder="6" />
+                        </div>
+                        <div className="field">
+                          <label htmlFor="originPostal">Origin postal</label>
+                          <input id="originPostal" name="originPostal" placeholder="11215" />
+                        </div>
+                        <div className="field">
+                          <label htmlFor="destPostal">Destination postal</label>
+                          <input id="destPostal" name="destPostal" placeholder="10001" />
+                        </div>
+                        <div className="field">
+                          <label htmlFor="originCountry">Origin country</label>
+                          <input id="originCountry" name="originCountry" defaultValue="US" maxLength={2} />
+                        </div>
+                        <div className="field">
+                          <label htmlFor="destCountry">Destination country</label>
+                          <input id="destCountry" name="destCountry" defaultValue="US" maxLength={2} />
+                        </div>
+                      </div>
+                      <div className="modal-actions">
+                        <button
+                          className="button button-ghost"
+                          type="button"
+                          disabled={quoting}
+                          onClick={(event) => {
+                            const form = event.currentTarget.form;
+                            if (form) void requestShippingEstimates(form);
+                          }}
+                        >
+                          {quoting ? "Getting estimates…" : "Get estimates"}
+                        </button>
+                        <a className="button button-ghost" href={pirateShipCalculatorUrl()} target="_blank" rel="noreferrer">
+                          Pirate Ship calculator
+                        </a>
+                        <a className="button button-ghost" href={parcelMonkeyCalculatorUrl()} target="_blank" rel="noreferrer">
+                          Parcel Monkey calculator
+                        </a>
+                      </div>
+                      {shippingQuoteMessage && <p className="form-note">{shippingQuoteMessage}</p>}
+                      {shippingQuotes.length > 0 && (
+                        <div className="detail-social-list">
+                          {shippingQuotes.map((quote) => (
+                            <div className="detail-social-account" key={`${quote.carrier}-${quote.serviceName}-${quote.totalPrice}`}>
+                              <strong>{quote.carrier} · {quote.serviceName}</strong>
+                              <small>{quote.totalPrice} GBP{quote.description ? ` · ${quote.description}` : ""}</small>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="field field-full">
                     <label htmlFor="description">Description</label>
                     <textarea id="description" name="description" required maxLength={1400} placeholder="Condition, dimensions, pickup details…" />
@@ -1569,6 +1743,60 @@ export default function Marketplace() {
                     {hasBrokenAccount(selectedListing) && (
                       <div className="broken-link-alert">
                         This seller profile has a dead link. Listing activity is blocked until the seller fixes or removes it.
+                      </div>
+                    )}
+                    <div className="detail-social-list">
+                      <strong>Pay the seller</strong>
+                      <p className="form-note">
+                        Public destinations only. The marketplace does not send, hold, escrow, convert, or protect this transfer.
+                      </p>
+                      {paymentLinksFor(selectedListing.paymentDestinations ?? []).length
+                        ? paymentLinksFor(selectedListing.paymentDestinations ?? []).map((link) => (
+                            link.href ? (
+                              <a
+                                className="detail-social-account"
+                                href={link.href}
+                                target="_blank"
+                                rel="noreferrer"
+                                key={link.rail}
+                              >
+                                <strong>{link.label}</strong>
+                                <small>{link.destination}</small>
+                                <span className="link-health">{link.actionLabel}</span>
+                              </a>
+                            ) : (
+                              <button
+                                className="detail-social-account"
+                                type="button"
+                                key={link.rail}
+                                onClick={() => void copyText(link.destination, link.label)}
+                              >
+                                <strong>{link.label}</strong>
+                                <small>{link.destination}</small>
+                                <span className="link-health">{link.actionLabel}</span>
+                              </button>
+                            )
+                          ))
+                        : (
+                          <span className="no-social">Seller has not published a public pay-to destination.</span>
+                        )}
+                    </div>
+                    {usesShipping(selectedListing.delivery) && (
+                      <div className="media-notice">
+                        <strong>Shipping estimates</strong>
+                        {selectedListing.shippingPackage ? (
+                          <p>
+                            {selectedListing.shippingPackage.weightLb} lb · {selectedListing.shippingPackage.lengthIn}×{selectedListing.shippingPackage.widthIn}×{selectedListing.shippingPackage.heightIn} in · {selectedListing.shippingPackage.originPostal} {selectedListing.shippingPackage.originCountry} → {selectedListing.shippingPackage.destPostal} {selectedListing.shippingPackage.destCountry}
+                          </p>
+                        ) : (
+                          <p>Seller did not save a package size. Use the official calculators.</p>
+                        )}
+                        <p>
+                          <a href={pirateShipCalculatorUrl()} target="_blank" rel="noreferrer">Pirate Ship calculator</a>
+                          {" · "}
+                          <a href={parcelMonkeyCalculatorUrl()} target="_blank" rel="noreferrer">Parcel Monkey calculator</a>
+                        </p>
+                        <p>Estimates are not a booking. The marketplace does not ship the item.</p>
                       </div>
                     )}
                   </div>

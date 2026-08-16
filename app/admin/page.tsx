@@ -1,13 +1,8 @@
 import { count, desc, eq } from "drizzle-orm";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getDb } from "../../db";
 import { authUsers, listings, reports } from "../../db/schema";
-import { isAdminEmail } from "../../lib/admin-policy";
-import {
-  getMarketplaceAdminEmails,
-  requireMarketplaceSession,
-} from "../../lib/auth";
+import { loadPortalSession } from "../portal/load-portal";
 import PortalShell from "../portal/portal-shell";
 
 export const dynamic = "force-dynamic";
@@ -20,10 +15,8 @@ function formatCreatedAt(value: Date | string | number | null | undefined) {
 }
 
 export default async function AdminPage() {
-  const requestHeaders = await headers();
-  const session = await requireMarketplaceSession(requestHeaders, "/admin");
-  const configuredEmails = await getMarketplaceAdminEmails();
-  if (!isAdminEmail(session.user.email, configuredEmails)) {
+  const { isAdmin, user } = await loadPortalSession("/admin");
+  if (!isAdmin) {
     notFound();
   }
 
@@ -52,15 +45,7 @@ export default async function AdminPage() {
     ]);
 
   return (
-    <PortalShell
-      user={{
-        id: session.user.id,
-        name: session.user.name,
-        email: session.user.email,
-      }}
-      activeSection="admin"
-      isAdmin={true}
-    >
+    <PortalShell user={user} activeSection="admin" isAdmin={true}>
       <section className="portal-panel" aria-labelledby="admin-overview-title">
         <p className="portal-eyebrow">Administrator</p>
         <h1 id="admin-overview-title">Admin overview</h1>

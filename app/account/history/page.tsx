@@ -1,11 +1,6 @@
-import { headers } from "next/headers";
 import { getDb } from "../../../db";
 import { listSaleHistory } from "../../../lib/conversations";
-import {
-  getMarketplaceAdminEmails,
-  requireMarketplaceSession,
-} from "../../../lib/auth";
-import { isAdminEmail } from "../../../lib/admin-policy";
+import { loadPortalSession } from "../../portal/load-portal";
 import PortalShell from "../../portal/portal-shell";
 
 export const dynamic = "force-dynamic";
@@ -19,23 +14,11 @@ function formatPrice(cents: number, currency = "USD") {
 }
 
 export default async function HistoryPage() {
-  const requestHeaders = await headers();
-  const session = await requireMarketplaceSession(requestHeaders, "/account/history");
-  const adminEmails = await getMarketplaceAdminEmails();
-  const isAdmin = isAdminEmail(session.user.email, adminEmails);
+  const { session, isAdmin, user } = await loadPortalSession("/account/history");
   const history = await listSaleHistory(await getDb(), session.user.id);
 
   return (
-    <PortalShell
-      user={{
-        id: session.user.id,
-        name: session.user.name,
-        email: session.user.email,
-        image: session.user.image,
-      }}
-      activeSection="history"
-      isAdmin={isAdmin}
-    >
+    <PortalShell user={user} activeSection="history" isAdmin={isAdmin}>
       <section className="portal-panel" aria-labelledby="history-title">
         <p className="portal-eyebrow">Completed sales</p>
         <h1 id="history-title">History</h1>

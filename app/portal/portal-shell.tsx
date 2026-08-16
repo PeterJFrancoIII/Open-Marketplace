@@ -18,11 +18,11 @@ export type PortalSection =
 
 const baseNav: { href: string; label: string; section: PortalSection }[] = [
   { href: "/account", label: "Overview", section: "overview" },
-  { href: "/account#my-listings", label: "My listings", section: "listings" },
+  { href: "/account/listings", label: "My listings", section: "listings" },
   { href: "/account/messages", label: "Messages", section: "messages" },
   { href: "/account/history", label: "History", section: "history" },
   {
-    href: "/account#account-settings",
+    href: "/account/settings",
     label: "Account settings",
     section: "settings",
   },

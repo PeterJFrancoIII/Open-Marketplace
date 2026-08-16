@@ -10,7 +10,7 @@ import {
 } from "../../../../lib/paypal-connect";
 
 function accountRedirect(origin: string, error?: string) {
-  const url = new URL("/account", origin);
+  const url = new URL("/account/settings", origin);
   if (error) url.searchParams.set("error", error);
   url.hash = "payment-options-settings";
   return url.toString();
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   const session = await getMarketplaceSession(request);
   if (!session?.user.id) {
     return Response.redirect(
-      `${origin}/login?returnTo=${encodeURIComponent("/account")}`,
+      `${origin}/login?returnTo=${encodeURIComponent("/account/settings")}`,
       302,
     );
   }

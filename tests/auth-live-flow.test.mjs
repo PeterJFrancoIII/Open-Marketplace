@@ -287,15 +287,19 @@ test("account creation does not grant an authenticated portal session", async ()
   assert.equal(body.token, null);
   assert.equal(cookieJar.size, 0);
 
-  const account = await workerFetch(worker, env, "/account", {
-    headers: { accept: "text/html" },
-    cookieJar,
-  });
-  assert.equal(account.status, 307);
-  assert.match(
-    account.headers.get("location") ?? "",
-    /^(?:https?:\/\/localhost(?::\d+)?)?\/login\?returnTo=%2Faccount/,
-  );
+  for (const path of ["/account", "/account/listings", "/account/settings"]) {
+    const account = await workerFetch(worker, env, path, {
+      headers: { accept: "text/html" },
+      cookieJar,
+    });
+    assert.equal(account.status, 307);
+    assert.match(
+      account.headers.get("location") ?? "",
+      new RegExp(
+        `^(?:https?:\\/\\/localhost(?::\\d+)?)?\\/login\\?returnTo=${encodeURIComponent(path)}(?:&|$)`,
+      ),
+    );
+  }
 });
 
 test("signed-in users can open /account", async () => {
@@ -335,49 +339,61 @@ test("signed-in users can open /account", async () => {
   assert.match(html, />Overview</i);
   assert.match(html, />My listings</i);
   assert.match(html, />Account settings</i);
+  assert.match(html, /href=["']\/account\/listings["']/);
+  assert.match(html, /href=["']\/account\/settings["']/);
+  assert.doesNotMatch(html, /href=["']\/account#my-listings["']/);
+  assert.doesNotMatch(html, /href=["']\/account#account-settings["']/);
   assert.match(html, /Back to marketplace/i);
-  assert.match(html, /Social media/i);
-  assert.match(html, /Facebook/i);
-  assert.match(html, /Instagram/i);
-  assert.match(html, /TikTok/i);
-  assert.match(html, /Payment options/i);
-  assert.match(html, /Shipping connectors/i);
-  assert.match(html, /PayPal/i);
-  assert.match(html, /Venmo/i);
-  assert.match(html, /Cash App/i);
-  assert.match(html, /Zelle/i);
-  assert.match(html, /Apple Cash/i);
-  assert.match(html, /public payment contact information/i);
-  assert.match(html, /never filled from your login/i);
-  assert.match(html, /Confirm the recipient independently/i);
-  assert.match(html, /does not execute, insure, escrow, reverse, or protect/i);
-  assert.match(html, /Bitcoin/i);
-  assert.match(html, /Ethereum/i);
-  assert.match(html, /Tether \(USDT\)/i);
-  assert.match(html, /BNB/i);
-  assert.match(html, /USDC/i);
-  assert.match(html, /Bitcoin on Bitcoin Mainnet/i);
-  assert.match(html, /Bitcoin · Bitcoin Mainnet/i);
-  assert.match(html, /Ethereum · Ethereum Mainnet/i);
-  assert.match(html, /Tether \(USDT\) · Ethereum Mainnet \(ERC-20\)/i);
-  assert.match(html, /BNB · BNB Smart Chain Mainnet/i);
-  assert.match(html, /USDC · Ethereum Mainnet \(ERC-20\)/i);
-  assert.match(html, /Pirate Ship/i);
-  assert.match(html, /Parcel Monkey/i);
-  assert.match(html, /USPS/i);
-  assert.match(html, /UPS/i);
-  assert.match(html, /FedEx/i);
-  assert.match(html, /DHL/i);
-  assert.match(html, /Open(?:<!-- -->|\s)+PayPal/i);
-  assert.match(html, /Connect(?:<!-- -->|\s)+Pirate Ship/i);
+  assert.doesNotMatch(html, /Social media/i);
+
+  const settings = await workerFetch(worker, env, "/account/settings", {
+    headers: { accept: "text/html" },
+    cookieJar,
+  });
+  assert.equal(settings.status, 200);
+  const settingsHtml = await settings.text();
+  assert.match(settingsHtml, /Social media/i);
+  assert.match(settingsHtml, /Facebook/i);
+  assert.match(settingsHtml, /Instagram/i);
+  assert.match(settingsHtml, /TikTok/i);
+  assert.match(settingsHtml, /Payment options/i);
+  assert.match(settingsHtml, /Shipping connectors/i);
+  assert.match(settingsHtml, /PayPal/i);
+  assert.match(settingsHtml, /Venmo/i);
+  assert.match(settingsHtml, /Cash App/i);
+  assert.match(settingsHtml, /Zelle/i);
+  assert.match(settingsHtml, /Apple Cash/i);
+  assert.match(settingsHtml, /public payment contact information/i);
+  assert.match(settingsHtml, /never filled from your login/i);
+  assert.match(settingsHtml, /Confirm the recipient independently/i);
+  assert.match(settingsHtml, /does not execute, insure, escrow, reverse, or protect/i);
+  assert.match(settingsHtml, /Bitcoin/i);
+  assert.match(settingsHtml, /Ethereum/i);
+  assert.match(settingsHtml, /Tether \(USDT\)/i);
+  assert.match(settingsHtml, /BNB/i);
+  assert.match(settingsHtml, /USDC/i);
+  assert.match(settingsHtml, /Bitcoin on Bitcoin Mainnet/i);
+  assert.match(settingsHtml, /Bitcoin · Bitcoin Mainnet/i);
+  assert.match(settingsHtml, /Ethereum · Ethereum Mainnet/i);
+  assert.match(settingsHtml, /Tether \(USDT\) · Ethereum Mainnet \(ERC-20\)/i);
+  assert.match(settingsHtml, /BNB · BNB Smart Chain Mainnet/i);
+  assert.match(settingsHtml, /USDC · Ethereum Mainnet \(ERC-20\)/i);
+  assert.match(settingsHtml, /Pirate Ship/i);
+  assert.match(settingsHtml, /Parcel Monkey/i);
+  assert.match(settingsHtml, /USPS/i);
+  assert.match(settingsHtml, /UPS/i);
+  assert.match(settingsHtml, /FedEx/i);
+  assert.match(settingsHtml, /DHL/i);
+  assert.match(settingsHtml, /Open(?:<!-- -->|\s)+PayPal/i);
+  assert.match(settingsHtml, /Connect(?:<!-- -->|\s)+Pirate Ship/i);
   assert.equal(
-    [...html.matchAll(/value="user@example.com"/g)].length,
+    [...settingsHtml.matchAll(/value="user@example.com"/g)].length,
     1,
   );
-  assert.doesNotMatch(html, /<h2[^>]*>Profile<\/h2>/i);
-  assert.doesNotMatch(html, /Payment methods/i);
-  assert.doesNotMatch(html, /Solana/i);
-  assert.doesNotMatch(html, /Apple Pay|Stripe|Plaid/i);
+  assert.doesNotMatch(settingsHtml, /<h2[^>]*>Profile<\/h2>/i);
+  assert.doesNotMatch(settingsHtml, /Payment methods/i);
+  assert.doesNotMatch(settingsHtml, /Solana/i);
+  assert.doesNotMatch(settingsHtml, /Apple Pay|Stripe|Plaid/i);
 });
 
 test("account totals cover every owned listing and preserve cent prices", async () => {
@@ -446,18 +462,27 @@ test("account totals cover every owned listing and preserve cent prices", async 
   assert.match(html, /<strong>52<\/strong>\s*<span>Active<\/span>/i);
   assert.match(html, /<strong>2<\/strong>\s*<span>Draft<\/span>/i);
   assert.match(html, /<strong>1<\/strong>\s*<span>Sold<\/span>/i);
-  assert.match(html, /\$0\.10/);
-  assert.match(html, /href=["']\/\?listing=owned-active-51["']/);
-  assert.match(html, /href=["']\/\?listing=owned-sold["']/);
-  assert.match(html, /href=["']\/\?listing=owned-active-51(?:&amp;|&|\\u0026)edit=1["']/);
-  assert.match(html, />Edit</);
-  const listingHrefs = [...html.matchAll(/href=["']\/\?listing=([^"']+)["']/g)].map(
+  assert.doesNotMatch(html, /\$0\.10/);
+  assert.doesNotMatch(html, /listing=owned-active-51/);
+
+  const listings = await workerFetch(worker, env, "/account/listings", {
+    headers: { accept: "text/html" },
+    cookieJar,
+  });
+  assert.equal(listings.status, 200);
+  const listingsHtml = await listings.text();
+  assert.match(listingsHtml, /\$0\.10/);
+  assert.match(listingsHtml, /href=["']\/\?listing=owned-active-51["']/);
+  assert.match(listingsHtml, /href=["']\/\?listing=owned-sold["']/);
+  assert.match(listingsHtml, /href=["']\/\?listing=owned-active-51(?:&amp;|&|\\u0026)edit=1["']/);
+  assert.match(listingsHtml, />Edit</);
+  const listingHrefs = [...listingsHtml.matchAll(/href=["']\/\?listing=([^"']+)["']/g)].map(
     (match) => match[1],
   );
   assert.equal(listingHrefs.filter((href) => !href.includes("edit")).length, 55);
   assert.equal(listingHrefs.filter((href) => href.includes("edit")).length, 55);
-  assert.doesNotMatch(html, /Other seller item/i);
-  assert.doesNotMatch(html, /listing=other-seller/);
+  assert.doesNotMatch(listingsHtml, /Other seller item/i);
+  assert.doesNotMatch(listingsHtml, /listing=other-seller/);
 });
 
 test("account settings update the name and password and can sign out", async () => {

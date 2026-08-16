@@ -612,8 +612,8 @@ export default function AccountSettings({
     try {
       const result = await authClient.linkSocial({
         provider: "facebook",
-        callbackURL: "/account",
-        errorCallbackURL: "/account",
+        callbackURL: "/account/settings",
+        errorCallbackURL: "/account/settings",
         scopes: [...FACEBOOK_CONNECT_SCOPES],
       });
       if (result.error) {

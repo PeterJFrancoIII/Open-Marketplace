@@ -1,11 +1,6 @@
-import { headers } from "next/headers";
 import { getDb } from "../../../db";
-import {
-  getMarketplaceAdminEmails,
-  requireMarketplaceSession,
-} from "../../../lib/auth";
-import { isAdminEmail } from "../../../lib/admin-policy";
 import { listConversations, listMessages } from "../../../lib/conversations";
+import { loadPortalSession } from "../../portal/load-portal";
 import PortalShell from "../../portal/portal-shell";
 import MessagesClient from "./messages-client";
 
@@ -23,10 +18,7 @@ export default async function MessagesPage({
 }: {
   searchParams?: Promise<SearchParams> | SearchParams;
 }) {
-  const requestHeaders = await headers();
-  const session = await requireMarketplaceSession(requestHeaders, "/account/messages");
-  const adminEmails = await getMarketplaceAdminEmails();
-  const isAdmin = isAdminEmail(session.user.email, adminEmails);
+  const { session, isAdmin, user } = await loadPortalSession("/account/messages");
   const resolved =
     searchParams && typeof (searchParams as Promise<SearchParams>).then === "function"
       ? await (searchParams as Promise<SearchParams>)
@@ -39,16 +31,7 @@ export default async function MessagesPage({
     : null;
 
   return (
-    <PortalShell
-      user={{
-        id: session.user.id,
-        name: session.user.name,
-        email: session.user.email,
-        image: session.user.image,
-      }}
-      activeSection="messages"
-      isAdmin={isAdmin}
-    >
+    <PortalShell user={user} activeSection="messages" isAdmin={isAdmin}>
       <MessagesClient
         userId={session.user.id}
         initialConversationId={initialThread ? conversationId : ""}

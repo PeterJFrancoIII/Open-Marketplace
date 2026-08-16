@@ -23,7 +23,7 @@ function redirectToAccount(
   secure: boolean,
   error?: string,
 ) {
-  const url = new URL("/account", origin);
+  const url = new URL("/account/settings", origin);
   if (error) url.searchParams.set("error", error);
   url.hash = "payment-options-settings";
   return new Response(null, {

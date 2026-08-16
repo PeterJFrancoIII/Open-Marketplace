@@ -330,7 +330,7 @@ test("signed-in Facebook link-social requests public_profile only", async () => 
     password: USER_PASSWORD,
   });
 
-  const accountPage = await workerFetch(worker, env, "/account", {
+  const accountPage = await workerFetch(worker, env, "/account/settings", {
     headers: { accept: "text/html" },
     cookieJar,
   });
@@ -557,7 +557,12 @@ test("Facebook Graph fields stay public_profile only and never request email", a
     new URL("../app/account/page.tsx", import.meta.url),
     "utf8",
   );
+  const settingsPage = await readFile(
+    new URL("../app/account/settings/page.tsx", import.meta.url),
+    "utf8",
+  );
   assert.doesNotMatch(accountPage, /fillEmptyProfileFromFacebook/);
+  assert.doesNotMatch(settingsPage, /fillEmptyProfileFromFacebook/);
 });
 
 test("Facebook identity stays connection-scoped and is not copied into the core user", async () => {

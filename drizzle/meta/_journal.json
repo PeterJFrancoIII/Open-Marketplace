@@ -78,6 +78,13 @@
       "when": 1786900800000,
       "tag": "0010_cancel_transaction",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1786902600000,
+      "tag": "0011_evidence_exif_archive",
+      "breakpoints": true
     }
   ]
 }

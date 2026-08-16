@@ -1,3 +1,12 @@
+import {
+  EVIDENCE_PHOTOS_PER_KIND,
+  EVIDENCE_PHOTO_STORE_MAX_BYTES,
+} from "./evidence-limits.ts";
+import {
+  extractEvidenceMetadata,
+  sanitizeEvidenceExif,
+  type EvidenceExif,
+} from "./exif-jpeg.ts";
 import { sanitizeImageManifest } from "./image-manifest.ts";
 import { toSha256Hash } from "./media-node.ts";
 import {
@@ -31,25 +40,56 @@ export type SalePhotoKind =
   | "shippedItem"
   | "shippedPackaging";
 
+export type SalePhotoManifest = MediaManifest & {
+  exif?: EvidenceExif | null;
+  width?: number;
+  height?: number;
+  quality?: "full" | "archival";
+};
+
 export function sanitizeSalePhoto(
   value: unknown,
   kind: SalePhotoKind,
-): MediaManifest | null {
-  const list = Array.isArray(value) ? value : value ? [value] : [];
-  const [manifest] = sanitizeImageManifest(list);
-  if (!manifest) return null;
-  const allowed = kind === "paymentReceipt" ? RECEIPT_TYPES : SALE_IMAGE_TYPES;
-  if (!allowed.has(manifest.type.toLowerCase())) return null;
-  return {
-    hash: manifest.hash,
-    name: manifest.name,
-    size: manifest.size,
-    type: manifest.type,
-    hosts: manifest.hosts,
-  };
+): SalePhotoManifest | null {
+  const [photo] = sanitizeSalePhotos(value, kind);
+  return photo ?? null;
 }
 
-export const EVIDENCE_PHOTO_MAX_BYTES = 600_000;
+export function sanitizeSalePhotos(
+  value: unknown,
+  kind: SalePhotoKind,
+): SalePhotoManifest[] {
+  const list = Array.isArray(value) ? value : value ? [value] : [];
+  if (list.length > EVIDENCE_PHOTOS_PER_KIND) return [];
+  const allowed = kind === "paymentReceipt" ? RECEIPT_TYPES : SALE_IMAGE_TYPES;
+  const photos: SalePhotoManifest[] = [];
+  for (const item of list) {
+    const [manifest] = sanitizeImageManifest([item]);
+    if (!manifest || !allowed.has(manifest.type.toLowerCase())) continue;
+    const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+    const width = Number(row.width);
+    const height = Number(row.height);
+    photos.push({
+      hash: manifest.hash,
+      name: manifest.name,
+      size: manifest.size,
+      type: manifest.type,
+      hosts: manifest.hosts,
+      exif: sanitizeEvidenceExif(row.exif),
+      width: Number.isFinite(width) && width > 0 ? Math.round(width) : undefined,
+      height: Number.isFinite(height) && height > 0 ? Math.round(height) : undefined,
+      quality: row.quality === "archival" ? "archival" : "full",
+    });
+  }
+  return photos;
+}
+
+export function hasSalePhoto(value: unknown) {
+  if (Array.isArray(value)) return value.some(Boolean);
+  return Boolean(value);
+}
+
+export const EVIDENCE_PHOTO_MAX_BYTES = EVIDENCE_PHOTO_STORE_MAX_BYTES;
 
 function decodeBase64Bytes(value: string): Uint8Array | null {
   try {
@@ -87,7 +127,13 @@ export async function verifySalePhotoUpload(
   value: unknown,
   kind: SalePhotoKind,
 ): Promise<
-  | { ok: true; manifest: MediaManifest; bytes: Uint8Array; bytesBase64: string }
+  | {
+      ok: true;
+      manifest: SalePhotoManifest;
+      bytes: Uint8Array;
+      bytesBase64: string;
+      exif: EvidenceExif;
+    }
   | { ok: false; error: string }
 > {
   const manifest = sanitizeSalePhoto(value, kind);
@@ -112,28 +158,73 @@ export async function verifySalePhotoUpload(
       error: "Photo bytes do not match the evidence hash.",
     };
   }
+  const exif = extractEvidenceMetadata(bytes, manifest.type);
   return {
     ok: true,
-    manifest: { ...manifest, size: bytes.length },
+    manifest: {
+      ...manifest,
+      size: bytes.length,
+      exif,
+      width: exif.width,
+      height: exif.height,
+      quality: manifest.quality === "archival" ? "archival" : "full",
+    },
     bytes,
     bytesBase64: bytesToBase64(bytes),
+    exif,
   };
+}
+
+export async function verifySalePhotoUploads(
+  value: unknown,
+  kind: SalePhotoKind,
+): Promise<
+  | {
+      ok: true;
+      items: Array<{
+        manifest: SalePhotoManifest;
+        bytes: Uint8Array;
+        bytesBase64: string;
+        exif: EvidenceExif;
+      }>;
+    }
+  | { ok: false; error: string }
+> {
+  const list = Array.isArray(value) ? value : value ? [value] : [];
+  if (!list.length) {
+    return { ok: false, error: "Upload at least one photo of this evidence type." };
+  }
+  if (list.length > EVIDENCE_PHOTOS_PER_KIND) {
+    return {
+      ok: false,
+      error: `Use at most ${EVIDENCE_PHOTOS_PER_KIND} photos of each evidence type.`,
+    };
+  }
+  const items = [];
+  for (const item of list) {
+    const verified = await verifySalePhotoUpload(item, kind);
+    if (!verified.ok) return verified;
+    items.push(verified);
+  }
+  return { ok: true, items };
 }
 
 export function parseSalePhotoJson(
   value: string | null | undefined,
   kind: SalePhotoKind,
-): MediaManifest | null {
-  if (!value) return null;
+): SalePhotoManifest[] {
+  if (!value) return [];
   try {
-    return sanitizeSalePhoto(JSON.parse(value), kind);
+    return sanitizeSalePhotos(JSON.parse(value), kind);
   } catch {
-    return null;
+    return [];
   }
 }
 
-export function serializeSalePhoto(manifest: MediaManifest | null) {
-  return manifest ? JSON.stringify(manifest) : null;
+export function serializeSalePhoto(manifest: SalePhotoManifest | SalePhotoManifest[] | null) {
+  if (!manifest) return null;
+  const photos = Array.isArray(manifest) ? manifest : [manifest];
+  return photos.length ? JSON.stringify(photos) : null;
 }
 
 export function saleEvidenceMissing(
@@ -141,11 +232,11 @@ export function saleEvidenceMissing(
   status: "pending" | "in_transfer" | "complete",
   evidence: {
     trackingNumber?: string | null;
-    paymentReceipt?: MediaManifest | null;
-    receivedItem?: MediaManifest | null;
-    receivedPackaging?: MediaManifest | null;
-    shippedItem?: MediaManifest | null;
-    shippedPackaging?: MediaManifest | null;
+    paymentReceipt?: unknown;
+    receivedItem?: unknown;
+    receivedPackaging?: unknown;
+    shippedItem?: unknown;
+    shippedPackaging?: unknown;
   },
 ): string | null {
   if (status === "pending") return null;
@@ -153,7 +244,7 @@ export function saleEvidenceMissing(
     if (!requireActualTrackingNumber(evidence.trackingNumber)) {
       return "Enter the actual UPS, USPS, FedEx, or DHL tracking number for this item.";
     }
-    if (!evidence.shippedItem || !evidence.shippedPackaging) {
+    if (!hasSalePhoto(evidence.shippedItem) || !hasSalePhoto(evidence.shippedPackaging)) {
       return "Upload a photo of the item and the shipping box before marking In-Transfer.";
     }
     return null;
@@ -162,10 +253,10 @@ export function saleEvidenceMissing(
     return "Only the seller marks In-Transfer. Accept the shipping evidence instead.";
   }
   if (status === "complete") {
-    if (!evidence.paymentReceipt) {
+    if (!hasSalePhoto(evidence.paymentReceipt)) {
       return "Upload a copy of the payment receipt before marking Complete.";
     }
-    if (!evidence.receivedItem || !evidence.receivedPackaging) {
+    if (!hasSalePhoto(evidence.receivedItem) || !hasSalePhoto(evidence.receivedPackaging)) {
       return "Upload a photo of the product and its packaging before marking Complete.";
     }
   }

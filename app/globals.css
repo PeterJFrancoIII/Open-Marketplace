@@ -2083,8 +2083,117 @@ a.detail-social-account.social-connected:hover,
   justify-self: start;
 }
 
-.portal-sale-proof {
+.portal-sale-proof-set {
+  display: grid;
+  gap: 8px;
+}
+
+.portal-sale-proof-set h4 {
+  font-size: 15px;
   margin: 0;
+}
+
+.portal-sale-proof-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+.portal-sale-proof {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.portal-evidence-meta-inline {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.portal-evidence-meta-inline dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.portal-evidence-meta-inline dd {
+  font-size: 12px;
+  margin: 0;
+}
+
+.portal-sale-proof-open {
+  background: none;
+  border: 0;
+  display: block;
+  padding: 0;
+  width: 100%;
+}
+
+.portal-evidence-lightbox {
+  align-items: center;
+  background: rgba(21, 21, 24, 0.72);
+  display: grid;
+  inset: 0;
+  justify-items: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 80;
+}
+
+.portal-evidence-lightbox-card {
+  background: #fff;
+  border-radius: 18px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  max-height: 90vh;
+  max-width: min(1100px, 100%);
+  overflow: auto;
+  padding: 16px;
+  width: 100%;
+}
+
+.portal-evidence-lightbox-photo img {
+  background: #111;
+  border-radius: 12px;
+  display: block;
+  max-height: 78vh;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.portal-evidence-metadata {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.portal-evidence-metadata h4 {
+  margin: 0;
+}
+
+.portal-evidence-metadata dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.portal-evidence-metadata dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.portal-evidence-metadata dd {
+  font-size: 14px;
+  margin: 2px 0 0;
+}
+
+@media (max-width: 800px) {
+  .portal-evidence-lightbox-card {
+    grid-template-columns: 1fr;
+  }
 }
 
 .portal-sale-proof img {

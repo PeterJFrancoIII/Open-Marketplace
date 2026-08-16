@@ -12,7 +12,12 @@ import {
   type SaleStatus,
   saleStatusLabel,
 } from "../../../lib/conversation-limits";
-import { prepareEvidenceFile, readAsDataUrl } from "../../../lib/evidence-photo";
+import {
+  EVIDENCE_PHOTOS_PER_KIND,
+  prepareEvidenceUpload,
+  readAsDataUrl,
+} from "../../../lib/evidence-photo";
+import type { EvidenceExif } from "../../../lib/exif-jpeg";
 import { getLocalMediaUrl, storeMedia } from "../../../lib/media-store";
 import {
   TRACKING_EMBED_SCRIPT,
@@ -22,6 +27,14 @@ import {
 import type { MediaManifest } from "../../../lib/types";
 
 type Rating = { score: number; note: string };
+
+type EvidencePhoto = MediaManifest & {
+  dataUrl?: string;
+  exif?: EvidenceExif | null;
+  width?: number;
+  height?: number;
+  quality?: "full" | "archival";
+};
 
 type ConversationSummary = {
   id: string;
@@ -52,15 +65,18 @@ type ConversationSummary = {
   myRating: Rating | null;
   otherRating: Rating | null;
   trackingNumber: string | null;
-  paymentReceipt: MediaManifest | null;
-  receivedItem: MediaManifest | null;
-  receivedPackaging: MediaManifest | null;
-  shippedItem: MediaManifest | null;
-  shippedPackaging: MediaManifest | null;
+  paymentReceipt: EvidencePhoto[];
+  receivedItem: EvidencePhoto[];
+  receivedPackaging: EvidencePhoto[];
+  shippedItem: EvidencePhoto[];
+  shippedPackaging: EvidencePhoto[];
   evidenceRequestNote: string | null;
   evidenceRequestedAt: string | null;
   myCancelRequested: boolean;
   otherCancelRequested: boolean;
+  completedAt: string | null;
+  evidenceArchivedAt: string | null;
+  evidenceArchiveDue: boolean;
 };
 
 type ConversationMessage = {
@@ -79,15 +95,40 @@ function formatMoney(cents: number, currency = "USD") {
   }).format(cents / 100);
 }
 
-function SaleProof({
-  conversationId,
-  label,
-  photo,
-}: {
-  conversationId: string;
-  label: string;
-  photo: (MediaManifest & { dataUrl?: string }) | null;
-}) {
+function asPhotos(value: EvidencePhoto[] | EvidencePhoto | null | undefined) {
+  if (!value) return [];
+  return Array.isArray(value) ? value.filter(Boolean) : [value];
+}
+
+function evidenceMetaLines(photo: EvidencePhoto) {
+  const exif = photo.exif ?? {};
+  const lines: Array<[string, string]> = [];
+  if (exif.make || exif.model) {
+    lines.push(["Camera", [exif.make, exif.model].filter(Boolean).join(" ")]);
+  }
+  if (exif.dateTimeOriginal || exif.dateTime) {
+    lines.push(["Taken", String(exif.dateTimeOriginal || exif.dateTime)]);
+  }
+  if (photo.width && photo.height) {
+    lines.push(["Size", `${photo.width}×${photo.height}`]);
+  } else if (exif.width && exif.height) {
+    lines.push(["Size", `${exif.width}×${exif.height}`]);
+  }
+  if (exif.bitDepth) lines.push(["Bit depth", `${exif.bitDepth}-bit`]);
+  if (exif.iso) lines.push(["ISO", String(exif.iso)]);
+  if (exif.exposureTime) lines.push(["Exposure", exif.exposureTime]);
+  if (exif.fNumber) lines.push(["Aperture", exif.fNumber]);
+  if (exif.focalLength) lines.push(["Lens", exif.focalLength]);
+  if (exif.software) lines.push(["Software", exif.software]);
+  if (exif.gpsLatitude != null && exif.gpsLongitude != null) {
+    lines.push(["GPS", `${exif.gpsLatitude}, ${exif.gpsLongitude}`]);
+  }
+  lines.push(["File", `${photo.name} · ${Math.round(photo.size / 1024)} KB`]);
+  lines.push(["Quality", photo.quality === "archival" ? "Archival" : "Full size"]);
+  return lines;
+}
+
+function useEvidenceUrl(conversationId: string, photo: EvidencePhoto | null) {
   const [url, setUrl] = useState<string | null>(null);
   const photoKey = photo
     ? `${conversationId}:${photo.hash}:${photo.dataUrl ? "draft" : "saved"}:${(photo.hosts ?? []).join(",")}`
@@ -128,22 +169,149 @@ function SaleProof({
     };
   }, [conversationId, photo, photoKey]);
 
-  if (!photo) {
+  return url;
+}
+
+function EvidenceLightbox({
+  conversationId,
+  label,
+  photo,
+  onClose,
+}: {
+  conversationId: string;
+  label: string;
+  photo: EvidencePhoto;
+  onClose: () => void;
+}) {
+  const url = useEvidenceUrl(conversationId, photo);
+  const isPdf = photo.type.toLowerCase() === "application/pdf";
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div
+      className="portal-evidence-lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Inspect ${label}`}
+      onClick={onClose}
+    >
+      <div
+        className="portal-evidence-lightbox-card"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="portal-evidence-lightbox-photo">
+          {url && isPdf ? (
+            <a href={url} target="_blank" rel="noreferrer">
+              Open {label.toLowerCase()}
+            </a>
+          ) : url ? (
+            <img src={url} alt={label} />
+          ) : (
+            <p className="portal-empty">Loading photo…</p>
+          )}
+        </div>
+        <aside className="portal-evidence-metadata">
+          <h4>Evidence metadata</h4>
+          <dl>
+            {evidenceMetaLines(photo).map(([name, value]) => (
+              <div key={name}>
+                <dt>{name}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <button className="button button-ghost" type="button" onClick={onClose}>
+            Close
+          </button>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function SaleProof({
+  conversationId,
+  label,
+  photos,
+}: {
+  conversationId: string;
+  label: string;
+  photos: EvidencePhoto[] | EvidencePhoto | null;
+}) {
+  const list = asPhotos(photos);
+  const [inspecting, setInspecting] = useState<EvidencePhoto | null>(null);
+  if (!list.length) {
     return <p className="portal-empty">{label}: not uploaded yet.</p>;
   }
+  return (
+    <div className="portal-sale-proof-set">
+      <h4>{label}</h4>
+      <div className="portal-sale-proof-grid">
+        {list.map((photo) => (
+          <SaleProofThumb
+            key={photo.hash}
+            conversationId={conversationId}
+            label={label}
+            photo={photo}
+            onOpen={() => setInspecting(photo)}
+          />
+        ))}
+      </div>
+      {inspecting ? (
+        <EvidenceLightbox
+          conversationId={conversationId}
+          label={label}
+          photo={inspecting}
+          onClose={() => setInspecting(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SaleProofThumb({
+  conversationId,
+  label,
+  photo,
+  onOpen,
+}: {
+  conversationId: string;
+  label: string;
+  photo: EvidencePhoto;
+  onOpen: () => void;
+}) {
+  const url = useEvidenceUrl(conversationId, photo);
   const isPdf = photo.type.toLowerCase() === "application/pdf";
   return (
     <figure className="portal-sale-proof">
       {url && isPdf ? (
-        <a href={url} target="_blank" rel="noreferrer">
+        <button className="portal-sale-proof-open" type="button" onClick={onOpen}>
           Open {label.toLowerCase()}
-        </a>
+        </button>
       ) : url ? (
-        <img src={url} alt={label} />
+        <button className="portal-sale-proof-open" type="button" onClick={onOpen}>
+          <img src={url} alt={label} />
+        </button>
       ) : null}
       <figcaption>
-        {label}: {photo.name}
+        {photo.name}
+        {photo.exif?.make || photo.exif?.model
+          ? ` · ${[photo.exif?.make, photo.exif?.model].filter(Boolean).join(" ")}`
+          : ""}
       </figcaption>
+      <dl className="portal-evidence-meta-inline">
+        {evidenceMetaLines(photo).map(([name, value]) => (
+          <div key={name}>
+            <dt>{name}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
     </figure>
   );
 }
@@ -340,12 +508,8 @@ export default function MessagesClient({
   const [trackingDirty, setTrackingDirty] = useState(false);
   const [showTransferPrompt, setShowTransferPrompt] = useState(false);
   const [evidenceRequestDraft, setEvidenceRequestDraft] = useState("");
-  const [shippedItemDraft, setShippedItemDraft] = useState<
-    (MediaManifest & { dataUrl?: string }) | null
-  >(null);
-  const [shippedPackagingDraft, setShippedPackagingDraft] = useState<
-    (MediaManifest & { dataUrl?: string }) | null
-  >(null);
+  const [shippedItemDraft, setShippedItemDraft] = useState<EvidencePhoto[]>([]);
+  const [shippedPackagingDraft, setShippedPackagingDraft] = useState<EvidencePhoto[]>([]);
   const trackingValue = trackingDirty
     ? trackingDraft
     : conversation?.trackingNumber ?? "";
@@ -361,6 +525,58 @@ export default function MessagesClient({
       ? conversation.sellerName
       : conversation.buyerName;
   }, [conversation]);
+
+  async function archiveDueEvidence(thread: ConversationSummary) {
+    if (!thread.evidenceArchiveDue || !selectedId || busy === "archive") return;
+    setBusy("archive");
+    try {
+      const kinds = [
+        "shippedItem",
+        "shippedPackaging",
+        "paymentReceipt",
+        "receivedItem",
+        "receivedPackaging",
+      ] as const;
+      const body: Record<string, EvidencePhoto[]> = {};
+      for (const kind of kinds) {
+        const photos = asPhotos(thread[kind]);
+        const archived: EvidencePhoto[] = [];
+        for (const photo of photos) {
+          const response = await fetch(
+            `/api/conversations/evidence/media?conversationId=${encodeURIComponent(selectedId)}&hash=${encodeURIComponent(photo.hash)}`,
+          );
+          if (!response.ok) continue;
+          const blob = await response.blob();
+          const file = new File([blob], photo.name, { type: photo.type });
+          const prepared = await prepareEvidenceUpload(file, "archival");
+          const dataUrl = await readAsDataUrl(prepared.file);
+          const [manifest] = await storeMedia([prepared.file]);
+          if (!manifest) continue;
+          archived.push({
+            ...manifest,
+            dataUrl,
+            exif: prepared.exif,
+            width: prepared.width,
+            height: prepared.height,
+            quality: "archival",
+          });
+        }
+        if (archived.length) body[kind] = archived;
+      }
+      if (!Object.keys(body).length) return;
+      await fetch("/api/conversations/evidence/archive", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ conversationId: selectedId, ...body }),
+      });
+      await Promise.all([loadThread(selectedId), loadInbox()]);
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function loadInbox() {
     const response = await fetch("/api/conversations", {
@@ -403,6 +619,9 @@ export default function MessagesClient({
     setConversation(payload.conversation);
     setMessages(payload.messages ?? []);
     setError("");
+    if (payload.conversation.evidenceArchiveDue) {
+      void archiveDueEvidence(payload.conversation);
+    }
   }
 
   useEffect(() => {
@@ -419,8 +638,8 @@ export default function MessagesClient({
     setTrackingDirty(false);
     setShowTransferPrompt(false);
     setEvidenceRequestDraft("");
-    setShippedItemDraft(null);
-    setShippedPackagingDraft(null);
+    setShippedItemDraft([]);
+    setShippedPackagingDraft([]);
     router.replace(`/account/messages?id=${encodeURIComponent(conversationId)}`);
     void loadThread(conversationId);
   }
@@ -509,6 +728,16 @@ export default function MessagesClient({
     }
   }
 
+  function currentPhotos(
+    kind: "shippedItem" | "shippedPackaging" | "paymentReceipt" | "receivedItem" | "receivedPackaging",
+  ) {
+    if (kind === "shippedItem" && shippedItemDraft.length) return shippedItemDraft;
+    if (kind === "shippedPackaging" && shippedPackagingDraft.length) {
+      return shippedPackagingDraft;
+    }
+    return asPhotos(conversation?.[kind]);
+  }
+
   async function uploadSalePhoto(
     kind:
       | "paymentReceipt"
@@ -516,26 +745,46 @@ export default function MessagesClient({
       | "receivedPackaging"
       | "shippedItem"
       | "shippedPackaging",
-    file: File | undefined,
+    files: FileList | File[] | File | undefined,
     persist = true,
   ) {
-    if (!file) return;
+    const incoming = !files
+      ? []
+      : files instanceof File
+        ? [files]
+        : [...files];
+    if (!incoming.length) return;
     setBusy("evidence");
     setError("");
     try {
-      const prepared = await prepareEvidenceFile(file);
-      const [manifest] = await storeMedia([prepared]);
-      if (!manifest) {
-        setError("Could not store that photo on this device.");
-        return;
+      const next = [...currentPhotos(kind)];
+      for (const file of incoming) {
+        if (next.length >= EVIDENCE_PHOTOS_PER_KIND) break;
+        const prepared = await prepareEvidenceUpload(file);
+        const [manifest] = await storeMedia([prepared.file]);
+        if (!manifest) {
+          setError("Could not store that photo on this device.");
+          return;
+        }
+        const dataUrl = await readAsDataUrl(prepared.file);
+        next.push({
+          ...manifest,
+          dataUrl,
+          exif: prepared.exif,
+          width: prepared.width,
+          height: prepared.height,
+          quality: prepared.quality,
+        });
       }
-      const dataUrl = await readAsDataUrl(prepared);
-      const evidencePhoto = { ...manifest, dataUrl };
-      if (kind === "shippedItem") setShippedItemDraft(evidencePhoto);
-      if (kind === "shippedPackaging") setShippedPackagingDraft(evidencePhoto);
-      if (persist) await persistSaleEvidence({ [kind]: evidencePhoto });
-    } catch {
-      setError("Could not store that photo on this device.");
+      if (kind === "shippedItem") setShippedItemDraft(next);
+      if (kind === "shippedPackaging") setShippedPackagingDraft(next);
+      if (persist) await persistSaleEvidence({ [kind]: next });
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Could not store that photo on this device.",
+      );
     } finally {
       setBusy("");
     }
@@ -602,9 +851,9 @@ export default function MessagesClient({
       );
       return;
     }
-    const shippedItem = shippedItemDraft ?? conversation.shippedItem;
-    const shippedPackaging = shippedPackagingDraft ?? conversation.shippedPackaging;
-    if (!shippedItem || !shippedPackaging) {
+    const shippedItem = currentPhotos("shippedItem");
+    const shippedPackaging = currentPhotos("shippedPackaging");
+    if (!shippedItem.length || !shippedPackaging.length) {
       setError(
         "Upload a photo of the item and the shipping box before marking In-Transfer.",
       );
@@ -617,8 +866,8 @@ export default function MessagesClient({
     });
     if (ok) {
       setShowTransferPrompt(false);
-      setShippedItemDraft(null);
-      setShippedPackagingDraft(null);
+      setShippedItemDraft([]);
+      setShippedPackagingDraft([]);
     }
   }
 
@@ -923,10 +1172,13 @@ export default function MessagesClient({
               <h3>Shipping evidence</h3>
               <p className="portal-settings-note">
                 The seller clicks In-Transfer to enter a real tracking number,
-                verify it in this shipping details window, and upload photos of
-                the item and the shipping box. The buyer then chooses Accept
-                Evidence if they want to. Photo bytes stay off the public
-                registry.
+                verify it in this shipping details window, and upload one to
+                three photos of the item and of the shipping box. Click a photo
+                to inspect it and review the EXIF metadata. Files larger than
+                4K 10-bit are compressed on this computer by the in-app
+                encoder. Full-size proof stays until seven days after both
+                people mark Complete, then it is archived. Photo bytes stay
+                off the public registry.
               </p>
               {conversation.evidenceRequestNote ? (
                 <p className="portal-evidence-request">
@@ -976,28 +1228,30 @@ export default function MessagesClient({
                     }
                   />
                   <label className="portal-field">
-                    <span>Photo of the item</span>
+                    <span>Photos of the item (1–3)</span>
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={(event) =>
                         void uploadSalePhoto(
                           "shippedItem",
-                          event.target.files?.[0],
+                          event.target.files ?? undefined,
                           false,
                         )
                       }
                     />
                   </label>
                   <label className="portal-field">
-                    <span>Photo of the shipping box</span>
+                    <span>Photos of the shipping box (1–3)</span>
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={(event) =>
                         void uploadSalePhoto(
                           "shippedPackaging",
-                          event.target.files?.[0],
+                          event.target.files ?? undefined,
                           false,
                         )
                       }
@@ -1006,12 +1260,12 @@ export default function MessagesClient({
                   <SaleProof
                     conversationId={conversation.id}
                     label="Item photo"
-                    photo={shippedItemDraft ?? conversation.shippedItem}
+                    photos={currentPhotos("shippedItem")}
                   />
                   <SaleProof
                     conversationId={conversation.id}
                     label="Shipping box"
-                    photo={shippedPackagingDraft ?? conversation.shippedPackaging}
+                    photos={currentPhotos("shippedPackaging")}
                   />
                   <div className="portal-sale-status-row">
                     <button
@@ -1021,8 +1275,8 @@ export default function MessagesClient({
                         busy === "sale" ||
                         busy === "evidence" ||
                         !requireActualTrackingNumber(trackingValue) ||
-                        !(shippedItemDraft ?? conversation.shippedItem) ||
-                        !(shippedPackagingDraft ?? conversation.shippedPackaging)
+                        !currentPhotos("shippedItem").length ||
+                        !currentPhotos("shippedPackaging").length
                       }
                     >
                       {busy === "sale" ? "Saving…" : "Submit In-Transfer evidence"}
@@ -1046,8 +1300,10 @@ export default function MessagesClient({
                     event.preventDefault();
                     void saveSaleEvidence({
                       trackingNumber: trackingValue,
-                      ...(shippedItemDraft ? { shippedItem: shippedItemDraft } : {}),
-                      ...(shippedPackagingDraft
+                      ...(shippedItemDraft.length
+                        ? { shippedItem: shippedItemDraft }
+                        : {}),
+                      ...(shippedPackagingDraft.length
                         ? { shippedPackaging: shippedPackagingDraft }
                         : {}),
                     });
@@ -1073,27 +1329,29 @@ export default function MessagesClient({
                     }
                   />
                   <label className="portal-field">
-                    <span>Photo of the item</span>
+                    <span>Photos of the item (1–3)</span>
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={(event) =>
                         void uploadSalePhoto(
                           "shippedItem",
-                          event.target.files?.[0],
+                          event.target.files ?? undefined,
                         )
                       }
                     />
                   </label>
                   <label className="portal-field">
-                    <span>Photo of the shipping box</span>
+                    <span>Photos of the shipping box (1–3)</span>
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={(event) =>
                         void uploadSalePhoto(
                           "shippedPackaging",
-                          event.target.files?.[0],
+                          event.target.files ?? undefined,
                         )
                       }
                     />
@@ -1136,12 +1394,12 @@ export default function MessagesClient({
                   <SaleProof
                     conversationId={conversation.id}
                     label="Item photo"
-                    photo={conversation.shippedItem}
+                    photos={conversation.shippedItem}
                   />
                   <SaleProof
                     conversationId={conversation.id}
                     label="Shipping box"
-                    photo={conversation.shippedPackaging}
+                    photos={conversation.shippedPackaging}
                   />
                 </>
               ) : null}
@@ -1215,37 +1473,43 @@ export default function MessagesClient({
               {conversation.myRole === "buyer" && conversation.mySaleStatus !== "complete" ? (
                 <div className="portal-form">
                   <label className="portal-field">
-                    <span>Payment receipt</span>
+                    <span>Payment receipt (1–3)</span>
                     <input
                       type="file"
                       accept="image/*,.pdf,application/pdf"
+                      multiple
                       onChange={(event) =>
                         void uploadSalePhoto(
                           "paymentReceipt",
-                          event.target.files?.[0],
+                          event.target.files ?? undefined,
                         )
                       }
                     />
                   </label>
                   <label className="portal-field">
-                    <span>Photo of the product received</span>
+                    <span>Photos of the product received (1–3)</span>
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={(event) =>
-                        void uploadSalePhoto("receivedItem", event.target.files?.[0])
+                        void uploadSalePhoto(
+                          "receivedItem",
+                          event.target.files ?? undefined,
+                        )
                       }
                     />
                   </label>
                   <label className="portal-field">
-                    <span>Photo of the packaging</span>
+                    <span>Photos of the packaging (1–3)</span>
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={(event) =>
                         void uploadSalePhoto(
                           "receivedPackaging",
-                          event.target.files?.[0],
+                          event.target.files ?? undefined,
                         )
                       }
                     />
@@ -1255,17 +1519,17 @@ export default function MessagesClient({
               <SaleProof
                 conversationId={conversation.id}
                 label="Payment receipt"
-                photo={conversation.paymentReceipt}
+                photos={conversation.paymentReceipt}
               />
               <SaleProof
                 conversationId={conversation.id}
                 label="Product received"
-                photo={conversation.receivedItem}
+                photos={conversation.receivedItem}
               />
               <SaleProof
                 conversationId={conversation.id}
                 label="Packaging received"
-                photo={conversation.receivedPackaging}
+                photos={conversation.receivedPackaging}
               />
             </div>
 

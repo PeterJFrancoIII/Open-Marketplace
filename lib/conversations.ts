@@ -23,11 +23,16 @@ import {
 import { parsePaymentDestinationsJson } from "./payment-destinations";
 import { paypalPayHref } from "./paypal-pay-link";
 import {
+  evidenceArchiveDue,
+  laterTimestamp,
+} from "./evidence-limits";
+import {
+  hasSalePhoto,
   parseSalePhotoJson,
   saleEvidenceMissing,
-  sanitizeSalePhoto,
+  sanitizeSalePhotos,
   serializeSalePhoto,
-  verifySalePhotoUpload,
+  verifySalePhotoUploads,
   type SalePhotoKind,
 } from "./sale-evidence";
 import { requireActualTrackingNumber } from "./tracking-number";
@@ -459,15 +464,15 @@ function readEvidencePatch(
         error: `Only the seller can upload the ${label} photo.`,
       };
     }
-    const manifest = sanitizeSalePhoto(input[key], key);
-    if (!manifest) {
+    const photos = sanitizeSalePhotos(input[key], key);
+    if (!photos.length) {
       return {
         ok: false,
         status: 400,
         error: `Upload a photo of the ${label}. Image bytes stay off this registry.`,
       };
     }
-    patch[column] = serializeSalePhoto(manifest);
+    patch[column] = serializeSalePhoto(photos);
   }
   for (const [key, column, label] of buyerPhotoFields) {
     if (input[key] === undefined) continue;
@@ -478,15 +483,15 @@ function readEvidencePatch(
         error: `Only the buyer can upload the ${label}.`,
       };
     }
-    const manifest = sanitizeSalePhoto(input[key], key);
-    if (!manifest) {
+    const photos = sanitizeSalePhotos(input[key], key);
+    if (!photos.length) {
       return {
         ok: false,
         status: 400,
         error: `Upload a photo of the ${label}. Image bytes stay off this registry.`,
       };
     }
-    patch[column] = serializeSalePhoto(manifest);
+    patch[column] = serializeSalePhoto(photos);
   }
   return { ok: true, patch };
 }
@@ -498,20 +503,21 @@ async function storeEvidencePhotos(
   input: SaleEvidenceInput | undefined,
 ) {
   if (!input) return { ok: true as const };
-  const fields: Array<[keyof SaleEvidenceInput, SalePhotoKind]> =
+  const fields: Array<[keyof SaleEvidenceInput, SalePhotoKind, string]> =
     role === "seller"
       ? [
-          ["shippedItem", "shippedItem"],
-          ["shippedPackaging", "shippedPackaging"],
+          ["shippedItem", "shippedItem", "shippedItemJson"],
+          ["shippedPackaging", "shippedPackaging", "shippedPackagingJson"],
         ]
       : [
-          ["paymentReceipt", "paymentReceipt"],
-          ["receivedItem", "receivedItem"],
-          ["receivedPackaging", "receivedPackaging"],
+          ["paymentReceipt", "paymentReceipt", "paymentReceiptJson"],
+          ["receivedItem", "receivedItem", "receivedItemJson"],
+          ["receivedPackaging", "receivedPackaging", "receivedPackagingJson"],
         ];
-  for (const [key, kind] of fields) {
+  const jsonPatch: Record<string, string | null> = {};
+  for (const [key, kind, column] of fields) {
     if (input[key] === undefined) continue;
-    const verified = await verifySalePhotoUpload(input[key], kind);
+    const verified = await verifySalePhotoUploads(input[key], kind);
     if (!verified.ok) {
       return { ok: false as const, status: 400, error: verified.error };
     }
@@ -523,18 +529,28 @@ async function storeEvidencePhotos(
           eq(conversationMedia.kind, kind),
         ),
       );
-    await db.insert(conversationMedia).values({
-      id: crypto.randomUUID(),
-      conversationId,
-      hash: verified.manifest.hash,
-      kind,
-      name: verified.manifest.name,
-      type: verified.manifest.type,
-      size: verified.manifest.size,
-      bytesBase64: verified.bytesBase64,
-    });
+    for (const [slot, item] of verified.items.entries()) {
+      await db.insert(conversationMedia).values({
+        id: crypto.randomUUID(),
+        conversationId,
+        hash: item.manifest.hash,
+        kind,
+        slot,
+        name: item.manifest.name,
+        type: item.manifest.type,
+        size: item.manifest.size,
+        bytesBase64: item.bytesBase64,
+        exifJson: item.exif ? JSON.stringify(item.exif) : null,
+        quality: item.manifest.quality ?? "full",
+        width: item.exif.width ?? item.manifest.width ?? null,
+        height: item.exif.height ?? item.manifest.height ?? null,
+      });
+    }
+    jsonPatch[column] = serializeSalePhoto(
+      verified.items.map((item) => item.manifest),
+    );
   }
-  return { ok: true as const };
+  return { ok: true as const, jsonPatch };
 }
 
 export async function getConversationMedia(
@@ -572,6 +588,97 @@ export async function getConversationMedia(
     name: media.name,
     type: media.type,
     bytes,
+  };
+}
+
+function markEvidenceJsonArchival(
+  jsonPatch: Record<string, string | null> | undefined,
+) {
+  if (!jsonPatch) return {};
+  const next: Record<string, string | null> = {};
+  for (const [column, value] of Object.entries(jsonPatch)) {
+    if (!value) {
+      next[column] = value;
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      next[column] = JSON.stringify(
+        list.map((item) =>
+          item && typeof item === "object"
+            ? { ...item, quality: "archival" }
+            : item,
+        ),
+      );
+    } catch {
+      next[column] = value;
+    }
+  }
+  return next;
+}
+
+export async function archiveConversationEvidence(
+  db: Db,
+  actor: ConversationActor,
+  conversationId: string,
+  photos: SaleEvidenceInput,
+) {
+  const [row] = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  if (!row || (row.buyerId !== actor.id && row.sellerId !== actor.id)) {
+    return { ok: false as const, status: 404, error: "Conversation not found." };
+  }
+  if (!conversationCompleted(row)) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "Evidence stays full size until both people mark Complete.",
+    };
+  }
+  const completedAt = laterTimestamp(row.buyerConfirmedAt, row.sellerConfirmedAt);
+  if (!evidenceArchiveDue(completedAt)) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "Full-size evidence stays available for seven days after Complete.",
+    };
+  }
+  const stored = await storeEvidencePhotos(db, conversationId, "seller", {
+    shippedItem: photos.shippedItem,
+    shippedPackaging: photos.shippedPackaging,
+  });
+  if (!stored.ok) return stored;
+  const buyerStored = await storeEvidencePhotos(db, conversationId, "buyer", {
+    paymentReceipt: photos.paymentReceipt,
+    receivedItem: photos.receivedItem,
+    receivedPackaging: photos.receivedPackaging,
+  });
+  if (!buyerStored.ok) return buyerStored;
+  const now = new Date().toISOString();
+  await db
+    .update(conversations)
+    .set({
+      ...markEvidenceJsonArchival(stored.jsonPatch),
+      ...markEvidenceJsonArchival(buyerStored.jsonPatch),
+      evidenceArchivedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(conversations.id, conversationId));
+  await db
+    .update(listings)
+    .set({ archivedAt: now, updatedAt: now })
+    .where(eq(listings.id, row.listingId));
+  await db
+    .update(conversationMedia)
+    .set({ quality: "archival" })
+    .where(eq(conversationMedia.conversationId, conversationId));
+  return {
+    ok: true as const,
+    conversation: await conversationPayload(db, conversationId, actor.id),
   };
 }
 
@@ -643,7 +750,11 @@ export async function updateSaleEvidence(
   }
   await db
     .update(conversations)
-    .set({ ...nextPatch, updatedAt: new Date().toISOString() })
+    .set({
+      ...nextPatch,
+      ...stored.jsonPatch,
+      updatedAt: new Date().toISOString(),
+    })
     .where(eq(conversations.id, conversationId));
   return {
     ok: true as const,
@@ -764,6 +875,7 @@ export async function setSaleStatus(
     .update(conversations)
     .set({
       ...parsed.patch,
+      ...stored.jsonPatch,
       buyerSaleStatus: nextBuyerStatus,
       sellerSaleStatus: nextSellerStatus,
       buyerConfirmedAt: nextBuyerConfirmedAt,
@@ -852,7 +964,7 @@ export async function acceptSaleEvidence(
   if (shippingMissing) {
     return { ok: false as const, status: 409, error: shippingMissing };
   }
-  if (!nextEvidence.paymentReceipt) {
+  if (!hasSalePhoto(nextEvidence.paymentReceipt)) {
     return {
       ok: false as const,
       status: 400,
@@ -869,6 +981,7 @@ export async function acceptSaleEvidence(
     .update(conversations)
     .set({
       ...parsed.patch,
+      ...stored.jsonPatch,
       buyerSaleStatus: "in_transfer",
       evidenceRequestNote: null,
       evidenceRequestedAt: null,
@@ -1369,6 +1482,17 @@ async function conversationPayload(db: Db, conversationId: string, userId: strin
         ? row.sellerCancelRequestedAt
         : row.buyerCancelRequestedAt,
     ),
+    completedAt: conversationCompleted(row)
+      ? laterTimestamp(row.buyerConfirmedAt, row.sellerConfirmedAt)
+      : null,
+    evidenceArchivedAt: row.evidenceArchivedAt ?? null,
+    evidenceArchiveDue:
+      !row.evidenceArchivedAt &&
+      evidenceArchiveDue(
+        conversationCompleted(row)
+          ? laterTimestamp(row.buyerConfirmedAt, row.sellerConfirmedAt)
+          : null,
+      ),
     ...evidenceFromRow(row),
   };
 }

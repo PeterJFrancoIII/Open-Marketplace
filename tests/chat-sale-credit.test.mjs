@@ -7,7 +7,14 @@ import { computeSocialCreditScore } from "../lib/social-credit.ts";
 import {
   saleEvidenceMissing,
   sanitizeSalePhoto,
+  sanitizeSalePhotos,
 } from "../lib/sale-evidence.ts";
+import {
+  buildJpegWithExif,
+  copyJpegMetadata,
+  parseJpegExif,
+} from "../lib/exif-jpeg.ts";
+import { evidenceNeedsEncode } from "../lib/evidence-codec.ts";
 import {
   applyMarketplaceMigrations,
   createMemoryD1,
@@ -250,6 +257,8 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   assert.doesNotMatch(listingsRoute, /buyer_cancel/);
   assert.doesNotMatch(listingsRoute, /seller_cancel/);
   assert.doesNotMatch(listingsRoute, /cancelRequested/);
+  assert.doesNotMatch(listingsRoute, /exif/);
+  assert.doesNotMatch(listingsRoute, /gpsLatitude/);
 
   const replica = await readFile(new URL("../lib/replica-host.ts", import.meta.url), "utf8");
   assert.doesNotMatch(replica, /conversation_messages/);
@@ -261,6 +270,8 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   assert.doesNotMatch(replica, /trackingNumber/);
   assert.doesNotMatch(replica, /cancelRequested/);
   assert.doesNotMatch(replica, /buyer_cancel/);
+  assert.doesNotMatch(replica, /gpsLatitude/);
+  assert.doesNotMatch(replica, /evidenceArchive/);
 
   const messagesUi = await readFile(
     new URL("../app/account/messages/messages-client.tsx", import.meta.url),
@@ -282,11 +293,18 @@ test("chat and sold-archive source contracts stay private and session-gated", as
   assert.match(messagesUi, /Tracking number/);
   assert.match(messagesUi, /Tracking updates/);
   assert.match(messagesUi, /Payment receipt/);
-  assert.match(messagesUi, /Photo of the packaging/);
-  assert.match(messagesUi, /Photo of the shipping box/);
+  assert.match(messagesUi, /Photos of the packaging/);
+  assert.match(messagesUi, /Photos of the shipping box/);
   assert.match(messagesUi, /Shipping evidence/);
   assert.match(messagesUi, /Accept Evidence/);
   assert.match(messagesUi, /Ask for additional evidence/);
+  assert.match(messagesUi, /Evidence metadata/);
+  assert.match(messagesUi, /Inspect /);
+  assert.match(messagesUi, /1–3/);
+  assert.match(messagesUi, /4K 10-bit/);
+  assert.match(messagesUi, /in-app/);
+  assert.match(messagesUi, /seven days/);
+  assert.match(messagesUi, /\/api\/conversations\/evidence\/archive/);
   assert.match(messagesUi, /Cancel transaction/);
   assert.match(messagesUi, /Both people must agree/);
   assert.match(messagesUi, /Agree and delete/);
@@ -336,6 +354,23 @@ test("sale proof sanitizers keep hashes and reject missing In-Transfer or Comple
     saleEvidenceMissing("buyer", "complete", { paymentReceipt: receipt }),
     "Upload a photo of the product and its packaging before marking Complete.",
   );
+  const extras = [
+    salePhoto("one.jpg"),
+    salePhoto("two.jpg"),
+    salePhoto("three.jpg"),
+    salePhoto("four.jpg"),
+  ];
+  assert.equal(sanitizeSalePhotos(extras.slice(0, 3), "shippedItem").length, 3);
+  assert.equal(sanitizeSalePhotos(extras, "shippedItem").length, 0);
+  const jpeg = buildJpegWithExif({ make: "OpenMarketplace", model: "EvidenceCam" });
+  const parsed = parseJpegExif(jpeg);
+  assert.equal(parsed.make, "OpenMarketplace");
+  assert.equal(parsed.model, "EvidenceCam");
+  const copied = copyJpegMetadata(jpeg, jpeg.subarray(0, 2));
+  assert.equal(parseJpegExif(copied).make, "OpenMarketplace");
+  const tiny = new File([jpeg], "cam.jpg", { type: "image/jpeg" });
+  assert.equal(evidenceNeedsEncode(tiny, { width: 1920, height: 1080, bitDepth: 8 }), false);
+  assert.equal(evidenceNeedsEncode(tiny, { width: 5000, height: 3000, bitDepth: 10 }), true);
 });
 
 test("signed-out chat, sale, and rating requests are rejected", async () => {
@@ -411,6 +446,11 @@ test("signed-out chat, sale, and rating requests are rejected", async () => {
     conversationId: "missing",
   });
   assert.equal(cancel.status, 401);
+
+  const archive = await postJson(worker, env, "/api/conversations/evidence/archive", undefined, {
+    conversationId: "missing",
+  });
+  assert.equal(archive.status, 401);
 
   const messagesPage = await workerFetch(worker, env, "/account/messages", {
     headers: { accept: "text/html" },
@@ -614,10 +654,10 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   const sellerInTransferBody = await sellerInTransfer.json();
   assert.equal(sellerInTransferBody.conversation.mySaleStatus, "in_transfer");
   assert.equal(sellerInTransferBody.conversation.trackingNumber, "1Z999AA10123456784");
-  assert.equal(sellerInTransferBody.conversation.shippedItem.name, "shipped-item.jpg");
-  assert.equal(sellerInTransferBody.conversation.shippedPackaging.name, "shipped-box.jpg");
-  assert.equal(sellerInTransferBody.conversation.shippedItem.bytes, undefined);
-  assert.equal(sellerInTransferBody.conversation.shippedItem.dataUrl, undefined);
+  assert.equal(sellerInTransferBody.conversation.shippedItem[0].name, "shipped-item.jpg");
+  assert.equal(sellerInTransferBody.conversation.shippedPackaging[0].name, "shipped-box.jpg");
+  assert.equal(sellerInTransferBody.conversation.shippedItem[0].bytes, undefined);
+  assert.equal(sellerInTransferBody.conversation.shippedItem[0].dataUrl, undefined);
   assert.doesNotMatch(JSON.stringify(sellerInTransferBody), /SECRET_SALE_PHOTO_BYTES/);
   assert.doesNotMatch(JSON.stringify(sellerInTransferBody), /data:image\/jpeg;base64,/);
   assert.doesNotMatch(JSON.stringify(sellerInTransferBody), /bytes_base64/);
@@ -625,7 +665,7 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   const buyerSeesItem = await workerFetch(
     worker,
     env,
-    `/api/conversations/evidence/media?conversationId=${conversation.id}&hash=${encodeURIComponent(sellerInTransferBody.conversation.shippedItem.hash)}`,
+    `/api/conversations/evidence/media?conversationId=${conversation.id}&hash=${encodeURIComponent(sellerInTransferBody.conversation.shippedItem[0].hash)}`,
     {
       headers: { accept: "image/jpeg" },
       cookieJar: buyerJar,
@@ -639,7 +679,7 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   const strangerMedia = await workerFetch(
     worker,
     env,
-    `/api/conversations/evidence/media?conversationId=${conversation.id}&hash=${encodeURIComponent(sellerInTransferBody.conversation.shippedItem.hash)}`,
+    `/api/conversations/evidence/media?conversationId=${conversation.id}&hash=${encodeURIComponent(sellerInTransferBody.conversation.shippedItem[0].hash)}`,
     {
       headers: { accept: "image/jpeg" },
       cookieJar: otherBuyerJar,
@@ -661,7 +701,7 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   const pendingBody = await backToPending.json();
   assert.equal(pendingBody.conversation.mySaleStatus, "pending");
   assert.equal(pendingBody.conversation.trackingNumber, "1Z999AA10123456784");
-  assert.equal(pendingBody.conversation.shippedItem.name, "shipped-item.jpg");
+  assert.equal(pendingBody.conversation.shippedItem[0].name, "shipped-item.jpg");
 
   const sellerInTransferAgain = await postJson(
     worker,
@@ -697,8 +737,8 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   );
   assert.equal(buyerReceipt.status, 200);
   const receiptBody = await buyerReceipt.json();
-  assert.equal(receiptBody.conversation.paymentReceipt.name, "receipt.jpg");
-  assert.equal(receiptBody.conversation.paymentReceipt.bytes, undefined);
+  assert.equal(receiptBody.conversation.paymentReceipt[0].name, "receipt.jpg");
+  assert.equal(receiptBody.conversation.paymentReceipt[0].bytes, undefined);
   assert.doesNotMatch(JSON.stringify(receiptBody), /SECRET_SALE_PHOTO_BYTES/);
 
   const publicAfterReceipt = await getJson(worker, env, "/api/listings?limit=80");
@@ -708,7 +748,7 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   assert.doesNotMatch(publicAfterReceiptJson, /data:image\/jpeg;base64,/);
   assert.doesNotMatch(
     publicAfterReceiptJson,
-    new RegExp(receiptBody.conversation.paymentReceipt.hash),
+    new RegExp(receiptBody.conversation.paymentReceipt[0].hash),
   );
 
   const buyerCompleteBeforeAccept = await postJson(
@@ -794,7 +834,7 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   );
   assert.equal(sellerUpdate.status, 200);
   const updatedShip = await sellerUpdate.json();
-  assert.equal(updatedShip.conversation.shippedPackaging.name, "shipped-box-2.jpg");
+  assert.equal(updatedShip.conversation.shippedPackaging[0].name, "shipped-box-2.jpg");
   assert.equal(updatedShip.conversation.evidenceRequestNote, null);
 
   const buyerAcceptAgain = await postJson(
@@ -826,8 +866,8 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   const afterOneSide = await buyerConfirm.json();
   assert.equal(afterOneSide.conversation.completed, false);
   assert.equal(afterOneSide.conversation.mySaleStatus, "complete");
-  assert.equal(afterOneSide.conversation.receivedItem.name, "item.jpg");
-  assert.equal(afterOneSide.conversation.receivedPackaging.name, "box.jpg");
+  assert.equal(afterOneSide.conversation.receivedItem[0].name, "item.jpg");
+  assert.equal(afterOneSide.conversation.receivedPackaging[0].name, "box.jpg");
 
   const buyerLockedProof = await postJson(
     worker,
@@ -877,7 +917,8 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   assert.equal(completed.conversation.completed, true);
   assert.equal(completed.conversation.listingStatus, "sold");
   assert.equal(completed.conversation.trackingNumber, "1Z999AA10123456784");
-  assert.equal(completed.conversation.shippedItem.name, "shipped-item.jpg");
+  assert.equal(completed.conversation.shippedItem[0].name, "shipped-item.jpg");
+  assert.equal(completed.conversation.evidenceArchiveDue, false);
 
   const lockedEvidence = await postJson(
     worker,
@@ -921,6 +962,8 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   assert.doesNotMatch(JSON.stringify(compact), /box\.jpg/);
   assert.doesNotMatch(JSON.stringify(compact), /shipped-item\.jpg/);
   assert.doesNotMatch(JSON.stringify(compact), /shipped-box/);
+  assert.doesNotMatch(JSON.stringify(compact), /gpsLatitude/);
+  assert.doesNotMatch(JSON.stringify(compact), /EvidenceCam/);
 
   const afterSale = profileRow(d1, sellerId);
   assert.equal(afterSale.items_sold, 1);
@@ -1283,5 +1326,72 @@ test("mutual cancel deletes the conversation and wipes chat history", async () =
   const nextConversation = (await restarted.json()).conversation;
   assert.notEqual(nextConversation.id, conversation.id);
   assert.equal(nextConversation.myCancelRequested, false);
+});
+
+test("evidence photos keep EXIF, cap at three, and refuse early archival", async () => {
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("chat-evidence-exif");
+  const env = createTestEnv(d1);
+  const sellerJar = new Map();
+  const buyerJar = new Map();
+
+  await signUp(worker, env, { name: "Seller Reed", email: "seller-exif@example.com" });
+  await signIn(worker, env, sellerJar, { email: "seller-exif@example.com" });
+  await signUp(worker, env, { name: "Buyer Lane", email: "buyer-exif@example.com" });
+  await signIn(worker, env, buyerJar, { email: "buyer-exif@example.com" });
+
+  const published = await postJson(
+    worker,
+    env,
+    "/api/listings",
+    sellerJar,
+    listingWrite("EXIF lamp"),
+  );
+  const listing = (await published.json()).listing;
+  const started = await postJson(worker, env, "/api/conversations", buyerJar, {
+    listingId: listing.id,
+  });
+  const conversation = (await started.json()).conversation;
+  const jpeg = buildJpegWithExif({ make: "OpenMarketplace", model: "EvidenceCam" });
+  const photo = {
+    hash: `sha256:${createHash("sha256").update(jpeg).digest("hex")}`,
+    name: "item-exif.jpg",
+    size: jpeg.length,
+    type: "image/jpeg",
+    dataUrl: `data:image/jpeg;base64,${Buffer.from(jpeg).toString("base64")}`,
+  };
+  const box = salePhoto("box-exif.jpg");
+  const tooMany = await postJson(worker, env, "/api/conversations/evidence", sellerJar, {
+    conversationId: conversation.id,
+    shippedItem: [photo, salePhoto("two.jpg"), salePhoto("three.jpg"), salePhoto("four.jpg")],
+  });
+  assert.equal(tooMany.status, 400);
+
+  const saved = await postJson(worker, env, "/api/conversations/sale", sellerJar, {
+    conversationId: conversation.id,
+    status: "in_transfer",
+    trackingNumber: "1Z999AA10123456784",
+    shippedItem: [photo, salePhoto("item-two.jpg")],
+    shippedPackaging: box,
+  });
+  assert.equal(saved.status, 200);
+  const body = await saved.json();
+  assert.equal(body.conversation.shippedItem.length, 2);
+  assert.equal(body.conversation.shippedItem[0].exif.make, "OpenMarketplace");
+  assert.equal(body.conversation.shippedItem[0].exif.model, "EvidenceCam");
+  assert.doesNotMatch(JSON.stringify(body), /data:image\/jpeg;base64,/);
+
+  const earlyArchive = await postJson(
+    worker,
+    env,
+    "/api/conversations/evidence/archive",
+    sellerJar,
+    { conversationId: conversation.id, shippedItem: [photo] },
+  );
+  assert.equal(earlyArchive.status, 409);
+
+  const publicList = await getJson(worker, env, "/api/listings?limit=80");
+  assert.doesNotMatch(JSON.stringify(await publicList.json()), /EvidenceCam/);
 });
 

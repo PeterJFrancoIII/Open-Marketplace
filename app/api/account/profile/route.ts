@@ -11,6 +11,12 @@ import {
   parsePaymentDestinationsJson,
 } from "../../../../lib/payment-destinations";
 import {
+  SHIPPING_BROKERS,
+  normalizeShippingBrokers,
+  parseShippingBrokersJson,
+  serializePaymentBundle,
+} from "../../../../lib/shipping-brokers";
+import {
   mergeSocialAccountsForSave,
   normalizeSocialAccountsForProfile,
   parseSocialAccountsJson,
@@ -52,7 +58,9 @@ async function profilePayload(
   return {
     socialAccounts: parseSocialAccountsJson(socialAccountsJson),
     paymentDestinations: parsePaymentDestinationsJson(paymentDestinationsJson),
+    shippingBrokers: parseShippingBrokersJson(paymentDestinationsJson),
     allowedPaymentRails: PAYMENT_RAILS,
+    allowedShippingBrokers: SHIPPING_BROKERS,
     facebookConnection: await getFacebookConnection(request),
   };
 }
@@ -92,9 +100,16 @@ export async function PUT(request: Request) {
       payload,
       "paymentDestinations",
     );
-    if (!hasSocial && !hasPayment) {
+    const hasShipping = Object.prototype.hasOwnProperty.call(
+      payload,
+      "shippingBrokers",
+    );
+    if (!hasSocial && !hasPayment && !hasShipping) {
       return Response.json(
-        { error: "Provide socialAccounts or paymentDestinations to update." },
+        {
+          error:
+            "Provide socialAccounts, paymentDestinations, or shippingBrokers to update.",
+        },
         { status: 400 },
       );
     }
@@ -124,16 +139,32 @@ export async function PUT(request: Request) {
       nextSocialJson = JSON.stringify(nextSocialAccounts);
     }
 
-    let nextPaymentJson: string | undefined;
-    let nextPaymentDestinations;
+    const existingDestinations = parsePaymentDestinationsJson(
+      existing?.paymentDestinationsJson,
+    );
+    const existingBrokers = parseShippingBrokersJson(
+      existing?.paymentDestinationsJson,
+    );
+    let nextPaymentDestinations = existingDestinations;
+    let nextShippingBrokers = existingBrokers;
     if (hasPayment) {
       const normalized = normalizePaymentDestinations(payload.paymentDestinations);
       if (!normalized.ok) {
         return Response.json({ error: normalized.error }, { status: 400 });
       }
       nextPaymentDestinations = normalized.destinations;
-      nextPaymentJson = JSON.stringify(normalized.destinations);
     }
+    if (hasShipping) {
+      const normalized = normalizeShippingBrokers(payload.shippingBrokers);
+      if (!normalized.ok) {
+        return Response.json({ error: normalized.error }, { status: 400 });
+      }
+      nextShippingBrokers = normalized.brokers;
+    }
+    const nextPaymentJson =
+      hasPayment || hasShipping
+        ? serializePaymentBundle(nextPaymentDestinations, nextShippingBrokers)
+        : undefined;
     const updatedAt = new Date().toISOString();
     const socialAccountsJson =
       nextSocialJson ?? existing?.socialAccountsJson ?? "[]";
@@ -162,10 +193,10 @@ export async function PUT(request: Request) {
     return Response.json({
       socialAccounts:
         nextSocialAccounts ?? parseSocialAccountsJson(existing?.socialAccountsJson),
-      paymentDestinations:
-        nextPaymentDestinations ??
-        parsePaymentDestinationsJson(existing?.paymentDestinationsJson),
+      paymentDestinations: nextPaymentDestinations,
+      shippingBrokers: nextShippingBrokers,
       allowedPaymentRails: PAYMENT_RAILS,
+      allowedShippingBrokers: SHIPPING_BROKERS,
       facebookConnection: await getFacebookConnection(request),
     });
   } catch (error) {

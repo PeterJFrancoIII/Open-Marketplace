@@ -1613,10 +1613,33 @@ a {
 }
 
 .portal-user-chip {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin: 0;
+  min-width: 0;
+  text-align: left;
+}
+
+.portal-user-photo {
+  border-radius: 50%;
+  flex: 0 0 32px;
+  height: 32px;
+  object-fit: cover;
+  width: 32px;
+}
+
+.portal-user-copy {
   display: grid;
   gap: 2px;
-  margin: 0;
-  text-align: right;
+  min-width: 0;
+}
+
+.portal-user-name,
+.portal-user-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .portal-user-name {
@@ -1802,6 +1825,11 @@ a {
   margin-top: 18px;
 }
 
+.portal-form > .button {
+  justify-self: start;
+  width: auto;
+}
+
 .portal-field {
   display: grid;
   gap: 6px;
@@ -1866,6 +1894,36 @@ a {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.portal-connector-identity {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.portal-connector-identity img {
+  border-radius: 50%;
+  flex: 0 0 48px;
+  height: 48px;
+  object-fit: cover;
+  width: 48px;
+}
+
+.portal-connector-identity p {
+  margin: 0;
+}
+
+.portal-connector-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.portal-connector-actions .button {
+  width: auto;
+}
+
 .portal-signout {
   margin-top: 18px;
 }
@@ -1889,6 +1947,7 @@ a {
 
   .portal-user-chip {
     text-align: left;
+    width: 100%;
   }
 
   .portal-layout {

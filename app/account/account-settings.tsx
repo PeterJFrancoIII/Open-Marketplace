@@ -4,6 +4,11 @@ import { type FormEvent, useEffect, useState, useSyncExternalStore } from "react
 import { useRouter } from "next/navigation";
 import { authClient } from "../../lib/auth-client";
 import { PAYMENT_RAILS } from "../../lib/payment-destinations";
+import {
+  SHIPPING_BROKERS,
+  type ShippingBrokerConnection,
+  type ShippingBrokerId,
+} from "../../lib/shipping-brokers";
 import type {
   FacebookConnection,
   PaymentDestination,
@@ -53,6 +58,21 @@ function destinationsByRail(destinations: PaymentDestination[]) {
 
 const MANUAL_PAYMENT_RAILS = PAYMENT_RAILS.filter((rail) => rail.networkId == null);
 const CRYPTO_PAYMENT_RAILS = PAYMENT_RAILS.filter((rail) => rail.networkId != null);
+
+function brokersById(brokers: ShippingBrokerConnection[]) {
+  return Object.fromEntries(
+    SHIPPING_BROKERS.map((broker) => {
+      const saved = brokers.find((item) => item.id === broker.id);
+      return [
+        broker.id,
+        {
+          connected: Boolean(saved),
+          account: saved?.account ?? "",
+        },
+      ];
+    }),
+  ) as Record<ShippingBrokerId, { connected: boolean; account: string }>;
+}
 
 function normalizeAuthError(error: unknown, fallback: string) {
   if (!error) return fallback;
@@ -111,12 +131,14 @@ export default function AccountSettings({
   email,
   initialSocialAccounts,
   initialPaymentDestinations,
+  initialShippingBrokers,
   initialFacebookConnection,
 }: {
   initialName: string;
   email: string;
   initialSocialAccounts: SocialProof[];
   initialPaymentDestinations: PaymentDestination[];
+  initialShippingBrokers: ShippingBrokerConnection[];
   initialFacebookConnection: FacebookConnection;
 }) {
   const router = useRouter();
@@ -129,6 +151,9 @@ export default function AccountSettings({
   const [paymentDrafts, setPaymentDrafts] = useState(() =>
     destinationsByRail(initialPaymentDestinations),
   );
+  const [shippingDrafts, setShippingDrafts] = useState(() =>
+    brokersById(initialShippingBrokers),
+  );
   const [facebookConnection, setFacebookConnection] = useState(
     initialFacebookConnection ?? emptyFacebookConnection,
   );
@@ -138,6 +163,7 @@ export default function AccountSettings({
     | "signout"
     | "social"
     | "payment"
+    | "shipping"
     | "facebook-connect"
     | "facebook-disconnect"
     | null
@@ -218,7 +244,10 @@ export default function AccountSettings({
     }
   }
 
-  async function saveProfile(body: Record<string, unknown>, kind: "social" | "payment") {
+  async function saveProfile(
+    body: Record<string, unknown>,
+    kind: "social" | "payment" | "shipping",
+  ) {
     const response = await fetch("/api/account/profile", {
       method: "PUT",
       headers: { accept: "application/json", "content-type": "application/json" },
@@ -229,6 +258,7 @@ export default function AccountSettings({
       account?: SocialProof;
       socialAccounts?: SocialProof[];
       paymentDestinations?: PaymentDestination[];
+      shippingBrokers?: ShippingBrokerConnection[];
       facebookConnection?: FacebookConnection;
     };
     if (result.facebookConnection) {
@@ -336,6 +366,39 @@ export default function AccountSettings({
     }
   }
 
+  async function onSaveShipping(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending("shipping");
+    setStatus("");
+    setError("");
+    try {
+      const result = await saveProfile(
+        {
+          shippingBrokers: SHIPPING_BROKERS.flatMap((broker) => {
+            const draft = shippingDrafts[broker.id];
+            return draft.connected
+              ? [{ id: broker.id, account: draft.account.trim() || null }]
+              : [];
+          }),
+        },
+        "shipping",
+      );
+      if (!result) return;
+      setShippingDrafts(brokersById(result.shippingBrokers ?? []));
+      setStatus(
+        "Shipping connectors saved. These open official calculators. They are not a booking.",
+      );
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Could not save shipping connectors.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
   async function onConnectFacebook() {
     setPending("facebook-connect");
     setStatus("");
@@ -380,6 +443,10 @@ export default function AccountSettings({
         available: facebookConnection.available,
         connected: false,
         name: null,
+        firstName: null,
+        lastName: null,
+        middleName: null,
+        shortName: null,
         imageUrl: null,
       });
       setStatus("Facebook disconnected. Your Open Marketplace account is unchanged.");
@@ -419,9 +486,8 @@ export default function AccountSettings({
     >
       <h2 id="account-settings-title">Account settings</h2>
       <p className="portal-lead">
-        Update your display name, password, Facebook Connect, public social
-        links, and public payment destinations. Email stays read-only until
-        verification delivery is available.
+        Update your display name, password, and connectors. Email stays
+        read-only until verification delivery is available.
       </p>
 
       <form className="portal-form" onSubmit={onUpdateName}>
@@ -508,60 +574,55 @@ export default function AccountSettings({
         </div>
         <div className="portal-settings-row">
           <div className="portal-settings-row-head">
-            <strong>Facebook</strong>
+            <strong>Facebook Login</strong>
             {facebookConnection.connected ? (
               <span className="portal-settings-health">Connected</span>
             ) : null}
           </div>
           {facebookConnection.connected ? (
             <>
-              {facebookConnection.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={facebookConnection.imageUrl}
-                  alt=""
-                  width={48}
-                  height={48}
-                />
-              ) : null}
-              <p>
-                {facebookConnection.name
-                  ? facebookConnection.name
-                  : "Facebook account connected."}
-              </p>
-              {facebookConnection.firstName || facebookConnection.lastName ? (
+              <div className="portal-connector-identity">
+                {facebookConnection.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={facebookConnection.imageUrl}
+                    alt=""
+                    width={48}
+                    height={48}
+                  />
+                ) : null}
                 <p>
-                  {[
-                    facebookConnection.firstName,
-                    facebookConnection.middleName,
-                    facebookConnection.lastName,
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
+                  {facebookConnection.name
+                    ? facebookConnection.name
+                    : "Facebook account connected."}
                 </p>
-              ) : null}
-              <button
-                className="button button-ghost"
-                type="button"
-                onClick={onDisconnectFacebook}
-                disabled={pending !== null}
-              >
-                {pending === "facebook-disconnect"
-                  ? "Disconnecting…"
-                  : "Disconnect"}
-              </button>
+              </div>
+              <div className="portal-connector-actions">
+                <button
+                  className="button button-ghost"
+                  type="button"
+                  onClick={onDisconnectFacebook}
+                  disabled={pending !== null}
+                >
+                  {pending === "facebook-disconnect"
+                    ? "Disconnecting…"
+                    : "Disconnect"}
+                </button>
+              </div>
             </>
           ) : facebookConnection.available ? (
-            <button
-              className="button button-dark"
-              type="button"
-              onClick={onConnectFacebook}
-              disabled={pending !== null}
-            >
-              {pending === "facebook-connect"
-                ? "Connecting…"
-                : "Connect Facebook"}
-            </button>
+            <div className="portal-connector-actions">
+              <button
+                className="button button-dark"
+                type="button"
+                onClick={onConnectFacebook}
+                disabled={pending !== null}
+              >
+                {pending === "facebook-connect"
+                  ? "Connecting…"
+                  : "Connect Facebook"}
+              </button>
+            </div>
           ) : (
             <p className="portal-settings-note">
               Facebook Connect is not configured in this environment.
@@ -704,36 +765,27 @@ export default function AccountSettings({
         <div>
           <h3 id="payment-options-title">Payment options</h3>
           <p className="portal-lead">
-            Public payment methods: PayPal, Venmo, Cash App, Zelle, and Apple
-            Cash. Crypto: Bitcoin on Bitcoin Mainnet, Ethereum on Ethereum
+            Connect public pay-to destinations for PayPal, Venmo, Cash App,
+            Zelle, Apple Cash, Bitcoin on Bitcoin Mainnet, Ethereum on Ethereum
             Mainnet, Tether (USDT) on Ethereum Mainnet (ERC-20), BNB on BNB
-            Smart Chain Mainnet, and USDC on Ethereum Mainnet (ERC-20). Do not
-            paste private keys, seed phrases, bank details, or card numbers.
+            Smart Chain Mainnet, and USDC on Ethereum Mainnet (ERC-20). These
+            are connectors to the official apps, not a checkout.
           </p>
           <p className="portal-settings-note">
             Zelle and Apple Cash are public payment contact information. Type an
             email or U.S. mobile number yourself; these fields are never filled
             from your login. Confirm the recipient independently before sending.
             This marketplace does not execute, insure, escrow, reverse, or
-            protect the transfer.
+            protect the transfer. Do not paste private keys, seed phrases, bank
+            details, or card numbers.
           </p>
         </div>
-        <h3 id="payment-methods-title">Payment methods</h3>
         {MANUAL_PAYMENT_RAILS.map((rail) => (
           <div className="portal-settings-row" key={rail.id}>
             <div className="portal-settings-row-head">
               <strong>{rail.label}</strong>
               {paymentDrafts[rail.id] ? (
-                <button
-                  className="button button-ghost"
-                  type="button"
-                  onClick={() =>
-                    setPaymentDrafts((current) => ({ ...current, [rail.id]: "" }))
-                  }
-                  disabled={pending !== null}
-                >
-                  Remove
-                </button>
+                <span className="portal-settings-health">Connected</span>
               ) : null}
             </div>
             <label className="portal-field">
@@ -751,6 +803,28 @@ export default function AccountSettings({
                 disabled={pending !== null}
               />
             </label>
+            <div className="portal-connector-actions">
+              <a
+                className="button button-ghost"
+                href={rail.connectUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open {rail.label}
+              </a>
+              {paymentDrafts[rail.id] ? (
+                <button
+                  className="button button-ghost"
+                  type="button"
+                  onClick={() =>
+                    setPaymentDrafts((current) => ({ ...current, [rail.id]: "" }))
+                  }
+                  disabled={pending !== null}
+                >
+                  Disconnect
+                </button>
+              ) : null}
+            </div>
           </div>
         ))}
         <h3 id="crypto-payment-title">Crypto</h3>
@@ -759,16 +833,7 @@ export default function AccountSettings({
             <div className="portal-settings-row-head">
               <strong>{rail.networkLabel ? `${rail.label} · ${rail.networkLabel}` : rail.label}</strong>
               {paymentDrafts[rail.id] ? (
-                <button
-                  className="button button-ghost"
-                  type="button"
-                  onClick={() =>
-                    setPaymentDrafts((current) => ({ ...current, [rail.id]: "" }))
-                  }
-                  disabled={pending !== null}
-                >
-                  Remove
-                </button>
+                <span className="portal-settings-health">Connected</span>
               ) : null}
             </div>
             <label className="portal-field">
@@ -786,6 +851,28 @@ export default function AccountSettings({
                 disabled={pending !== null}
               />
             </label>
+            <div className="portal-connector-actions">
+              <a
+                className="button button-ghost"
+                href={rail.connectUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open {rail.label}
+              </a>
+              {paymentDrafts[rail.id] ? (
+                <button
+                  className="button button-ghost"
+                  type="button"
+                  onClick={() =>
+                    setPaymentDrafts((current) => ({ ...current, [rail.id]: "" }))
+                  }
+                  disabled={pending !== null}
+                >
+                  Disconnect
+                </button>
+              ) : null}
+            </div>
           </div>
         ))}
         <button
@@ -794,6 +881,99 @@ export default function AccountSettings({
           disabled={pending !== null}
         >
           {pending === "payment" ? "Saving…" : "Save payment options"}
+        </button>
+      </form>
+
+      <form
+        className="portal-form"
+        id="shipping-broker-settings"
+        onSubmit={onSaveShipping}
+        aria-labelledby="shipping-brokers-title"
+      >
+        <div>
+          <h3 id="shipping-brokers-title">Shipping connectors</h3>
+          <p className="portal-lead">
+            Connect the official shipping brokers you use. Each button opens
+            that broker’s own site. The marketplace does not buy postage, book
+            a label, or hold a shipment.
+          </p>
+        </div>
+        {SHIPPING_BROKERS.map((broker) => (
+          <div className="portal-settings-row" key={broker.id}>
+            <div className="portal-settings-row-head">
+              <strong>{broker.label}</strong>
+              {shippingDrafts[broker.id].connected ? (
+                <span className="portal-settings-health">Connected</span>
+              ) : null}
+            </div>
+            <p className="portal-settings-note">{broker.hint}</p>
+            {broker.id === "parcel_monkey" && shippingDrafts[broker.id].connected ? (
+              <label className="portal-field">
+                <span>Public Parcel Monkey account email, optional</span>
+                <input
+                  type="email"
+                  value={shippingDrafts[broker.id].account}
+                  onChange={(event) =>
+                    setShippingDrafts((current) => ({
+                      ...current,
+                      [broker.id]: {
+                        ...current[broker.id],
+                        account: event.target.value,
+                      },
+                    }))
+                  }
+                  autoComplete="off"
+                  disabled={pending !== null}
+                />
+              </label>
+            ) : null}
+            <div className="portal-connector-actions">
+              <a
+                className="button button-ghost"
+                href={broker.href}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open {broker.label}
+              </a>
+              {shippingDrafts[broker.id].connected ? (
+                <button
+                  className="button button-ghost"
+                  type="button"
+                  onClick={() =>
+                    setShippingDrafts((current) => ({
+                      ...current,
+                      [broker.id]: { connected: false, account: "" },
+                    }))
+                  }
+                  disabled={pending !== null}
+                >
+                  Disconnect
+                </button>
+              ) : (
+                <button
+                  className="button button-dark"
+                  type="button"
+                  onClick={() =>
+                    setShippingDrafts((current) => ({
+                      ...current,
+                      [broker.id]: { ...current[broker.id], connected: true },
+                    }))
+                  }
+                  disabled={pending !== null}
+                >
+                  Connect {broker.label}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        <button
+          className="button button-dark"
+          type="submit"
+          disabled={pending !== null}
+        >
+          {pending === "shipping" ? "Saving…" : "Save shipping connectors"}
         </button>
       </form>
 

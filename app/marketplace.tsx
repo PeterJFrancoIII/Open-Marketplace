@@ -5,10 +5,12 @@ import {
   type DragEvent,
   type FormEvent,
   type KeyboardEvent,
+  type PointerEvent,
   type ReactNode,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { authClient } from "../lib/auth-client";
@@ -16,13 +18,22 @@ import {
   LISTING_PHOTO_LIMIT,
   PHOTO_DRAG_TYPE,
   appendPhotoFiles,
+  applyInspectPan,
+  clampPhotoIndex,
+  collectPhotoUrlsInOrder,
+  inspectTransform,
+  listingPhotoCount,
   manifestsFromPhotoDrafts,
   movePhotoDraft,
   photoDragIndex,
   photoDraftsFromExisting,
   photoDraftsFromManifest,
+  previewUrlsFromPhotoDrafts,
   removePhotoDraft,
+  resetInspectView,
   revokePhotoDraft,
+  stepInspectZoom,
+  stepPhotoIndex,
   type PhotoDraft,
 } from "../lib/listing-photos";
 import { readMediaNodeConfig } from "../lib/media-node";
@@ -790,6 +801,14 @@ export default function Marketplace() {
   const [dragPhotoIndex, setDragPhotoIndex] = useState<number | null>(null);
   const [dropPhotoIndex, setDropPhotoIndex] = useState<number | null>(null);
   const [localMedia, setLocalMedia] = useState<Record<string, string>>({});
+  const [listingPhotos, setListingPhotos] = useState<Record<string, string[]>>({});
+  const [cardPhotoIndex, setCardPhotoIndex] = useState<Record<string, number>>({});
+  const [detailPhotoIndex, setDetailPhotoIndex] = useState(0);
+  const [inspectOpen, setInspectOpen] = useState(false);
+  const [inspectZoom, setInspectZoom] = useState(1);
+  const [inspectPan, setInspectPan] = useState({ x: 0, y: 0 });
+  const [inspectDragging, setInspectDragging] = useState(false);
+  const inspectPointer = useRef<{ x: number; y: number } | null>(null);
   const [toast, setToast] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [composeOpened, setComposeOpened] = useState(false);
@@ -1017,21 +1036,25 @@ export default function Marketplace() {
 
         const ownerId = session?.user.id;
         for (const listing of registryListings) {
-          const firstAsset = listing.imageManifest[0];
-          if (!firstAsset) continue;
-          const url = await getLocalMediaUrl(
-            firstAsset.hash,
-            publicMediaOriginsFromManifests(listing.imageManifest),
-          ).catch(() => null);
-          if (url && !cancelled) {
-            setLocalMedia((current) => ({ ...current, [listing.id]: url }));
-            setListings((current) =>
-              current.map((item) =>
-                item.id === listing.id
-                  ? { ...item, mediaAvailability: "local" }
-                  : item,
-              ),
-            );
+          if (!listing.imageManifest.length) continue;
+          const urls = await collectPhotoUrlsInOrder(
+            listing.imageManifest.map((asset) => asset.hash),
+            listingPhotoLoader(listing),
+          );
+          if (!cancelled) {
+            setListingPhotos((current) => ({ ...current, [listing.id]: urls }));
+            if (urls[0]) {
+              setLocalMedia((current) => ({ ...current, [listing.id]: urls[0] }));
+            }
+            if (urls.some(Boolean)) {
+              setListings((current) =>
+                current.map((item) =>
+                  item.id === listing.id
+                    ? { ...item, mediaAvailability: "local" }
+                    : item,
+                ),
+              );
+            }
             if (ownerId && listing.sellerId === ownerId) {
               void pinListingMediaToHost(listing.imageManifest).catch(() => {});
             }
@@ -1149,9 +1172,130 @@ export default function Marketplace() {
     });
   }
 
+  function closeInspect() {
+    const reset = resetInspectView();
+    setInspectOpen(false);
+    setInspectZoom(reset.zoom);
+    setInspectPan(reset.pan);
+    setInspectDragging(false);
+    inspectPointer.current = null;
+  }
+
+  function openInspect() {
+    const reset = resetInspectView();
+    setInspectZoom(reset.zoom);
+    setInspectPan(reset.pan);
+    setInspectOpen(true);
+  }
+
+  const loadListingPhotos = useCallback(async (listing: Listing) => {
+    if (!listing.imageManifest.length) return;
+    const urls = await collectPhotoUrlsInOrder(
+      listing.imageManifest.map((asset) => asset.hash),
+      listingPhotoLoader(listing),
+    );
+    setListingPhotos((current) => ({ ...current, [listing.id]: urls }));
+    if (urls[0]) {
+      setLocalMedia((current) => ({ ...current, [listing.id]: urls[0] }));
+    }
+  }, []);
+
+  function photosForListing(listing: Listing): string[] {
+    const stored = listingPhotos[listing.id];
+    if (stored?.length) return stored;
+    return listing.imageManifest.map((_, index) =>
+      index === 0 && localMedia[listing.id] ? localMedia[listing.id] : "",
+    );
+  }
+
   function openDetail(listing: Listing) {
+    closeInspect();
+    setDetailPhotoIndex(cardPhotoIndex[listing.id] ?? 0);
     setSelectedListing(listing);
     setModal("detail");
+    void loadListingPhotos(listing);
+  }
+
+  const selectedPhotos = selectedListing ? photosForListing(selectedListing) : [];
+  const photoCount = selectedListing
+    ? listingPhotoCount(selectedListing.imageManifest.length)
+    : 0;
+  const safePhotoIndex = clampPhotoIndex(detailPhotoIndex, photoCount);
+  const selectedPhoto = selectedPhotos[safePhotoIndex] || null;
+
+  useEffect(() => {
+    if (modal !== "detail" || !selectedListing) return;
+    const count = photoCount;
+    function onKey(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape" && inspectOpen) {
+        event.preventDefault();
+        closeInspect();
+        return;
+      }
+      if (event.key === "ArrowRight" && count > 1) {
+        event.preventDefault();
+        setDetailPhotoIndex((current) => stepPhotoIndex(current, count, 1));
+        if (inspectOpen) {
+          const reset = resetInspectView();
+          setInspectZoom(reset.zoom);
+          setInspectPan(reset.pan);
+        }
+      }
+      if (event.key === "ArrowLeft" && count > 1) {
+        event.preventDefault();
+        setDetailPhotoIndex((current) => stepPhotoIndex(current, count, -1));
+        if (inspectOpen) {
+          const reset = resetInspectView();
+          setInspectZoom(reset.zoom);
+          setInspectPan(reset.pan);
+        }
+      }
+      if (!inspectOpen) return;
+      if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        setInspectZoom((current) => stepInspectZoom(current, 1));
+      }
+      if (event.key === "-" || event.key === "_") {
+        event.preventDefault();
+        setInspectZoom((current) => stepInspectZoom(current, -1));
+      }
+      if (event.key === "0") {
+        event.preventDefault();
+        const reset = resetInspectView();
+        setInspectZoom(reset.zoom);
+        setInspectPan(reset.pan);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [inspectOpen, modal, photoCount, selectedListing]);
+
+  function handleInspectPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (inspectZoom <= 1) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    inspectPointer.current = { x: event.clientX, y: event.clientY };
+    setInspectDragging(true);
+  }
+
+  function handleInspectPointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (!inspectDragging || !inspectPointer.current) return;
+    const last = inspectPointer.current;
+    setInspectPan((current) =>
+      applyInspectPan(current, event.clientX - last.x, event.clientY - last.y, inspectZoom),
+    );
+    inspectPointer.current = { x: event.clientX, y: event.clientY };
+  }
+
+  function handleInspectPointerUp() {
+    inspectPointer.current = null;
+    setInspectDragging(false);
+  }
+
+  function changeInspectPhoto(delta: number) {
+    setDetailPhotoIndex((current) => stepPhotoIndex(current, photoCount, delta));
+    const reset = resetInspectView();
+    setInspectZoom(reset.zoom);
+    setInspectPan(reset.pan);
   }
 
   function startCreate() {
@@ -1367,8 +1511,11 @@ export default function Marketplace() {
           : [listing, ...current],
       );
       setSelectedListing(listing);
-      if (photoDrafts[0]?.previewUrl) {
-        setLocalMedia((current) => ({ ...current, [listing.id]: photoDrafts[0].previewUrl as string }));
+      const publishedUrls = previewUrlsFromPhotoDrafts(photoDrafts);
+      if (publishedUrls.length) {
+        setListingPhotos((current) => ({ ...current, [listing.id]: publishedUrls }));
+        setLocalMedia((current) => ({ ...current, [listing.id]: publishedUrls[0] }));
+        setDetailPhotoIndex(0);
       }
       setPhotoDrafts([]);
       setEditingListingId(null);
@@ -1722,6 +1869,10 @@ export default function Marketplace() {
               const saved = favorites.has(listing.id);
               const reputation = reputationFor(listing);
               const socialAccounts = socialAccountsFor(listing);
+              const cardPhotos = photosForListing(listing);
+              const cardCount = listingPhotoCount(listing.imageManifest.length);
+              const cardIndex = clampPhotoIndex(cardPhotoIndex[listing.id] ?? 0, cardCount);
+              const cardPhoto = cardPhotos[cardIndex] || localMedia[listing.id] || "";
               return (
                 <article
                   className="listing-card"
@@ -1737,11 +1888,11 @@ export default function Marketplace() {
                 >
                   <div className={`listing-media tone-${visual.tone}`}>
                     <span className="media-glyph" aria-hidden="true">{visual.glyph}</span>
-                    {localMedia[listing.id] && (
+                    {cardPhoto ? (
                       // Native blob URLs are intentionally used; these bytes never hit a server.
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img className="local-image" src={localMedia[listing.id]} alt="Seller-held listing media" />
-                    )}
+                      <img className="local-image" src={cardPhoto} alt="Seller-held listing media" />
+                    ) : null}
                     <span className="media-badge">
                       <span className="online-dot" />
                       {listing.mediaAvailability === "local"
@@ -1750,6 +1901,41 @@ export default function Marketplace() {
                           ? "seller online"
                           : "request media"}
                     </span>
+                    {cardCount > 1 ? (
+                      <>
+                        <span className="photo-count-badge">
+                          {cardIndex + 1}/{cardCount}
+                        </span>
+                        <button
+                          type="button"
+                          className="detail-photo-nav prev"
+                          aria-label="Previous photo"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setCardPhotoIndex((current) => ({
+                              ...current,
+                              [listing.id]: stepPhotoIndex(cardIndex, cardCount, -1),
+                            }));
+                          }}
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          className="detail-photo-nav next"
+                          aria-label="Next photo"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setCardPhotoIndex((current) => ({
+                              ...current,
+                              [listing.id]: stepPhotoIndex(cardIndex, cardCount, 1),
+                            }));
+                          }}
+                        >
+                          ›
+                        </button>
+                      </>
+                    ) : null}
                     <button
                       className={`save-button ${saved ? "saved" : ""}`}
                       aria-label={saved ? "Remove saved listing" : "Save listing"}
@@ -1837,7 +2023,17 @@ export default function Marketplace() {
 
       {modal && (
         <>
-          <button className="scrim" aria-label="Close dialog" onClick={() => setModal(null)} />
+          <button
+            className="scrim"
+            aria-label="Close dialog"
+            onClick={() => {
+              if (inspectOpen) {
+                closeInspect();
+                return;
+              }
+              setModal(null);
+            }}
+          />
           {modal === "create" && (
             <div className="modal modal-create" role="dialog" aria-modal="true" aria-labelledby="create-title">
               <div className="modal-head">
@@ -2163,7 +2359,19 @@ export default function Marketplace() {
                       : `${selectedListing.category} · ${selectedListing.condition}`}
                   </span>
                 </div>
-                <button className="icon-button" aria-label="Close" onClick={() => setModal(null)}>×</button>
+                <button
+                  className="icon-button"
+                  aria-label="Close"
+                  onClick={() => {
+                    if (inspectOpen) {
+                      closeInspect();
+                      return;
+                    }
+                    setModal(null);
+                  }}
+                >
+                  ×
+                </button>
               </div>
               {isArchiveListing(selectedListing) ? (
                 <div className="detail-copy">
@@ -2182,14 +2390,77 @@ export default function Marketplace() {
                 </div>
               ) : (
               <div className="detail-grid">
-                <div className={`detail-media tone-${(categoryVisuals[selectedListing.category] ?? { tone: "slate" }).tone}`}>
-                  <span className="media-glyph" aria-hidden="true">
-                    {(categoryVisuals[selectedListing.category] ?? { glyph: "OE" }).glyph}
-                  </span>
-                  {localMedia[selectedListing.id] && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img className="local-image" src={localMedia[selectedListing.id]} alt="Seller-held listing media" />
-                  )}
+                <div className="detail-gallery">
+                  <div className={`detail-media tone-${(categoryVisuals[selectedListing.category] ?? { tone: "slate" }).tone}`}>
+                    <span className="media-glyph" aria-hidden="true">
+                      {(categoryVisuals[selectedListing.category] ?? { glyph: "OE" }).glyph}
+                    </span>
+                    {selectedPhoto ? (
+                      <button
+                        type="button"
+                        className="detail-photo-open"
+                        onClick={openInspect}
+                        aria-label="Inspect listing photo"
+                      >
+                        {/* Native blob URLs are intentionally used; these bytes never hit a server. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img className="local-image" src={selectedPhoto} alt="" />
+                      </button>
+                    ) : null}
+                    {photoCount > 1 ? (
+                      <>
+                        <button
+                          type="button"
+                          className="detail-photo-nav prev"
+                          aria-label="Previous photo"
+                          onClick={() => {
+                            setDetailPhotoIndex((current) =>
+                              stepPhotoIndex(current, photoCount, -1),
+                            );
+                          }}
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          className="detail-photo-nav next"
+                          aria-label="Next photo"
+                          onClick={() => {
+                            setDetailPhotoIndex((current) =>
+                              stepPhotoIndex(current, photoCount, 1),
+                            );
+                          }}
+                        >
+                          ›
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                  {photoCount > 1 ? (
+                    <div className="detail-photo-thumbs" role="listbox" aria-label="Listing photos">
+                      {selectedListing.imageManifest.map((asset, index) => {
+                        const url = selectedPhotos[index] || "";
+                        return (
+                          <button
+                            key={asset.hash || `photo-${index}`}
+                            type="button"
+                            role="option"
+                            className={index === safePhotoIndex ? "is-selected" : ""}
+                            aria-label={`Show photo ${index + 1} of ${photoCount}`}
+                            aria-selected={index === safePhotoIndex}
+                            onClick={() => setDetailPhotoIndex(index)}
+                          >
+                            {url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={url} alt="" />
+                            ) : (
+                              <span className="detail-photo-missing">{index + 1}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="detail-copy">
                   <span className="eyebrow">Listed {relativeTime(selectedListing.createdAt)}</span>
@@ -2325,8 +2596,10 @@ export default function Marketplace() {
                   <div className="media-notice">
                     <strong>Seller-controlled media</strong>
                     <p>
-                      {localMedia[selectedListing.id]
-                        ? "This image was loaded from your device’s local vault."
+                      {photoCount
+                        ? photoCount > 1
+                          ? "These images stay in the seller’s local vault or host. Click a photo icon or use previous/next, then inspect to zoom and pan."
+                          : "This image was loaded from your device’s local vault. Click it to inspect, zoom, and pan."
                         : "The registry has no image bytes. A peer transfer is requested when the seller is online."}
                     </p>
                   </div>
@@ -2360,6 +2633,89 @@ export default function Marketplace() {
               )}
             </div>
           )}
+          {inspectOpen && selectedPhoto ? (
+            <div
+              className="listing-inspect"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Inspect listing photo"
+              onClick={closeInspect}
+            >
+              <div
+                className="listing-inspect-stage"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div
+                  className={`listing-inspect-canvas${inspectDragging ? " is-dragging" : ""}`}
+                  onPointerDown={handleInspectPointerDown}
+                  onPointerMove={handleInspectPointerMove}
+                  onPointerUp={handleInspectPointerUp}
+                  onPointerCancel={handleInspectPointerUp}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={selectedPhoto}
+                    alt=""
+                    draggable={false}
+                    style={{ transform: inspectTransform(inspectZoom, inspectPan) }}
+                  />
+                </div>
+                <div className="listing-inspect-tools">
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    aria-label="Zoom out"
+                    onClick={() => setInspectZoom((current) => stepInspectZoom(current, -1))}
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    aria-label="Reset zoom"
+                    onClick={() => {
+                      const reset = resetInspectView();
+                      setInspectZoom(reset.zoom);
+                      setInspectPan(reset.pan);
+                    }}
+                  >
+                    Reset zoom
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    aria-label="Zoom in"
+                    onClick={() => setInspectZoom((current) => stepInspectZoom(current, 1))}
+                  >
+                    +
+                  </button>
+                  {photoCount > 1 ? (
+                    <>
+                      <button
+                        type="button"
+                        className="button button-ghost"
+                        aria-label="Previous photo"
+                        onClick={() => changeInspectPhoto(-1)}
+                      >
+                        ‹
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-ghost"
+                        aria-label="Next photo"
+                        onClick={() => changeInspectPhoto(1)}
+                      >
+                        ›
+                      </button>
+                    </>
+                  ) : null}
+                  <button type="button" className="button button-dark" onClick={closeInspect}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </>
       )}
 

@@ -97,6 +97,88 @@ export function revokePhotoDraft(draft: PhotoDraft) {
   }
 }
 
+export const LISTING_INSPECT_ZOOM_MIN = 1;
+export const LISTING_INSPECT_ZOOM_MAX = 4;
+export const LISTING_INSPECT_ZOOM_STEP = 0.5;
+
+export type InspectPan = { x: number; y: number };
+
+export function clampPhotoIndex(index: number, length: number): number {
+  if (!Number.isInteger(length) || length <= 0) return 0;
+  if (!Number.isInteger(index)) return 0;
+  return Math.min(Math.max(index, 0), length - 1);
+}
+
+export function stepPhotoIndex(index: number, length: number, delta: number): number {
+  if (!Number.isInteger(length) || length <= 0) return 0;
+  if (!Number.isInteger(delta)) return clampPhotoIndex(index, length);
+  const current = clampPhotoIndex(index, length);
+  return ((current + delta) % length + length) % length;
+}
+
+export function clampInspectZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return LISTING_INSPECT_ZOOM_MIN;
+  return Math.min(LISTING_INSPECT_ZOOM_MAX, Math.max(LISTING_INSPECT_ZOOM_MIN, zoom));
+}
+
+export function stepInspectZoom(zoom: number, direction: 1 | -1): number {
+  return clampInspectZoom(zoom + direction * LISTING_INSPECT_ZOOM_STEP);
+}
+
+export function resetInspectView(): { zoom: number; pan: InspectPan } {
+  return { zoom: LISTING_INSPECT_ZOOM_MIN, pan: { x: 0, y: 0 } };
+}
+
+export function applyInspectPan(
+  pan: InspectPan,
+  dx: number,
+  dy: number,
+  zoom: number,
+): InspectPan {
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return pan;
+  if (clampInspectZoom(zoom) <= LISTING_INSPECT_ZOOM_MIN) return { x: 0, y: 0 };
+  return { x: pan.x + dx, y: pan.y + dy };
+}
+
+export function inspectTransform(zoom: number, pan: InspectPan): string {
+  const safeZoom = clampInspectZoom(zoom);
+  const safePan = safeZoom <= LISTING_INSPECT_ZOOM_MIN ? { x: 0, y: 0 } : pan;
+  return `translate(${safePan.x}px, ${safePan.y}px) scale(${safeZoom})`;
+}
+
+export async function collectLoadedPhotoUrls(
+  hashes: string[],
+  loadUrl: (hash: string) => Promise<string | null>,
+): Promise<string[]> {
+  return (await collectPhotoUrlsInOrder(hashes, loadUrl)).filter(Boolean);
+}
+
+export async function collectPhotoUrlsInOrder(
+  hashes: string[],
+  loadUrl: (hash: string) => Promise<string | null>,
+): Promise<string[]> {
+  const urls: string[] = [];
+  for (const hash of hashes) {
+    if (!hash) {
+      urls.push("");
+      continue;
+    }
+    const url = await loadUrl(hash).catch(() => null);
+    urls.push(url ?? "");
+  }
+  return urls;
+}
+
+export function listingPhotoCount(manifestLength: number): number {
+  return Number.isInteger(manifestLength) && manifestLength > 0 ? manifestLength : 0;
+}
+
+export function previewUrlsFromPhotoDrafts(drafts: PhotoDraft[]): string[] {
+  return drafts
+    .map((draft) => draft.previewUrl)
+    .filter((url): url is string => Boolean(url));
+}
+
 export async function manifestsFromPhotoDrafts(
   drafts: PhotoDraft[],
   storeFiles: (files: File[]) => Promise<MediaManifest[]>,

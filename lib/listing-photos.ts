@@ -129,21 +129,102 @@ export function resetInspectView(): { zoom: number; pan: InspectPan } {
   return { zoom: LISTING_INSPECT_ZOOM_MIN, pan: { x: 0, y: 0 } };
 }
 
+export type InspectView = { zoom: number; pan: InspectPan };
+
+export type InspectWheelInput = {
+  deltaX: number;
+  deltaY: number;
+  deltaMode?: number;
+  pinch: boolean;
+  originX?: number;
+  originY?: number;
+};
+
+const WHEEL_LINE_PX = 16;
+const WHEEL_PAGE_PX = 600;
+const PINCH_WHEEL_GAIN = 0.01;
+
+function finitePan(pan: InspectPan): InspectPan {
+  return {
+    x: Number.isFinite(pan.x) ? pan.x : 0,
+    y: Number.isFinite(pan.y) ? pan.y : 0,
+  };
+}
+
 export function applyInspectPan(
   pan: InspectPan,
   dx: number,
   dy: number,
-  zoom: number,
+  zoom = LISTING_INSPECT_ZOOM_MIN,
 ): InspectPan {
-  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return pan;
-  if (clampInspectZoom(zoom) <= LISTING_INSPECT_ZOOM_MIN) return { x: 0, y: 0 };
-  return { x: pan.x + dx, y: pan.y + dy };
+  void zoom;
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return finitePan(pan);
+  const current = finitePan(pan);
+  return { x: current.x + dx, y: current.y + dy };
 }
 
 export function inspectTransform(zoom: number, pan: InspectPan): string {
   const safeZoom = clampInspectZoom(zoom);
-  const safePan = safeZoom <= LISTING_INSPECT_ZOOM_MIN ? { x: 0, y: 0 } : pan;
+  const safePan = finitePan(pan);
   return `translate(${safePan.x}px, ${safePan.y}px) scale(${safeZoom})`;
+}
+
+export function normalizeWheelDelta(delta: number, deltaMode = 0): number {
+  if (!Number.isFinite(delta)) return 0;
+  if (deltaMode === 1) return delta * WHEEL_LINE_PX;
+  if (deltaMode === 2) return delta * WHEEL_PAGE_PX;
+  return delta;
+}
+
+export function applyInspectZoomAt(
+  view: InspectView,
+  nextZoom: number,
+  originX = 0,
+  originY = 0,
+): InspectView {
+  const prev = clampInspectZoom(view.zoom);
+  const zoom = clampInspectZoom(nextZoom);
+  const ox = Number.isFinite(originX) ? originX : 0;
+  const oy = Number.isFinite(originY) ? originY : 0;
+  const pan = finitePan(view.pan);
+  if (zoom === prev) return { zoom, pan };
+  const scale = zoom / prev;
+  return {
+    zoom,
+    pan: {
+      x: ox - (ox - pan.x) * scale,
+      y: oy - (oy - pan.y) * scale,
+    },
+  };
+}
+
+export function applyInspectWheel(view: InspectView, input: InspectWheelInput): InspectView {
+  const mode = input.deltaMode ?? 0;
+  const dx = normalizeWheelDelta(input.deltaX, mode);
+  const dy = normalizeWheelDelta(input.deltaY, mode);
+  if (input.pinch) {
+    const factor = Math.exp(-dy * PINCH_WHEEL_GAIN);
+    if (!Number.isFinite(factor) || factor <= 0) {
+      return { zoom: clampInspectZoom(view.zoom), pan: finitePan(view.pan) };
+    }
+    return applyInspectZoomAt(view, view.zoom * factor, input.originX ?? 0, input.originY ?? 0);
+  }
+  return {
+    zoom: clampInspectZoom(view.zoom),
+    pan: applyInspectPan(view.pan, -dx, -dy, view.zoom),
+  };
+}
+
+export function applyInspectGestureScale(
+  start: InspectView,
+  scale: number,
+  originX = 0,
+  originY = 0,
+): InspectView {
+  if (!Number.isFinite(scale) || scale <= 0) {
+    return { zoom: clampInspectZoom(start.zoom), pan: finitePan(start.pan) };
+  }
+  return applyInspectZoomAt(start, start.zoom * scale, originX, originY);
 }
 
 export async function collectLoadedPhotoUrls(

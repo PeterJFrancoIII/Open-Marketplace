@@ -18,7 +18,9 @@ import {
   LISTING_PHOTO_LIMIT,
   PHOTO_DRAG_TYPE,
   appendPhotoFiles,
+  applyInspectGestureScale,
   applyInspectPan,
+  applyInspectWheel,
   clampPhotoIndex,
   collectPhotoUrlsInOrder,
   inspectTransform,
@@ -809,6 +811,8 @@ export default function Marketplace() {
   const [inspectPan, setInspectPan] = useState({ x: 0, y: 0 });
   const [inspectDragging, setInspectDragging] = useState(false);
   const inspectPointer = useRef<{ x: number; y: number } | null>(null);
+  const inspectRootRef = useRef<HTMLDivElement | null>(null);
+  const inspectViewRef = useRef({ zoom: 1, pan: { x: 0, y: 0 } });
   const [toast, setToast] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [composeOpened, setComposeOpened] = useState(false);
@@ -1172,19 +1176,22 @@ export default function Marketplace() {
     });
   }
 
+  function writeInspectView(next: { zoom: number; pan: { x: number; y: number } }) {
+    inspectViewRef.current = next;
+    setInspectZoom(next.zoom);
+    setInspectPan(next.pan);
+  }
+
   function closeInspect() {
     const reset = resetInspectView();
     setInspectOpen(false);
-    setInspectZoom(reset.zoom);
-    setInspectPan(reset.pan);
+    writeInspectView(reset);
     setInspectDragging(false);
     inspectPointer.current = null;
   }
 
   function openInspect() {
-    const reset = resetInspectView();
-    setInspectZoom(reset.zoom);
-    setInspectPan(reset.pan);
+    writeInspectView(resetInspectView());
     setInspectOpen(true);
   }
 
@@ -1236,34 +1243,36 @@ export default function Marketplace() {
         event.preventDefault();
         setDetailPhotoIndex((current) => stepPhotoIndex(current, count, 1));
         if (inspectOpen) {
-          const reset = resetInspectView();
-          setInspectZoom(reset.zoom);
-          setInspectPan(reset.pan);
+          writeInspectView(resetInspectView());
         }
       }
       if (event.key === "ArrowLeft" && count > 1) {
         event.preventDefault();
         setDetailPhotoIndex((current) => stepPhotoIndex(current, count, -1));
         if (inspectOpen) {
-          const reset = resetInspectView();
-          setInspectZoom(reset.zoom);
-          setInspectPan(reset.pan);
+          writeInspectView(resetInspectView());
         }
       }
       if (!inspectOpen) return;
       if (event.key === "+" || event.key === "=") {
         event.preventDefault();
-        setInspectZoom((current) => stepInspectZoom(current, 1));
+        const current = inspectViewRef.current;
+        writeInspectView({
+          zoom: stepInspectZoom(current.zoom, 1),
+          pan: current.pan,
+        });
       }
       if (event.key === "-" || event.key === "_") {
         event.preventDefault();
-        setInspectZoom((current) => stepInspectZoom(current, -1));
+        const current = inspectViewRef.current;
+        writeInspectView({
+          zoom: stepInspectZoom(current.zoom, -1),
+          pan: current.pan,
+        });
       }
       if (event.key === "0") {
         event.preventDefault();
-        const reset = resetInspectView();
-        setInspectZoom(reset.zoom);
-        setInspectPan(reset.pan);
+        writeInspectView(resetInspectView());
       }
     }
     window.addEventListener("keydown", onKey);
@@ -1271,7 +1280,6 @@ export default function Marketplace() {
   }, [inspectOpen, modal, photoCount, selectedListing]);
 
   function handleInspectPointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (inspectZoom <= 1) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     inspectPointer.current = { x: event.clientX, y: event.clientY };
     setInspectDragging(true);
@@ -1280,9 +1288,16 @@ export default function Marketplace() {
   function handleInspectPointerMove(event: PointerEvent<HTMLDivElement>) {
     if (!inspectDragging || !inspectPointer.current) return;
     const last = inspectPointer.current;
-    setInspectPan((current) =>
-      applyInspectPan(current, event.clientX - last.x, event.clientY - last.y, inspectZoom),
-    );
+    const current = inspectViewRef.current;
+    writeInspectView({
+      zoom: current.zoom,
+      pan: applyInspectPan(
+        current.pan,
+        event.clientX - last.x,
+        event.clientY - last.y,
+        current.zoom,
+      ),
+    });
     inspectPointer.current = { x: event.clientX, y: event.clientY };
   }
 
@@ -1293,10 +1308,83 @@ export default function Marketplace() {
 
   function changeInspectPhoto(delta: number) {
     setDetailPhotoIndex((current) => stepPhotoIndex(current, photoCount, delta));
-    const reset = resetInspectView();
-    setInspectZoom(reset.zoom);
-    setInspectPan(reset.pan);
+    writeInspectView(resetInspectView());
   }
+
+  useEffect(() => {
+    if (!inspectOpen) return;
+    const node = inspectRootRef.current;
+    if (!node) return;
+
+    type SafariGestureEvent = Event & {
+      scale: number;
+      clientX: number;
+      clientY: number;
+    };
+
+    let gestureStart = inspectViewRef.current;
+    let gestureActive = false;
+
+    function originFromClient(clientX: number, clientY: number) {
+      const rect = node.getBoundingClientRect();
+      return {
+        x: clientX - (rect.left + rect.width / 2),
+        y: clientY - (rect.top + rect.height / 2),
+      };
+    }
+
+    function commit(next: { zoom: number; pan: { x: number; y: number } }) {
+      inspectViewRef.current = next;
+      setInspectZoom(next.zoom);
+      setInspectPan(next.pan);
+    }
+
+    function onWheel(event: WheelEvent) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (gestureActive) return;
+      const origin = originFromClient(event.clientX, event.clientY);
+      commit(
+        applyInspectWheel(inspectViewRef.current, {
+          deltaX: event.deltaX,
+          deltaY: event.deltaY,
+          deltaMode: event.deltaMode,
+          pinch: event.ctrlKey || event.metaKey,
+          originX: origin.x,
+          originY: origin.y,
+        }),
+      );
+    }
+
+    function onGestureStart(event: Event) {
+      event.preventDefault();
+      gestureActive = true;
+      gestureStart = inspectViewRef.current;
+    }
+
+    function onGestureChange(event: Event) {
+      event.preventDefault();
+      const gesture = event as SafariGestureEvent;
+      const origin = originFromClient(gesture.clientX, gesture.clientY);
+      commit(applyInspectGestureScale(gestureStart, gesture.scale, origin.x, origin.y));
+    }
+
+    function onGestureEnd(event: Event) {
+      event.preventDefault();
+      gestureActive = false;
+    }
+
+    node.addEventListener("wheel", onWheel, { passive: false });
+    node.addEventListener("gesturestart", onGestureStart);
+    node.addEventListener("gesturechange", onGestureChange);
+    node.addEventListener("gestureend", onGestureEnd);
+    return () => {
+      node.removeEventListener("wheel", onWheel);
+      node.removeEventListener("gesturestart", onGestureStart);
+      node.removeEventListener("gesturechange", onGestureChange);
+      node.removeEventListener("gestureend", onGestureEnd);
+    };
+  }, [inspectOpen]);
 
   function startCreate() {
     if (sessionPending) return;
@@ -2598,8 +2686,8 @@ export default function Marketplace() {
                     <p>
                       {photoCount
                         ? photoCount > 1
-                          ? "These images stay in the seller’s local vault or host. Click a photo icon or use previous/next, then inspect to zoom and pan."
-                          : "This image was loaded from your device’s local vault. Click it to inspect, zoom, and pan."
+                          ? "These images stay in the seller’s local vault or host. Click a photo icon or use previous/next, then inspect. On a trackpad, pinch to zoom and swipe with two fingers to move."
+                          : "This image was loaded from your device’s local vault. Click it to inspect. On a trackpad, pinch to zoom and swipe with two fingers to move."
                         : "The registry has no image bytes. A peer transfer is requested when the seller is online."}
                     </p>
                   </div>
@@ -2635,6 +2723,7 @@ export default function Marketplace() {
           )}
           {inspectOpen && selectedPhoto ? (
             <div
+              ref={inspectRootRef}
               className="listing-inspect"
               role="dialog"
               aria-modal="true"
@@ -2665,7 +2754,13 @@ export default function Marketplace() {
                     type="button"
                     className="button button-ghost"
                     aria-label="Zoom out"
-                    onClick={() => setInspectZoom((current) => stepInspectZoom(current, -1))}
+                    onClick={() => {
+                      const current = inspectViewRef.current;
+                      writeInspectView({
+                        zoom: stepInspectZoom(current.zoom, -1),
+                        pan: current.pan,
+                      });
+                    }}
                   >
                     −
                   </button>
@@ -2673,11 +2768,7 @@ export default function Marketplace() {
                     type="button"
                     className="button button-ghost"
                     aria-label="Reset zoom"
-                    onClick={() => {
-                      const reset = resetInspectView();
-                      setInspectZoom(reset.zoom);
-                      setInspectPan(reset.pan);
-                    }}
+                    onClick={() => writeInspectView(resetInspectView())}
                   >
                     Reset zoom
                   </button>
@@ -2685,7 +2776,13 @@ export default function Marketplace() {
                     type="button"
                     className="button button-ghost"
                     aria-label="Zoom in"
-                    onClick={() => setInspectZoom((current) => stepInspectZoom(current, 1))}
+                    onClick={() => {
+                      const current = inspectViewRef.current;
+                      writeInspectView({
+                        zoom: stepInspectZoom(current.zoom, 1),
+                        pan: current.pan,
+                      });
+                    }}
                   >
                     +
                   </button>

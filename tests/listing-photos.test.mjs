@@ -6,7 +6,10 @@ import {
   LISTING_INSPECT_ZOOM_MIN,
   LISTING_PHOTO_LIMIT,
   appendPhotoFiles,
+  applyInspectGestureScale,
   applyInspectPan,
+  applyInspectWheel,
+  applyInspectZoomAt,
   clampInspectZoom,
   clampPhotoIndex,
   collectLoadedPhotoUrls,
@@ -121,6 +124,10 @@ test("compose UI lets owners add, remove, and reorder assigned photos", async ()
   assert.match(marketplace, /Zoom in/);
   assert.match(marketplace, /Zoom out/);
   assert.match(marketplace, /Reset zoom/);
+  assert.match(marketplace, /applyInspectWheel/);
+  assert.match(marketplace, /applyInspectGestureScale/);
+  assert.match(marketplace, /gesturestart/);
+  assert.match(marketplace, /pinch to zoom and swipe with two fingers/);
   assert.doesNotMatch(marketplace, /Social trust profile/);
   assert.doesNotMatch(marketplace, /social-editor/);
 });
@@ -141,10 +148,44 @@ test("listing viewer wraps photo indexes and clamps inspect zoom/pan", async () 
 
   const reset = resetInspectView();
   assert.deepEqual(reset, { zoom: 1, pan: { x: 0, y: 0 } });
-  assert.deepEqual(applyInspectPan({ x: 8, y: 4 }, 2, -1, 1), { x: 0, y: 0 });
+  assert.deepEqual(applyInspectPan({ x: 8, y: 4 }, 2, -1, 1), { x: 10, y: 3 });
   assert.deepEqual(applyInspectPan({ x: 8, y: 4 }, 2, -1, 2), { x: 10, y: 3 });
   assert.equal(inspectTransform(2, { x: 10, y: -4 }), "translate(10px, -4px) scale(2)");
-  assert.equal(inspectTransform(1, { x: 10, y: -4 }), "translate(0px, 0px) scale(1)");
+  assert.equal(inspectTransform(1, { x: 10, y: -4 }), "translate(10px, -4px) scale(1)");
+
+  assert.deepEqual(
+    applyInspectWheel({ zoom: 1, pan: { x: 0, y: 0 } }, {
+      deltaX: 20,
+      deltaY: -10,
+      pinch: false,
+    }),
+    { zoom: 1, pan: { x: -20, y: 10 } },
+  );
+  const pinched = applyInspectWheel({ zoom: 1, pan: { x: 0, y: 0 } }, {
+    deltaX: 0,
+    deltaY: -100,
+    pinch: true,
+    originX: 0,
+    originY: 0,
+  });
+  assert.ok(pinched.zoom > 1);
+  assert.ok(pinched.zoom <= LISTING_INSPECT_ZOOM_MAX);
+  assert.deepEqual(
+    applyInspectGestureScale({ zoom: 1, pan: { x: 0, y: 0 } }, 2, 0, 0),
+    { zoom: 2, pan: { x: 0, y: 0 } },
+  );
+  assert.deepEqual(
+    applyInspectZoomAt({ zoom: 1, pan: { x: 0, y: 0 } }, 2, 40, 0),
+    { zoom: 2, pan: { x: -40, y: 0 } },
+  );
+  assert.equal(
+    applyInspectWheel({ zoom: LISTING_INSPECT_ZOOM_MAX, pan: { x: 0, y: 0 } }, {
+      deltaX: 0,
+      deltaY: -80,
+      pinch: true,
+    }).zoom,
+    LISTING_INSPECT_ZOOM_MAX,
+  );
 
   const ordered = await collectPhotoUrlsInOrder(
     ["sha256:lamp", "", "sha256:missing", "sha256:chair"],

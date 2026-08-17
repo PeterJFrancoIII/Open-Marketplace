@@ -1295,8 +1295,10 @@ a.detail-social-account.social-connected:hover,
   display: flex;
   inset: 0;
   justify-content: center;
+  overscroll-behavior: none;
   padding: 18px;
   position: fixed;
+  touch-action: none;
   z-index: 90;
 }
 

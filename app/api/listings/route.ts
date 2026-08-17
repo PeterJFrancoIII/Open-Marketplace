@@ -431,10 +431,7 @@ export async function POST(request: Request) {
       existingProfile?.socialAccountsJson,
     );
     const checkedSocialProofs = storedSocialProofs.length
-      ? (await checkSocialAccounts(storedSocialProofs)).map((account) => ({
-          ...account,
-          metricsSource: "self-reported" as const,
-        }))
+      ? await checkSocialAccounts(storedSocialProofs)
       : [];
     const brokenAccount = checkedSocialProofs.find(
       (account) => account.health === "dead" || account.health === "invalid",
@@ -589,10 +586,7 @@ export async function PATCH(request: Request) {
       existingProfile?.socialAccountsJson,
     );
     const checkedSocialProofs = storedSocialProofs.length
-      ? (await checkSocialAccounts(storedSocialProofs)).map((account) => ({
-          ...account,
-          metricsSource: "self-reported" as const,
-        }))
+      ? await checkSocialAccounts(storedSocialProofs)
       : [];
     const brokenAccount = checkedSocialProofs.find(
       (account) => account.health === "dead" || account.health === "invalid",

@@ -3,7 +3,6 @@ import {
   isConnectedFacebookProof,
   publicFacebookProfileUrl,
 } from "./facebook-listing-proof";
-import { checkSocialAccounts } from "./social-health";
 import type { SocialProof } from "./types";
 
 export { expandSocialProfileInput };
@@ -17,11 +16,15 @@ function isSupportedProvider(value: unknown): value is SupportedSocialProvider {
   );
 }
 
-function asSelfReported(account: SocialProof): SocialProof {
-  return {
-    ...account,
-    metricsSource: "self-reported",
-  };
+export const SOCIAL_CONNECT_ONLY_ERROR =
+  "Social profiles can only be added with Connect. Typed usernames and pasted links are not accepted.";
+
+export function isConnectedSocialProof(account: SocialProof): boolean {
+  return account.metricsSource === "oauth";
+}
+
+export function connectedSocialAccounts(accounts: SocialProof[]): SocialProof[] {
+  return accounts.filter(isConnectedSocialProof);
 }
 
 export function parseSocialAccountsJson(
@@ -36,19 +39,25 @@ export function parseSocialAccountsJson(
       if (!entry || typeof entry !== "object") continue;
       const provider = (entry as { provider?: unknown }).provider;
       const url = (entry as { url?: unknown }).url;
-      if (!isSupportedProvider(provider) || typeof url !== "string" || !url.trim()) {
+      if (!isSupportedProvider(provider) || typeof url !== "string") {
         continue;
       }
-      const metricsSource =
-        provider === "facebook" &&
-        (entry as SocialProof).metricsSource === "oauth" &&
-        publicFacebookProfileUrl(url)
-          ? "oauth"
-          : "self-reported";
+      if ((entry as SocialProof).metricsSource !== "oauth") continue;
+      if (provider === "facebook") {
+        byProvider.set(provider, {
+          ...(entry as SocialProof),
+          provider,
+          url: publicFacebookProfileUrl(url) || "",
+          metricsSource: "oauth",
+        });
+        continue;
+      }
+      if (!url.trim()) continue;
       byProvider.set(provider, {
-        ...asSelfReported(entry as SocialProof),
-        metricsSource,
-        url: metricsSource === "oauth" ? publicFacebookProfileUrl(url) : url.trim(),
+        ...(entry as SocialProof),
+        provider,
+        url: url.trim(),
+        metricsSource: "oauth",
       });
     }
     return SOCIAL_PROVIDERS.flatMap((provider) => {
@@ -67,55 +76,10 @@ export async function normalizeSocialAccountsForProfile(input: unknown): Promise
   if (!Array.isArray(input)) {
     return { ok: false, error: "Social accounts must be a list." };
   }
-  if (input.length > 3) {
-    return { ok: false, error: "At most three social accounts can be saved." };
+  if (input.length > 0) {
+    return { ok: false, error: SOCIAL_CONNECT_ONLY_ERROR };
   }
-
-  const byProvider = new Map<SupportedSocialProvider, SocialProof>();
-  for (const entry of input) {
-    if (!entry || typeof entry !== "object") {
-      return { ok: false, error: "Each social account must be an object." };
-    }
-    const provider = (entry as { provider?: unknown }).provider;
-    const url = (entry as { url?: unknown }).url;
-    if (!isSupportedProvider(provider)) {
-      return {
-        ok: false,
-        error: "Social links are limited to Facebook, Instagram, and TikTok.",
-      };
-    }
-    if (typeof url !== "string") {
-      return { ok: false, error: "Each social account needs a profile URL." };
-    }
-    if (!url.trim()) continue;
-    byProvider.set(
-      provider,
-      asSelfReported({
-        ...(entry as SocialProof),
-        provider,
-        url: expandSocialProfileInput(provider, url),
-      }),
-    );
-  }
-
-  const candidates = SOCIAL_PROVIDERS.flatMap((provider) => {
-    const saved = byProvider.get(provider);
-    return saved ? [saved] : [];
-  });
-  if (!candidates.length) return { ok: true, accounts: [] };
-
-  const checked = (await checkSocialAccounts(candidates)).map(asSelfReported);
-  const broken = checked.find(
-    (account) => account.health === "dead" || account.health === "invalid",
-  );
-  if (broken) {
-    return {
-      ok: false,
-      error: "Fix or remove the unavailable social profile before saving.",
-      account: broken,
-    };
-  }
-  return { ok: true, accounts: checked };
+  return { ok: true, accounts: [] };
 }
 
 export function mergeSocialAccountsForSave(
@@ -123,39 +87,12 @@ export function mergeSocialAccountsForSave(
   existing: SocialProof[],
   facebookConnected = false,
 ): SocialProof[] {
-  const others = incoming
-    .filter((account) => account.provider !== "facebook")
-    .map(asSelfReported);
+  void incoming;
+  const existingOauth = connectedSocialAccounts(existing);
   if (facebookConnected) {
-    const existingOauth = existing.find(isConnectedFacebookProof);
-    const incomingFacebook = incoming.find(
-      (account) => account.provider === "facebook",
-    );
-    const url =
-      publicFacebookProfileUrl(existingOauth?.url) ||
-      publicFacebookProfileUrl(incomingFacebook?.url);
-    if (!url && !existingOauth) return others;
-    return [
-      {
-        ...(existingOauth ?? incomingFacebook),
-        provider: "facebook",
-        url,
-        handle: existingOauth?.handle ?? incomingFacebook?.handle ?? "Facebook",
-        metricsSource: "oauth",
-        health: "active",
-        healthMessage: "Connected with Facebook Login.",
-        connectionLabel: "friends",
-      },
-      ...others,
-    ];
+    const facebook = existingOauth.find(isConnectedFacebookProof);
+    const others = existingOauth.filter((account) => account.provider !== "facebook");
+    return facebook ? [facebook, ...others] : others;
   }
-  const incomingHasFacebook = incoming.some(
-    (account) => account.provider === "facebook",
-  );
-  const facebook = (
-    incomingHasFacebook
-      ? incoming.filter((account) => account.provider === "facebook")
-      : existing.filter((account) => account.provider === "facebook")
-  ).map(asSelfReported);
-  return [...facebook, ...others];
+  return existingOauth.filter((account) => account.provider !== "facebook");
 }

@@ -21,7 +21,6 @@ import {
   type ShippingBrokerId,
 } from "../../lib/shipping-brokers";
 import { FACEBOOK_CONNECT_SCOPES } from "../../lib/facebook-listing-proof";
-import { expandSocialProfileInput } from "../../lib/profile-settings";
 import type {
   FacebookConnection,
   PayPalConnection,
@@ -29,37 +28,6 @@ import type {
   PaymentRail,
   SocialProof,
 } from "../../lib/types";
-
-type SocialDraft = {
-  provider: "facebook" | "instagram" | "tiktok";
-  url: string;
-  accountCreatedAt: string;
-  connectionCount: string;
-  health?: SocialProof["health"];
-  healthMessage?: string;
-};
-
-const emptySocialDrafts: SocialDraft[] = [
-  { provider: "facebook", url: "", accountCreatedAt: "", connectionCount: "" },
-  { provider: "instagram", url: "", accountCreatedAt: "", connectionCount: "" },
-  { provider: "tiktok", url: "", accountCreatedAt: "", connectionCount: "" },
-];
-
-function draftsFromAccounts(accounts: SocialProof[]): SocialDraft[] {
-  return emptySocialDrafts.map((draft) => {
-    const saved = accounts.find((account) => account.provider === draft.provider);
-    if (!saved) return { ...draft };
-    return {
-      ...draft,
-      url: saved.url ?? "",
-      accountCreatedAt: saved.accountCreatedAt ?? "",
-      connectionCount:
-        saved.connectionCount == null ? "" : String(saved.connectionCount),
-      health: saved.health,
-      healthMessage: saved.healthMessage,
-    };
-  });
-}
 
 function destinationsByRail(destinations: PaymentDestination[]) {
   return Object.fromEntries(
@@ -105,19 +73,6 @@ function normalizeAuthError(error: unknown, fallback: string) {
   return fallback;
 }
 
-function healthLabel(health: SocialProof["health"]) {
-  if (health === "active") return "Link resolves";
-  if (health === "dead" || health === "invalid") return "Fix or remove";
-  if (health === "checking") return "Checking";
-  if (health === "unknown") return "Recheck blocked";
-  return "";
-}
-
-function providerName(provider: SocialDraft["provider"]) {
-  if (provider === "tiktok") return "TikTok";
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
-}
-
 function facebookOauthErrorSubscribe() {
   return () => {};
 }
@@ -151,7 +106,7 @@ const emptyPayPalConnection: PayPalConnection = {
 export default function AccountSettings({
   initialName,
   email,
-  initialSocialAccounts,
+  initialSocialAccounts: _initialSocialAccounts,
   initialPaymentDestinations,
   initialShippingBrokers,
   initialFacebookConnection,
@@ -169,16 +124,6 @@ export default function AccountSettings({
   const [name, setName] = useState(initialName);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [socialDrafts, setSocialDrafts] = useState(() => {
-    const drafts = draftsFromAccounts(initialSocialAccounts);
-    const facebookUrl =
-      initialFacebookConnection?.profileUrl ??
-      drafts.find((account) => account.provider === "facebook")?.url ??
-      "";
-    return drafts.map((account) =>
-      account.provider === "facebook" ? { ...account, url: facebookUrl } : account,
-    );
-  });
   const [paymentDrafts, setPaymentDrafts] = useState(() =>
     destinationsByRail(initialPaymentDestinations),
   );
@@ -188,12 +133,6 @@ export default function AccountSettings({
   const [facebookConnection, setFacebookConnection] = useState(
     initialFacebookConnection ?? emptyFacebookConnection,
   );
-  const [facebookProfileDraft, setFacebookProfileDraft] = useState(
-    initialFacebookConnection?.profileUrl ??
-      initialSocialAccounts.find((account) => account.provider === "facebook")
-        ?.url ??
-      "",
-  );
   const [paypalConnection, setPaypalConnection] = useState(
     initialPayPalConnection ?? emptyPayPalConnection,
   );
@@ -201,11 +140,9 @@ export default function AccountSettings({
     | "name"
     | "password"
     | "signout"
-    | "social"
     | "payment"
     | "shipping"
     | "facebook-connect"
-    | "facebook-profile"
     | "facebook-disconnect"
     | "paypal-connect"
     | "paypal-disconnect"
@@ -227,22 +164,7 @@ export default function AccountSettings({
     () => "",
   );
   const visibleError = error || oauthError;
-
-  function fillSocialProfileUrl(
-    provider: SocialDraft["provider"],
-    raw: string,
-  ) {
-    const expanded = expandSocialProfileInput(provider, raw);
-    if (provider === "facebook") {
-      setFacebookProfileDraft(expanded);
-    }
-    setSocialDrafts((current) =>
-      current.map((row) =>
-        row.provider === provider ? { ...row, url: expanded } : row,
-      ),
-    );
-    return expanded;
-  }
+  void _initialSocialAccounts;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -311,10 +233,7 @@ export default function AccountSettings({
     }
   }
 
-  async function saveProfile(
-    body: Record<string, unknown>,
-    kind: "social" | "payment" | "shipping",
-  ) {
+  async function saveProfile(body: Record<string, unknown>) {
     const response = await fetch("/api/account/profile", {
       method: "PUT",
       headers: { accept: "application/json", "content-type": "application/json" },
@@ -331,9 +250,6 @@ export default function AccountSettings({
     };
     if (result.facebookConnection) {
       setFacebookConnection(result.facebookConnection);
-      if (result.facebookConnection.profileUrl) {
-        setFacebookProfileDraft(result.facebookConnection.profileUrl);
-      }
     }
     if (result.paypalConnection) {
       setPaypalConnection(result.paypalConnection);
@@ -343,78 +259,9 @@ export default function AccountSettings({
       return null;
     }
     if (!response.ok) {
-      if (kind === "social" && result.account) {
-        setSocialDrafts((current) =>
-          current.map((account) =>
-            account.provider === result.account?.provider
-              ? {
-                  ...account,
-                  health: result.account.health,
-                  healthMessage: result.account.healthMessage,
-                }
-              : account,
-          ),
-        );
-      }
       throw new Error(result.error ?? "Could not save settings.");
     }
     return result;
-  }
-
-  async function onSaveSocial(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPending("social");
-    setStatus("");
-    setError("");
-    try {
-      const result = await saveProfile(
-        {
-          socialAccounts: socialDrafts
-            .map((account) => ({
-              ...account,
-              url: expandSocialProfileInput(
-                account.provider,
-                account.provider === "facebook"
-                  ? facebookProfileDraft.trim() || account.url.trim()
-                  : account.url.trim(),
-              ),
-            }))
-            .filter((account) => account.url)
-            .map((account) => ({
-              provider: account.provider,
-              url: account.url,
-              accountCreatedAt: account.accountCreatedAt,
-              connectionCount:
-                account.connectionCount === ""
-                  ? undefined
-                  : Number(account.connectionCount),
-              connectionLabel:
-                account.provider === "facebook"
-                  ? ("friends" as const)
-                  : ("followers" as const),
-              metricsSource: "self-reported" as const,
-            })),
-        },
-        "social",
-      );
-      if (!result) return;
-      setSocialDrafts(draftsFromAccounts(result.socialAccounts ?? []));
-      const savedFacebook = result.socialAccounts?.find(
-        (account) => account.provider === "facebook",
-      );
-      if (savedFacebook?.url) setFacebookProfileDraft(savedFacebook.url);
-      setStatus(
-        "Social media links saved. Buyers can open these pages from your listings.",
-      );
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Could not save social media links.",
-      );
-    } finally {
-      setPending(null);
-    }
   }
 
   async function onSavePayments(event: FormEvent<HTMLFormElement>) {
@@ -440,7 +287,6 @@ export default function AccountSettings({
               : [];
           }),
         },
-        "payment",
       );
       if (!result) return;
       setPaymentDrafts(destinationsByRail(result.paymentDestinations ?? []));
@@ -473,7 +319,6 @@ export default function AccountSettings({
               : [];
           }),
         },
-        "shipping",
       );
       if (!result) return;
       setShippingDrafts(brokersById(result.shippingBrokers ?? []));
@@ -563,48 +408,6 @@ export default function AccountSettings({
     }
   }
 
-  async function onSaveFacebookProfile() {
-    setPending("facebook-profile");
-    setStatus("");
-    setError("");
-    try {
-      const result = await saveProfile(
-        {
-          socialAccounts: [
-            ...socialDrafts
-              .filter((account) => account.provider !== "facebook" && account.url.trim())
-              .map((account) => ({
-                provider: account.provider,
-                url: expandSocialProfileInput(account.provider, account.url),
-                connectionLabel: "followers" as const,
-                metricsSource: "self-reported" as const,
-              })),
-            {
-              provider: "facebook" as const,
-              url: expandSocialProfileInput("facebook", facebookProfileDraft),
-            },
-          ],
-        },
-        "social",
-      );
-      if (!result) return;
-      setSocialDrafts(draftsFromAccounts(result.socialAccounts ?? []));
-      const savedFacebook = result.socialAccounts?.find(
-        (account) => account.provider === "facebook",
-      );
-      if (savedFacebook?.url) setFacebookProfileDraft(savedFacebook.url);
-      setStatus("Facebook profile link saved. Listings can open that profile.");
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Could not save the Facebook profile link.",
-      );
-    } finally {
-      setPending(null);
-    }
-  }
-
   async function onConnectFacebook() {
     setPending("facebook-connect");
     setStatus("");
@@ -656,12 +459,6 @@ export default function AccountSettings({
         imageUrl: null,
         profileUrl: null,
       });
-      setFacebookProfileDraft("");
-      setSocialDrafts((current) =>
-        current.map((row) =>
-          row.provider === "facebook" ? { ...row, url: "" } : row,
-        ),
-      );
       setStatus("Facebook disconnected. Your Open Marketplace account is unchanged.");
       router.refresh();
     } catch (submitError) {
@@ -816,28 +613,36 @@ export default function AccountSettings({
 
       <div
         className="portal-form"
-        id="facebook-connect-settings"
-        aria-labelledby="facebook-connect-title"
+        id="social-media-settings"
+        aria-labelledby="social-media-title"
       >
         <div>
-          <h3 id="facebook-connect-title">Facebook</h3>
+          <h3 id="social-media-title">Social media</h3>
           <p className="portal-lead">
-            Connect Facebook to prove you control the account. This uses
-            consumer Facebook Login with public_profile and user_link.
-            Facebook Login fills the public profile URL when Facebook sends
-            one. You can also type a username and we complete the facebook.com
-            URL. Those values stay on the Facebook connector and do not
-            replace your Open Marketplace email or name. It does not sign you in,
-            import listings, or make you Facebook verified.
+            Social profiles can only be added with official Connect. Typed usernames
+            and pasted links are not accepted, so a seller cannot spoof a profile
+            they do not control.
           </p>
         </div>
-        <div className="portal-settings-row">
+        <div
+          className="portal-settings-row"
+          id="facebook-connect-settings"
+          aria-labelledby="facebook-connect-title"
+        >
           <div className="portal-settings-row-head">
-            <strong>Facebook Login</strong>
+            <strong id="facebook-connect-title">Facebook</strong>
             {facebookConnection.connected ? (
               <span className="portal-settings-health">Connected</span>
             ) : null}
           </div>
+          <p className="portal-settings-note">
+            Connect Facebook to prove you control the account. This uses
+            consumer Facebook Login with public_profile and user_link.
+            Facebook Login fills the public profile URL when Facebook sends
+            one. Those values stay on the Facebook connector and do not
+            replace your Open Marketplace email or name. It does not sign you in,
+            import listings, or make you Facebook verified.
+          </p>
           {facebookConnection.connected ? (
             <>
               <div className="portal-connector-identity">
@@ -856,55 +661,16 @@ export default function AccountSettings({
                     : "Facebook account connected."}
                 </p>
               </div>
-              <label className="portal-field">
-                <span>Public Facebook profile</span>
-                <input
-                  type="url"
-                  value={facebookProfileDraft}
-                  onChange={(event) => {
-                    const url = event.target.value;
-                    setFacebookProfileDraft(url);
-                    setSocialDrafts((current) =>
-                      current.map((row) =>
-                        row.provider === "facebook" ? { ...row, url } : row,
-                      ),
-                    );
-                  }}
-                  placeholder="username or https://facebook.com/your-profile"
-                  onBlur={() =>
-                    fillSocialProfileUrl("facebook", facebookProfileDraft)
-                  }
-                  disabled={pending !== null || Boolean(facebookConnection.profileUrl)}
-                />
-              </label>
-              <p className="portal-settings-note">
-                Connect Facebook fills this URL when Facebook sends a profile
-                link. Otherwise type your username and we complete the URL.
-              </p>
               <div className="portal-connector-actions">
-                {facebookConnection.profileUrl || facebookProfileDraft ? (
+                {facebookConnection.profileUrl ? (
                   <a
                     className="button button-ghost"
-                    href={
-                      facebookConnection.profileUrl || facebookProfileDraft
-                    }
+                    href={facebookConnection.profileUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
                     Open Facebook profile
                   </a>
-                ) : null}
-                {!facebookConnection.profileUrl ? (
-                  <button
-                    className="button button-dark"
-                    type="button"
-                    onClick={() => void onSaveFacebookProfile()}
-                    disabled={pending !== null || !facebookProfileDraft.trim()}
-                  >
-                    {pending === "facebook-profile"
-                      ? "Saving…"
-                      : "Save Facebook profile"}
-                  </button>
                 ) : null}
                 <button
                   className="button button-ghost"
@@ -937,169 +703,25 @@ export default function AccountSettings({
             </p>
           )}
         </div>
-      </div>
-
-      <form
-        className="portal-form"
-        id="social-media-settings"
-        onSubmit={onSaveSocial}
-        aria-labelledby="social-media-title"
-      >
-        <div>
-          <h3 id="social-media-title">Social media</h3>
-          <p className="portal-lead">
-            Type a username or paste a profile URL. Connect social media
-            completes the official Facebook, Instagram, or TikTok URL and
-            puts it on your listings. Connect Facebook Login above to mark
-            Facebook as Connected. A resolving URL is not a verified identity.
+        <div className="portal-settings-row">
+          <div className="portal-settings-row-head">
+            <strong>Instagram</strong>
+          </div>
+          <p className="portal-settings-note">
+            Connect Instagram is not available on this copy of the site yet.
+            A typed Instagram URL cannot be saved.
           </p>
         </div>
-        {socialDrafts.map((account, index) => (
-          <div className="portal-settings-row" key={account.provider}>
-            <div className="portal-settings-row-head">
-              <strong>{providerName(account.provider)}</strong>
-              {account.health ? (
-                <span className="portal-settings-health">
-                  {healthLabel(account.health)}
-                </span>
-              ) : null}
-            </div>
-            <label className="portal-field">
-              <span>Profile URL</span>
-              <input
-                type="url"
-                value={
-                  account.provider === "facebook"
-                    ? facebookProfileDraft
-                    : account.url
-                }
-                onChange={(event) => {
-                  const url = event.target.value;
-                  if (account.provider === "facebook") {
-                    setFacebookProfileDraft(url);
-                  }
-                  setSocialDrafts((current) =>
-                    current.map((row, rowIndex) =>
-                      rowIndex === index
-                        ? {
-                            ...row,
-                            url,
-                            health: undefined,
-                            healthMessage: undefined,
-                          }
-                        : row,
-                    ),
-                  );
-                }}
-                placeholder={
-                  account.provider === "tiktok"
-                    ? "@username or https://tiktok.com/@your-profile"
-                    : `username or https://${account.provider}.com/your-profile`
-                }
-                onBlur={() =>
-                  fillSocialProfileUrl(
-                    account.provider,
-                    account.provider === "facebook"
-                      ? facebookProfileDraft
-                      : account.url,
-                  )
-                }
-                disabled={
-                  pending !== null ||
-                  (account.provider === "facebook" &&
-                    Boolean(facebookConnection.profileUrl))
-                }
-              />
-            </label>
-            {account.provider === "facebook" ? (
-              <p className="portal-settings-note">
-                Connect Facebook fills this URL when Facebook sends a profile
-                link. A username is completed into facebook.com/your-profile.
-              </p>
-            ) : null}
-            <div className="portal-settings-inline">
-              <label className="portal-field">
-                <span>Account created</span>
-                <input
-                  type="date"
-                  value={account.accountCreatedAt}
-                  onChange={(event) =>
-                    setSocialDrafts((current) =>
-                      current.map((row, rowIndex) =>
-                        rowIndex === index
-                          ? { ...row, accountCreatedAt: event.target.value }
-                          : row,
-                      ),
-                    )
-                  }
-                  disabled={pending !== null || !account.url}
-                />
-              </label>
-              <label className="portal-field">
-                <span>Followers</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={account.connectionCount}
-                  onChange={(event) =>
-                    setSocialDrafts((current) =>
-                      current.map((row, rowIndex) =>
-                        rowIndex === index
-                          ? { ...row, connectionCount: event.target.value }
-                          : row,
-                      ),
-                    )
-                  }
-                  disabled={pending !== null || !account.url}
-                />
-              </label>
-            </div>
-            {account.url ? (
-              <button
-                className="button button-ghost"
-                type="button"
-                onClick={() => {
-                  if (account.provider === "facebook") {
-                    setFacebookProfileDraft("");
-                  }
-                  setSocialDrafts((current) =>
-                    current.map((row, rowIndex) =>
-                      rowIndex === index
-                        ? {
-                            ...row,
-                            url: "",
-                            accountCreatedAt: "",
-                            connectionCount: "",
-                            health: undefined,
-                            healthMessage: undefined,
-                          }
-                        : row,
-                    ),
-                  );
-                }}
-                disabled={
-                  pending !== null ||
-                  (account.provider === "facebook" &&
-                    Boolean(facebookConnection.profileUrl))
-                }
-              >
-                Remove {providerName(account.provider)}
-              </button>
-            ) : null}
-            {account.healthMessage ? (
-              <p className="portal-settings-note">{account.healthMessage}</p>
-            ) : null}
+        <div className="portal-settings-row">
+          <div className="portal-settings-row-head">
+            <strong>TikTok</strong>
           </div>
-        ))}
-        <button
-          className="button button-dark"
-          type="submit"
-          disabled={pending !== null}
-        >
-          {pending === "social" ? "Connecting…" : "Connect social media"}
-        </button>
-      </form>
+          <p className="portal-settings-note">
+            Connect TikTok is not available on this copy of the site yet. A
+            typed TikTok URL cannot be saved.
+          </p>
+        </div>
+      </div>
 
       <form
         className="portal-form"

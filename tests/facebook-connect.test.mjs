@@ -372,7 +372,7 @@ test("signed-in Facebook link-social requests public_profile only", async () => 
   assert.equal(signupBody.user.email, USER_EMAIL);
 });
 
-test("typed Facebook stays self-reported and never reads as Connected", async () => {
+test("typed Facebook is rejected and never reads as Connected", async () => {
   const restoreFetch = installSocialFetchStub();
   try {
     const d1 = createMemoryD1();
@@ -410,15 +410,25 @@ test("typed Facebook stays self-reported and never reads as Connected", async ()
         ],
       }),
     });
-    assert.equal(saved.status, 200);
+    assert.equal(saved.status, 422);
     const savedBody = await saved.json();
-    assert.equal(savedBody.socialAccounts[0].metricsSource, "self-reported");
-    assert.equal(savedBody.facebookConnection.available, true);
-    assert.equal(savedBody.facebookConnection.connected, false);
-    assert.equal(savedBody.facebookConnection.name, null);
+    assert.match(savedBody.error ?? "", /Connect/);
+    assert.equal(savedBody.socialAccounts, undefined);
     assertNoSecrets(savedBody);
 
-    const preserved = await workerFetch(worker, env, "/api/account/profile", {
+    const reloaded = await workerFetch(worker, env, "/api/account/profile", {
+      headers: { accept: "application/json" },
+      cookieJar,
+    });
+    assert.equal(reloaded.status, 200);
+    const reloadedBody = await reloaded.json();
+    assert.equal(reloadedBody.socialAccounts.length, 0);
+    assert.equal(reloadedBody.facebookConnection.available, true);
+    assert.equal(reloadedBody.facebookConnection.connected, false);
+    assert.equal(reloadedBody.facebookConnection.name, null);
+    assertNoSecrets(reloadedBody);
+
+    const cleared = await workerFetch(worker, env, "/api/account/profile", {
       method: "PUT",
       headers: {
         accept: "application/json",
@@ -429,15 +439,11 @@ test("typed Facebook stays self-reported and never reads as Connected", async ()
         socialAccounts: [],
       }),
     });
-    assert.equal(preserved.status, 200);
-    const preservedBody = await preserved.json();
-    assert.equal(
-      preservedBody.socialAccounts.some((account) => account.provider === "facebook"),
-      true,
-    );
-    assert.equal(preservedBody.socialAccounts[0].metricsSource, "self-reported");
-    assert.equal(preservedBody.facebookConnection.connected, false);
-    assertNoSecrets(preservedBody);
+    assert.equal(cleared.status, 200);
+    const clearedBody = await cleared.json();
+    assert.equal(clearedBody.socialAccounts.length, 0);
+    assert.equal(clearedBody.facebookConnection.connected, false);
+    assertNoSecrets(clearedBody);
   } finally {
     restoreFetch();
   }
@@ -753,10 +759,13 @@ test("account settings source offers Connect, Connected, and Disconnect only", a
   assert.match(source, /public_profile/);
   assert.match(source, /user_link/);
   assert.match(source, /Open Facebook profile/);
-  assert.match(source, /Save Facebook profile/);
-  assert.match(source, /Connect social media/);
-  assert.match(source, /expandSocialProfileInput/);
-  assert.match(source, /fills the public profile URL|fills this URL/);
+  assert.match(source, /Typed usernames[\s\S]*pasted links are not accepted/);
+  assert.match(source, /Connect Instagram is not available/);
+  assert.match(source, /Connect TikTok is not available/);
+  assert.doesNotMatch(source, /Save Facebook profile/);
+  assert.doesNotMatch(source, /Connect social media/);
+  assert.doesNotMatch(source, /expandSocialProfileInput/);
+  assert.doesNotMatch(source, /type a username/i);
   assert.doesNotMatch(source, /government verified/i);
   assert.doesNotMatch(source, /user_friends|Marketplace Platform/i);
   assert.match(source, /does not sign[\s\S]*you in[\s\S]*import listings[\s\S]*Facebook verified/);

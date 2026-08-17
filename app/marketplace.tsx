@@ -560,7 +560,11 @@ function reputationFor(listing: Listing) {
 }
 
 function socialAccountsFor(listing: Listing): SocialProof[] {
-  return listing.socialProofs.map((account, index) => {
+  const proofs =
+    listing.source === "demo"
+      ? listing.socialProofs
+      : listing.socialProofs.filter((account) => account.metricsSource === "oauth");
+  return proofs.map((account, index) => {
     if (isConnectedFacebookProof(account)) {
       return {
         ...account,
@@ -572,6 +576,13 @@ function socialAccountsFor(listing: Listing): SocialProof[] {
         health: "active",
         healthMessage: "Connected with Facebook Login.",
         connectionLabel: "friends",
+      };
+    }
+    if (account.metricsSource === "oauth") {
+      return {
+        ...account,
+        handle: account.handle?.trim() || listing.sellerName,
+        health: "active",
       };
     }
     if (account.accountCreatedAt && account.connectionCount !== undefined) return account;

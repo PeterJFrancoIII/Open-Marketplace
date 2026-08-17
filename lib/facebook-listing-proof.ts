@@ -111,19 +111,19 @@ export function mergeConnectedFacebookProof(
   facebookConnected: boolean,
   sellerName: string,
 ): SocialProof[] {
-  const others = accounts.filter((account) => account.provider !== "facebook");
-  const typedFacebook = accounts.filter(
-    (account) => account.provider === "facebook" && !isConnectedFacebookProof(account),
+  const others = accounts.filter(
+    (account) =>
+      account.provider !== "facebook" && account.metricsSource === "oauth",
   );
   if (!facebookConnected) {
-    return [...typedFacebook, ...others];
+    return others;
   }
   const oauthFacebook = accounts.find(isConnectedFacebookProof);
-  const url =
-    publicFacebookProfileUrl(oauthFacebook?.url) ||
-    publicFacebookProfileUrl(typedFacebook[0]?.url);
   return [
-    connectedFacebookSocialProof(sellerName, url),
+    connectedFacebookSocialProof(
+      sellerName,
+      publicFacebookProfileUrl(oauthFacebook?.url),
+    ),
     ...others,
   ];
 }
@@ -133,10 +133,16 @@ export function upsertConnectedFacebookAccount(
   sellerName: string,
   profileUrl: string,
 ): SocialProof[] {
-  const others = accounts.filter((account) => account.provider !== "facebook");
+  const others = accounts.filter(
+    (account) =>
+      account.provider !== "facebook" && account.metricsSource === "oauth",
+  );
   return [connectedFacebookSocialProof(sellerName, profileUrl), ...others];
 }
 
 export function withoutConnectedFacebook(accounts: SocialProof[]): SocialProof[] {
-  return accounts.filter((account) => !isConnectedFacebookProof(account));
+  return accounts.filter(
+    (account) =>
+      !isConnectedFacebookProof(account) && account.metricsSource === "oauth",
+  );
 }

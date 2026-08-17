@@ -9,7 +9,7 @@ import {
 } from "../lib/facebook-listing-proof.ts";
 import { checkSocialAccount } from "../lib/social-health.ts";
 
-test("connected Facebook replaces typed Facebook and keeps other profiles", () => {
+test("connected Facebook replaces typed Facebook and drops pasted profiles", () => {
   const merged = mergeConnectedFacebookProof(
     [
       {
@@ -31,15 +31,14 @@ test("connected Facebook replaces typed Facebook and keeps other profiles", () =
     "Peter Franco",
   );
 
-  assert.equal(merged.length, 2);
+  assert.equal(merged.length, 1);
   assert.equal(merged[0].provider, "facebook");
   assert.equal(merged[0].metricsSource, "oauth");
   assert.equal(merged[0].handle, "Peter Franco");
-  assert.equal(merged[0].url, "https://facebook.com/typed.seller");
+  assert.equal(merged[0].url, "");
   assert.equal(merged[0].connectionCount, undefined);
   assert.equal(merged[0].accountCreatedAt, undefined);
-  assert.equal(merged[1].provider, "instagram");
-  assert.equal(merged[1].url, "https://instagram.com/openmarketplace.test");
+  assert.doesNotMatch(JSON.stringify(merged), /typed\.seller|instagram\.com/);
 
   const withOfficialLink = mergeConnectedFacebookProof(
     [
@@ -88,7 +87,7 @@ test("social connect completes a username into the official profile URL", () => 
   assert.equal(expandSocialProfileInput("facebook", ""), "");
 });
 
-test("listings without a Facebook Login row keep typed social only", () => {
+test("listings without a Facebook Login row hide typed social", () => {
   const typed = mergeConnectedFacebookProof(
     [
       {
@@ -100,10 +99,7 @@ test("listings without a Facebook Login row keep typed social only", () => {
     false,
     "Peter Franco",
   );
-  assert.equal(typed.length, 1);
-  assert.equal(typed[0].provider, "facebook");
-  assert.equal(typed[0].metricsSource, "self-reported");
-  assert.equal(typed[0].url, "https://facebook.com/typed.seller");
+  assert.deepEqual(typed, []);
 
   assert.deepEqual(mergeConnectedFacebookProof([], false, "Peter Franco"), []);
   assert.deepEqual(mergeConnectedFacebookProof([], true, "Peter Franco"), [

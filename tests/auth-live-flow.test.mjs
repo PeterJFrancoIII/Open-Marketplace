@@ -836,7 +836,7 @@ test("unsigned profile settings requests are rejected", async () => {
   assert.equal(write.status, 401);
 });
 
-test("authenticated owners persist and remove social settings without oauth verification", async () => {
+test("authenticated owners cannot persist typed social settings without Connect", async () => {
   const restoreFetch = installSocialFetchStub();
   try {
     const d1 = createMemoryD1();
@@ -866,18 +866,10 @@ test("authenticated owners persist and remove social settings without oauth veri
         },
       ],
     });
-    assert.equal(saved.status, 200);
+    assert.equal(saved.status, 422);
     const savedBody = await saved.json();
-    assert.equal(savedBody.socialAccounts.length, 1);
-    assert.equal(savedBody.socialAccounts[0].provider, "facebook");
-    assert.equal(savedBody.socialAccounts[0].metricsSource, "self-reported");
-    assert.notEqual(savedBody.socialAccounts[0].health, "invalid");
-    assert.doesNotMatch(
-      savedBody.socialAccounts[0].healthMessage ?? "",
-      /verified/i,
-    );
-    assert.equal(savedBody.facebookConnection.connected, false);
-    assert.equal(savedBody.facebookConnection.available, false);
+    assert.match(savedBody.error ?? "", /Connect/);
+    assert.equal(savedBody.facebookConnection, undefined);
 
     cookieJar.clear();
     await signIn(worker, env, cookieJar, {
@@ -887,19 +879,16 @@ test("authenticated owners persist and remove social settings without oauth veri
     const reloaded = await getJson(worker, env, "/api/account/profile", cookieJar);
     assert.equal(reloaded.status, 200);
     const reloadedBody = await reloaded.json();
-    assert.equal(reloadedBody.socialAccounts[0].url.includes("facebook.com"), true);
-    assert.equal(reloadedBody.socialAccounts[0].metricsSource, "self-reported");
+    assert.equal(reloadedBody.socialAccounts.length, 0);
     assert.equal(reloadedBody.facebookConnection.connected, false);
 
-    const removed = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    const cleared = await putJson(worker, env, "/api/account/profile", cookieJar, {
       socialAccounts: [],
     });
-    assert.equal(removed.status, 200);
-    const removedBody = await removed.json();
-    assert.equal(removedBody.socialAccounts.length, 1);
-    assert.equal(removedBody.socialAccounts[0].provider, "facebook");
-    assert.equal(removedBody.socialAccounts[0].metricsSource, "self-reported");
-    assert.equal(removedBody.facebookConnection.connected, false);
+    assert.equal(cleared.status, 200);
+    const clearedBody = await cleared.json();
+    assert.equal(clearedBody.socialAccounts.length, 0);
+    assert.equal(clearedBody.facebookConnection.connected, false);
   } finally {
     restoreFetch();
   }
@@ -1409,7 +1398,8 @@ test("new listings default to saved profile social without changing seller ident
         },
       ],
     });
-    assert.equal(saved.status, 200);
+    assert.equal(saved.status, 422);
+    assert.match((await saved.json()).error ?? "", /Connect/);
 
     const published = await postJson(worker, env, "/api/listings", cookieJar, {
       title: "Profile default listing",
@@ -1437,10 +1427,7 @@ test("new listings default to saved profile social without changing seller ident
     assert.equal(publishedBody.listing.sellerId, user.id);
     assert.equal(publishedBody.listing.sellerName, "Listing Social");
     const publishedSocial = JSON.parse(publishedBody.listing.socialProofsJson ?? "[]");
-    assert.equal(publishedSocial.length, 1);
-    assert.equal(publishedSocial[0]?.provider, "instagram");
-    assert.equal(publishedSocial[0]?.url, "https://instagram.com/openmarketplace.test");
-    assert.equal(publishedSocial[0]?.metricsSource, "self-reported");
+    assert.equal(publishedSocial.length, 0);
 
     const edited = await patchJson(worker, env, "/api/listings", cookieJar, {
       id: publishedBody.listing.id,
@@ -1465,18 +1452,11 @@ test("new listings default to saved profile social without changing seller ident
     assert.equal(edited.status, 200);
     const editedBody = await edited.json();
     const editedSocial = JSON.parse(editedBody.listing.socialProofsJson ?? "[]");
-    assert.equal(editedSocial.length, 1);
-    assert.equal(editedSocial[0]?.provider, "instagram");
-    assert.equal(editedSocial[0]?.url, "https://instagram.com/openmarketplace.test");
+    assert.equal(editedSocial.length, 0);
 
     const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
     const profileBody = await profile.json();
-    assert.equal(profileBody.socialAccounts.length, 1);
-    assert.equal(profileBody.socialAccounts[0].provider, "instagram");
-    assert.equal(
-      profileBody.socialAccounts[0].url,
-      "https://instagram.com/openmarketplace.test",
-    );
+    assert.equal(profileBody.socialAccounts.length, 0);
   } finally {
     restoreFetch();
   }

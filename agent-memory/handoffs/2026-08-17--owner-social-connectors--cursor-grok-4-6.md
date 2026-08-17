@@ -10,7 +10,7 @@ completed_at: "2026-08-17T22:15:44Z"
 repository: "PeterJFrancoIII/Open-Marketplace"
 branch: "feature/account-management-portal"
 base_commit: "cbe64b5804abb7907e6570fc6fdde1fd153bf951"
-head_commit: "uncommitted"
+head_commit: "d0484dfc9187fa7569802b1c2627ab8634502778"
 shared_memory_refs:
   repository: "PeterJFrancoIII/Open-Marketplace"
   canonical_ref_or_commit: "cbe64b5804abb7907e6570fc6fdde1fd153bf951"
@@ -53,7 +53,7 @@ verification:
     result: "0 errors, 4 pre-existing warnings"
 functional_preview_required: true
 functional_preview:
-  status: "not_deployed"
+  status: "preview_push_submitted"
   url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
   start_command: null
 owner_manual_checklist:
@@ -68,8 +68,7 @@ blockers: []
 remaining_work:
   - "Owner or Codex must add preview-only provider credentials before Instagram, TikTok, X, LinkedIn, Reddit, or Discord Connect will start."
   - "Instagram has no built-in Better Auth provider; genericOAuth uses Instagram Login URLs and may fail until a Meta app is configured."
-  - "Commit, push, and preview deploy were not performed in this turn."
-recommended_next_action: "Codex review the uncommitted catalog, then commit and push to feature/account-management-portal for a non-production preview only. Do not merge PR #21 or deploy production. Supersede OM-DEC-014 paste-and-save if this Connect-only catalog is accepted."
+recommended_next_action: "Wait for the non-production Pages preview of d0484df, then Codex review. Do not merge PR #21 or deploy production. Supersede OM-DEC-014 paste-and-save if this Connect-only catalog is accepted."
 contains_secrets_or_private_data: false
 ---
 
@@ -96,7 +95,7 @@ Read `Master_Descriptor.md`, `agent-memory/STATE.md`, `agent-memory/TASKS.md`, `
 - `npm run lint` exit 0: 0 errors, 4 pre-existing warnings.
 
 ## Runnable preview
-Work is uncommitted, so the live preview still serves `cbe64b5` (Facebook Connect only). After a preview-only push, use `https://feature-account-management-p.open-marketplace-demo.pages.dev/`. `owner_manual_result: not_run`.
+Pushed `d0484df` to `feature/account-management-portal`. Preview URL: `https://feature-account-management-p.open-marketplace-demo.pages.dev/`. `owner_manual_result: not_run`.
 
 ## Deviations and risks
 - Human instruction outranks `OM-DEC-014` paste-and-save. Codex should supersede that decision if this catalog is accepted.

@@ -1,20 +1,13 @@
+import { expandSocialProfileInput } from "./facebook-listing-proof";
 import {
-  expandSocialProfileInput,
-  isConnectedFacebookProof,
-  publicFacebookProfileUrl,
-} from "./facebook-listing-proof";
+  isSocialConnectorId,
+  publicSocialProfileUrl,
+  SOCIAL_CONNECTOR_IDS,
+  type SocialConnectorId,
+} from "./social-connectors";
 import type { SocialProof } from "./types";
 
 export { expandSocialProfileInput };
-
-const SOCIAL_PROVIDERS = ["facebook", "instagram", "tiktok"] as const;
-type SupportedSocialProvider = (typeof SOCIAL_PROVIDERS)[number];
-
-function isSupportedProvider(value: unknown): value is SupportedSocialProvider {
-  return (
-    value === "facebook" || value === "instagram" || value === "tiktok"
-  );
-}
 
 export const SOCIAL_CONNECT_ONLY_ERROR =
   "Social profiles can only be added with Connect. Typed usernames and pasted links are not accepted.";
@@ -34,33 +27,23 @@ export function parseSocialAccountsJson(
   try {
     const parsed = JSON.parse(value);
     if (!Array.isArray(parsed)) return [];
-    const byProvider = new Map<SupportedSocialProvider, SocialProof>();
+    const byProvider = new Map<SocialConnectorId, SocialProof>();
     for (const entry of parsed) {
       if (!entry || typeof entry !== "object") continue;
       const provider = (entry as { provider?: unknown }).provider;
       const url = (entry as { url?: unknown }).url;
-      if (!isSupportedProvider(provider) || typeof url !== "string") {
+      if (!isSocialConnectorId(provider) || typeof url !== "string") {
         continue;
       }
       if ((entry as SocialProof).metricsSource !== "oauth") continue;
-      if (provider === "facebook") {
-        byProvider.set(provider, {
-          ...(entry as SocialProof),
-          provider,
-          url: publicFacebookProfileUrl(url) || "",
-          metricsSource: "oauth",
-        });
-        continue;
-      }
-      if (!url.trim()) continue;
       byProvider.set(provider, {
         ...(entry as SocialProof),
         provider,
-        url: url.trim(),
+        url: publicSocialProfileUrl(provider, url),
         metricsSource: "oauth",
       });
     }
-    return SOCIAL_PROVIDERS.flatMap((provider) => {
+    return SOCIAL_CONNECTOR_IDS.flatMap((provider) => {
       const saved = byProvider.get(provider);
       return saved ? [saved] : [];
     });
@@ -85,14 +68,19 @@ export async function normalizeSocialAccountsForProfile(input: unknown): Promise
 export function mergeSocialAccountsForSave(
   incoming: SocialProof[],
   existing: SocialProof[],
-  facebookConnected = false,
+  connectedProviders: boolean | Iterable<string> = false,
 ): SocialProof[] {
   void incoming;
-  const existingOauth = connectedSocialAccounts(existing);
-  if (facebookConnected) {
-    const facebook = existingOauth.find(isConnectedFacebookProof);
-    const others = existingOauth.filter((account) => account.provider !== "facebook");
-    return facebook ? [facebook, ...others] : others;
+  const connected = new Set<SocialConnectorId>();
+  if (connectedProviders === true) {
+    connected.add("facebook");
+  } else if (connectedProviders && typeof connectedProviders !== "boolean") {
+    for (const provider of connectedProviders) {
+      if (isSocialConnectorId(provider)) connected.add(provider);
+    }
   }
-  return existingOauth.filter((account) => account.provider !== "facebook");
+  return connectedSocialAccounts(existing).filter(
+    (account) =>
+      isSocialConnectorId(account.provider) && connected.has(account.provider),
+  );
 }

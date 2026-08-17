@@ -8,12 +8,32 @@ const PROJECT = "open-marketplace-demo";
 const PRODUCTION_D1_DATABASE_ID = "6ceb8dfc-4a92-4d4d-832f-ff1a54847326";
 const DEFAULT_PREVIEW_D1_DATABASE_ID = "8ddff0ae-f810-4d71-955e-4aab40a00e27";
 
+function assignPreviewPair(previewEnvVars, idName, secretName, idValue, secretValue) {
+  const id = idValue?.trim();
+  const secret = secretValue?.trim();
+  if (!id || !secret) return;
+  previewEnvVars[idName] = { type: "plain_text", value: id };
+  previewEnvVars[secretName] = { type: "secret_text", value: secret };
+}
+
 export function buildPagesPreviewDeploymentConfigs({
   previewD1DatabaseId,
   authSecret,
   adminEmails,
   facebookClientId,
   facebookClientSecret,
+  instagramClientId,
+  instagramClientSecret,
+  tiktokClientKey,
+  tiktokClientSecret,
+  twitterClientId,
+  twitterClientSecret,
+  linkedinClientId,
+  linkedinClientSecret,
+  redditClientId,
+  redditClientSecret,
+  discordClientId,
+  discordClientSecret,
   paypalClientId,
   paypalClientSecret,
   paypalEnv,
@@ -28,18 +48,55 @@ export function buildPagesPreviewDeploymentConfigs({
       value: adminEmails,
     },
   };
-  const facebookId = facebookClientId?.trim();
-  const facebookSecret = facebookClientSecret?.trim();
-  if (facebookId && facebookSecret) {
-    previewEnvVars.FACEBOOK_CLIENT_ID = {
-      type: "plain_text",
-      value: facebookId,
-    };
-    previewEnvVars.FACEBOOK_CLIENT_SECRET = {
-      type: "secret_text",
-      value: facebookSecret,
-    };
-  }
+  assignPreviewPair(
+    previewEnvVars,
+    "FACEBOOK_CLIENT_ID",
+    "FACEBOOK_CLIENT_SECRET",
+    facebookClientId,
+    facebookClientSecret,
+  );
+  assignPreviewPair(
+    previewEnvVars,
+    "INSTAGRAM_CLIENT_ID",
+    "INSTAGRAM_CLIENT_SECRET",
+    instagramClientId,
+    instagramClientSecret,
+  );
+  assignPreviewPair(
+    previewEnvVars,
+    "TIKTOK_CLIENT_KEY",
+    "TIKTOK_CLIENT_SECRET",
+    tiktokClientKey,
+    tiktokClientSecret,
+  );
+  assignPreviewPair(
+    previewEnvVars,
+    "TWITTER_CLIENT_ID",
+    "TWITTER_CLIENT_SECRET",
+    twitterClientId,
+    twitterClientSecret,
+  );
+  assignPreviewPair(
+    previewEnvVars,
+    "LINKEDIN_CLIENT_ID",
+    "LINKEDIN_CLIENT_SECRET",
+    linkedinClientId,
+    linkedinClientSecret,
+  );
+  assignPreviewPair(
+    previewEnvVars,
+    "REDDIT_CLIENT_ID",
+    "REDDIT_CLIENT_SECRET",
+    redditClientId,
+    redditClientSecret,
+  );
+  assignPreviewPair(
+    previewEnvVars,
+    "DISCORD_CLIENT_ID",
+    "DISCORD_CLIENT_SECRET",
+    discordClientId,
+    discordClientSecret,
+  );
   const paypalId = paypalClientId?.trim();
   const paypalSecret = paypalClientSecret?.trim();
   if (paypalId && paypalSecret) {
@@ -124,6 +181,18 @@ async function configurePagesPreview() {
     adminEmails: ADMIN_EMAILS,
     facebookClientId: process.env.FACEBOOK_CLIENT_ID,
     facebookClientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+    instagramClientId: process.env.INSTAGRAM_CLIENT_ID,
+    instagramClientSecret: process.env.INSTAGRAM_CLIENT_SECRET,
+    tiktokClientKey: process.env.TIKTOK_CLIENT_KEY,
+    tiktokClientSecret: process.env.TIKTOK_CLIENT_SECRET,
+    twitterClientId: process.env.TWITTER_CLIENT_ID,
+    twitterClientSecret: process.env.TWITTER_CLIENT_SECRET,
+    linkedinClientId: process.env.LINKEDIN_CLIENT_ID,
+    linkedinClientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+    redditClientId: process.env.REDDIT_CLIENT_ID,
+    redditClientSecret: process.env.REDDIT_CLIENT_SECRET,
+    discordClientId: process.env.DISCORD_CLIENT_ID,
+    discordClientSecret: process.env.DISCORD_CLIENT_SECRET,
     paypalClientId: process.env.PAYPAL_CLIENT_ID,
     paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET,
     paypalEnv: process.env.PAYPAL_ENV,

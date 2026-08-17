@@ -35,7 +35,9 @@ import {
   type SalePhotoKind,
 } from "./sale-evidence";
 import { requireActualTrackingNumber } from "./tracking-number";
+import { parseSocialAccountsJson } from "./profile-settings";
 import { computeSocialCreditScore } from "./social-credit";
+import { connectedSocialCreditInput } from "./social-connectors";
 
 export {
   EVIDENCE_REQUEST_NOTE_MAX,
@@ -1267,6 +1269,9 @@ async function completeSale(
     buyerRating: sellerProfile?.buyerRating,
     buyerRatingCount: sellerProfile?.buyerRatingCount,
     itemsSold,
+    connectedSocial: connectedSocialCreditInput(
+      parseSocialAccountsJson(sellerProfile?.socialAccountsJson),
+    ),
   });
   if (sellerProfile) {
     await db
@@ -1320,6 +1325,9 @@ async function recomputeProfileReputation(db: Db, subjectId: string) {
     buyerRating,
     buyerRatingCount: buyerScores.length,
     itemsSold: profile?.itemsSold ?? 0,
+    connectedSocial: connectedSocialCreditInput(
+      parseSocialAccountsJson(profile?.socialAccountsJson),
+    ),
   });
   const updatedAt = new Date().toISOString();
   if (profile) {

@@ -226,6 +226,25 @@ test("Social Credit stays 0 without ratings and matches the published formula", 
     }),
     64,
   );
+  assert.equal(
+    computeSocialCreditScore({
+      connectedSocial: [
+        { provider: "facebook", hasProfileUrl: true, hasHandle: true },
+      ],
+    }),
+    4,
+  );
+  assert.equal(
+    computeSocialCreditScore({
+      sellerRating: 5,
+      sellerRatingCount: 1,
+      itemsSold: 1,
+      connectedSocial: [
+        { provider: "facebook", hasProfileUrl: true, hasHandle: true },
+      ],
+    }),
+    86,
+  );
 });
 
 test("chat and sold-archive source contracts stay private and session-gated", async () => {

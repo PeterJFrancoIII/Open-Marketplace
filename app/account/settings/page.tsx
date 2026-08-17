@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { profiles } from "../../../db/schema";
-import { getFacebookConnection } from "../../../lib/auth";
+import { getFacebookConnection, getSocialConnections } from "../../../lib/auth";
 import { parsePaymentDestinationsJson } from "../../../lib/payment-destinations";
 import { getPayPalConnection } from "../../../lib/paypal-connect";
 import { parseSocialAccountsJson } from "../../../lib/profile-settings";
@@ -23,8 +23,9 @@ export default async function AccountSettingsPage() {
     .where(eq(profiles.id, session.user.id))
     .limit(1);
   const profile = profileRows[0];
-  const [facebookConnection, paypalConnection] = await Promise.all([
+  const [facebookConnection, socialConnections, paypalConnection] = await Promise.all([
     getFacebookConnection(requestHeaders),
+    getSocialConnections(requestHeaders),
     getPayPalConnection(requestHeaders),
   ]);
 
@@ -41,6 +42,7 @@ export default async function AccountSettingsPage() {
           profile?.paymentDestinationsJson,
         )}
         initialFacebookConnection={facebookConnection}
+        initialSocialConnections={socialConnections}
         initialPayPalConnection={paypalConnection}
       />
     </PortalShell>

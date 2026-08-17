@@ -25,12 +25,20 @@ export type PayPalConnection = {
 };
 
 export type SocialProof = {
-  provider: "facebook" | "instagram" | "tiktok" | "other";
+  provider:
+    | "facebook"
+    | "instagram"
+    | "tiktok"
+    | "twitter"
+    | "linkedin"
+    | "reddit"
+    | "discord"
+    | "other";
   url: string;
   handle?: string;
   accountCreatedAt?: string;
   connectionCount?: number;
-  connectionLabel?: "friends" | "followers";
+  connectionLabel?: "friends" | "followers" | "connections";
   metricsSource?: "self-reported" | "oauth";
   health?: "active" | "dead" | "unknown" | "invalid" | "checking";
   lastCheckedAt?: string;

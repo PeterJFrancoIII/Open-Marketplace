@@ -21,6 +21,11 @@ import {
   type ShippingBrokerId,
 } from "../../lib/shipping-brokers";
 import { FACEBOOK_CONNECT_SCOPES } from "../../lib/facebook-listing-proof";
+import {
+  SOCIAL_CONNECTORS,
+  type SocialConnection,
+  type SocialConnectorId,
+} from "../../lib/social-connectors";
 import type {
   FacebookConnection,
   PayPalConnection,
@@ -82,7 +87,7 @@ function readOauthError() {
   const error = new URLSearchParams(window.location.search).get("error");
   if (!error) return "";
   if (error === "paypal") return "PayPal Link did not complete. Try again.";
-  return "Facebook Connect did not complete. Try again.";
+  return "Social Connect did not complete. Try again.";
 }
 
 const emptyFacebookConnection: FacebookConnection = {
@@ -110,6 +115,7 @@ export default function AccountSettings({
   initialPaymentDestinations,
   initialShippingBrokers,
   initialFacebookConnection,
+  initialSocialConnections,
   initialPayPalConnection,
 }: {
   initialName: string;
@@ -118,6 +124,7 @@ export default function AccountSettings({
   initialPaymentDestinations: PaymentDestination[];
   initialShippingBrokers: ShippingBrokerConnection[];
   initialFacebookConnection: FacebookConnection;
+  initialSocialConnections?: SocialConnection[];
   initialPayPalConnection: PayPalConnection;
 }) {
   const router = useRouter();
@@ -133,22 +140,13 @@ export default function AccountSettings({
   const [facebookConnection, setFacebookConnection] = useState(
     initialFacebookConnection ?? emptyFacebookConnection,
   );
+  const [socialConnections, setSocialConnections] = useState<SocialConnection[]>(
+    initialSocialConnections ?? [],
+  );
   const [paypalConnection, setPaypalConnection] = useState(
     initialPayPalConnection ?? emptyPayPalConnection,
   );
-  const [pending, setPending] = useState<
-    | "name"
-    | "password"
-    | "signout"
-    | "payment"
-    | "shipping"
-    | "facebook-connect"
-    | "facebook-disconnect"
-    | "paypal-connect"
-    | "paypal-disconnect"
-    | "media-node"
-    | null
-  >(null);
+  const [pending, setPending] = useState<string | null>(null);
   const [mediaNodeOrigin, setMediaNodeOrigin] = useState(
     () => readMediaNodeConfig()?.origin ?? "",
   );
@@ -246,10 +244,14 @@ export default function AccountSettings({
       paymentDestinations?: PaymentDestination[];
       shippingBrokers?: ShippingBrokerConnection[];
       facebookConnection?: FacebookConnection;
+      socialConnections?: SocialConnection[];
       paypalConnection?: PayPalConnection;
     };
     if (result.facebookConnection) {
       setFacebookConnection(result.facebookConnection);
+    }
+    if (result.socialConnections) {
+      setSocialConnections(result.socialConnections);
     }
     if (result.paypalConnection) {
       setPaypalConnection(result.paypalConnection);
@@ -408,62 +410,103 @@ export default function AccountSettings({
     }
   }
 
-  async function onConnectFacebook() {
-    setPending("facebook-connect");
+  function connectionFor(id: SocialConnectorId): SocialConnection | undefined {
+    return socialConnections.find((connection) => connection.id === id);
+  }
+
+  async function onConnectSocial(id: SocialConnectorId) {
+    const connector = SOCIAL_CONNECTORS.find((item) => item.id === id);
+    setPending(`${id}-connect`);
     setStatus("");
     setError("");
     try {
       const result = await authClient.linkSocial({
-        provider: "facebook",
+        provider: id,
         callbackURL: "/account/settings",
         errorCallbackURL: "/account/settings",
-        scopes: [...FACEBOOK_CONNECT_SCOPES],
+        scopes:
+          id === "facebook"
+            ? [...FACEBOOK_CONNECT_SCOPES]
+            : [...(connector?.scopes ?? [])],
       });
       if (result.error) {
         setError(
-          normalizeAuthError(result.error, "Could not start Facebook Connect."),
+          normalizeAuthError(
+            result.error,
+            `Could not start ${connector?.label ?? id} Connect.`,
+          ),
         );
         return;
       }
     } catch (submitError) {
       setError(
-        normalizeAuthError(submitError, "Could not start Facebook Connect."),
+        normalizeAuthError(
+          submitError,
+          `Could not start ${connector?.label ?? id} Connect.`,
+        ),
       );
     } finally {
       setPending(null);
     }
   }
 
-  async function onDisconnectFacebook() {
-    setPending("facebook-disconnect");
+  async function onDisconnectSocial(id: SocialConnectorId) {
+    const connector = SOCIAL_CONNECTORS.find((item) => item.id === id);
+    setPending(`${id}-disconnect`);
     setStatus("");
     setError("");
     try {
       const result = await authClient.unlinkAccount({
-        providerId: "facebook",
+        providerId: id,
       });
       if (result.error) {
         setError(
-          normalizeAuthError(result.error, "Could not disconnect Facebook."),
+          normalizeAuthError(
+            result.error,
+            `Could not disconnect ${connector?.label ?? id}.`,
+          ),
         );
         return;
       }
-      setFacebookConnection({
-        available: facebookConnection.available,
-        connected: false,
-        name: null,
-        firstName: null,
-        lastName: null,
-        middleName: null,
-        shortName: null,
-        imageUrl: null,
-        profileUrl: null,
-      });
-      setStatus("Facebook disconnected. Your Open Marketplace account is unchanged.");
+      if (id === "facebook") {
+        setFacebookConnection({
+          available: facebookConnection.available,
+          connected: false,
+          name: null,
+          firstName: null,
+          lastName: null,
+          middleName: null,
+          shortName: null,
+          imageUrl: null,
+          profileUrl: null,
+        });
+      }
+      setSocialConnections((current) =>
+        current.map((connection) =>
+          connection.id === id
+            ? {
+                ...connection,
+                connected: false,
+                name: null,
+                handle: null,
+                imageUrl: null,
+                profileUrl: null,
+                accountCreatedAt: null,
+                connectionCount: null,
+              }
+            : connection,
+        ),
+      );
+      setStatus(
+        `${connector?.label ?? id} disconnected. Your Open Marketplace account is unchanged.`,
+      );
       router.refresh();
     } catch (submitError) {
       setError(
-        normalizeAuthError(submitError, "Could not disconnect Facebook."),
+        normalizeAuthError(
+          submitError,
+          `Could not disconnect ${connector?.label ?? id}.`,
+        ),
       );
     } finally {
       setPending(null);
@@ -621,106 +664,114 @@ export default function AccountSettings({
           <p className="portal-lead">
             Social profiles can only be added with official Connect. Typed usernames
             and pasted links are not accepted, so a seller cannot spoof a profile
-            they do not control.
+            they do not control. Each official link can raise Social Credit.
           </p>
         </div>
-        <div
-          className="portal-settings-row"
-          id="facebook-connect-settings"
-          aria-labelledby="facebook-connect-title"
-        >
-          <div className="portal-settings-row-head">
-            <strong id="facebook-connect-title">Facebook</strong>
-            {facebookConnection.connected ? (
-              <span className="portal-settings-health">Connected</span>
-            ) : null}
-          </div>
-          <p className="portal-settings-note">
-            Connect Facebook to prove you control the account. This uses
-            consumer Facebook Login with public_profile and user_link.
-            Facebook Login fills the public profile URL when Facebook sends
-            one. Those values stay on the Facebook connector and do not
-            replace your Open Marketplace email or name. It does not sign you in,
-            import listings, or make you Facebook verified.
-          </p>
-          {facebookConnection.connected ? (
-            <>
-              <div className="portal-connector-identity">
-                {facebookConnection.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={facebookConnection.imageUrl}
-                    alt=""
-                    width={48}
-                    height={48}
-                  />
+        {SOCIAL_CONNECTORS.map((connector) => {
+          const saved = connectionFor(connector.id);
+          const facebook = connector.id === "facebook" ? facebookConnection : null;
+          const available = facebook ? facebook.available : Boolean(saved?.available);
+          const connected = facebook ? facebook.connected : Boolean(saved?.connected);
+          const name = facebook ? facebook.name : saved?.name;
+          const imageUrl = facebook ? facebook.imageUrl : saved?.imageUrl;
+          const profileUrl = facebook ? facebook.profileUrl : saved?.profileUrl;
+          return (
+            <div
+              className="portal-settings-row"
+              id={
+                connector.id === "facebook"
+                  ? "facebook-connect-settings"
+                  : `${connector.id}-connect-settings`
+              }
+              aria-labelledby={`${connector.id}-connect-title`}
+              key={connector.id}
+            >
+              <div className="portal-settings-row-head">
+                <strong id={`${connector.id}-connect-title`}>{connector.label}</strong>
+                {connected ? (
+                  <span className="portal-settings-health">Connected</span>
                 ) : null}
-                <p>
-                  {facebookConnection.name
-                    ? facebookConnection.name
-                    : "Facebook account connected."}
+              </div>
+              {connector.id === "facebook" ? (
+                <p className="portal-settings-note">
+                  Connect Facebook to prove you control the account. This uses
+                  consumer Facebook Login with public_profile and user_link.
+                  Facebook Login fills the public profile URL when Facebook sends
+                  one. Those values stay on the Facebook connector and do not
+                  replace your Open Marketplace email or name. It does not sign you in,
+                  import listings, or make you Facebook verified.
                 </p>
-              </div>
-              <div className="portal-connector-actions">
-                {facebookConnection.profileUrl ? (
-                  <a
-                    className="button button-ghost"
-                    href={facebookConnection.profileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+              ) : (
+                <p className="portal-settings-note">
+                  Connect {connector.label} to prove you control the account.
+                  Only fields that {connector.label} returns after Connect are
+                  stored. A typed {connector.label} URL cannot be saved. It does
+                  not sign you in or import listings.
+                </p>
+              )}
+              {connected ? (
+                <>
+                  <div className="portal-connector-identity">
+                    {imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={imageUrl} alt="" width={48} height={48} />
+                    ) : null}
+                    <p>
+                      {name
+                        ? name
+                        : `${connector.label} account connected.`}
+                    </p>
+                  </div>
+                  <div className="portal-connector-actions">
+                    {profileUrl ? (
+                      <a
+                        className="button button-ghost"
+                        href={profileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {connector.id === "facebook"
+                          ? "Open Facebook profile"
+                          : `Open ${connector.label} profile`}
+                      </a>
+                    ) : null}
+                    <button
+                      className="button button-ghost"
+                      type="button"
+                      onClick={() => void onDisconnectSocial(connector.id)}
+                      disabled={pending !== null}
+                    >
+                      {pending === `${connector.id}-disconnect`
+                        ? "Disconnecting…"
+                        : "Disconnect"}
+                    </button>
+                  </div>
+                </>
+              ) : available ? (
+                <div className="portal-connector-actions">
+                  <button
+                    className="button button-dark"
+                    type="button"
+                    onClick={() => void onConnectSocial(connector.id)}
+                    disabled={pending !== null}
                   >
-                    Open Facebook profile
-                  </a>
-                ) : null}
-                <button
-                  className="button button-ghost"
-                  type="button"
-                  onClick={onDisconnectFacebook}
-                  disabled={pending !== null}
-                >
-                  {pending === "facebook-disconnect"
-                    ? "Disconnecting…"
-                    : "Disconnect"}
-                </button>
-              </div>
-            </>
-          ) : facebookConnection.available ? (
-            <div className="portal-connector-actions">
-              <button
-                className="button button-dark"
-                type="button"
-                onClick={onConnectFacebook}
-                disabled={pending !== null}
-              >
-                {pending === "facebook-connect"
-                  ? "Connecting…"
-                  : "Connect Facebook"}
-              </button>
+                    {pending === `${connector.id}-connect`
+                      ? "Connecting…"
+                      : `Connect ${connector.label}`}
+                  </button>
+                </div>
+              ) : connector.id === "facebook" ? (
+                <p className="portal-settings-note">
+                  Facebook Login is not available on this copy of the site.
+                </p>
+              ) : (
+                <p className="portal-settings-note">
+                  Connect {connector.label} is not available on this copy of the site yet. A typed {connector.label} URL cannot be saved.
+                </p>
+              )}
             </div>
-          ) : (
-            <p className="portal-settings-note">
-              Facebook Login is not available on this copy of the site.
-            </p>
-          )}
-        </div>
-        <div className="portal-settings-row">
-          <div className="portal-settings-row-head">
-            <strong>Instagram</strong>
-          </div>
-          <p className="portal-settings-note">
-            Connect Instagram is not available on this copy of the site yet.
-            A typed Instagram URL cannot be saved.
-          </p>
-        </div>
-        <div className="portal-settings-row">
-          <div className="portal-settings-row-head">
-            <strong>TikTok</strong>
-          </div>
-          <p className="portal-settings-note">
-            Connect TikTok is not available on this copy of the site yet. A
-            typed TikTok URL cannot be saved.
-          </p>
-        </div>
+          );
+        })}
       </div>
 
       <form

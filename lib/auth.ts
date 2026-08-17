@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { APIError, createAuthMiddleware } from "better-auth/api";
+import { genericOAuth } from "better-auth/plugins";
 import { headers as nextHeaders } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "../db";
@@ -20,7 +21,21 @@ import {
   withoutConnectedFacebook,
 } from "./facebook-listing-proof";
 import { parseSocialAccountsJson } from "./profile-settings";
-import type { FacebookConnection } from "./types";
+import { computeSocialCreditScore } from "./social-credit";
+import {
+  connectedSocialCreditInput,
+  emptySocialConnections,
+  isSocialConnectorId,
+  readOfficialSocialProfile,
+  socialAvailabilityFromEnv,
+  SOCIAL_CONNECTORS,
+  upsertConnectedSocialAccount,
+  withoutConnectedProvider,
+  type OfficialSocialProfile,
+  type SocialConnection,
+  type SocialConnectorId,
+} from "./social-connectors";
+import type { FacebookConnection, SocialProof } from "./types";
 
 export const FACEBOOK_PUBLIC_PROFILE_SCOPE = "public_profile";
 export { FACEBOOK_CONNECT_SCOPES };
@@ -118,6 +133,18 @@ type CloudflareEnv = {
   MARKETPLACE_ADMIN_EMAILS?: string;
   FACEBOOK_CLIENT_ID?: string;
   FACEBOOK_CLIENT_SECRET?: string;
+  INSTAGRAM_CLIENT_ID?: string;
+  INSTAGRAM_CLIENT_SECRET?: string;
+  TIKTOK_CLIENT_KEY?: string;
+  TIKTOK_CLIENT_SECRET?: string;
+  TWITTER_CLIENT_ID?: string;
+  TWITTER_CLIENT_SECRET?: string;
+  LINKEDIN_CLIENT_ID?: string;
+  LINKEDIN_CLIENT_SECRET?: string;
+  REDDIT_CLIENT_ID?: string;
+  REDDIT_CLIENT_SECRET?: string;
+  DISCORD_CLIENT_ID?: string;
+  DISCORD_CLIENT_SECRET?: string;
 };
 
 async function readWorkerEnv(): Promise<CloudflareEnv> {
@@ -151,51 +178,61 @@ export async function getMarketplaceAuth(request?: Request) {
   const facebookConnectEnabled = Boolean(
     facebookClientId && facebookClientSecret,
   );
+  const availability = socialAvailabilityFromEnv(env);
+  const socialProviders = buildSocialProviders(env, {
+    facebookClientId,
+    facebookClientSecret,
+    facebookConnectEnabled,
+  });
+  const instagramEnabled = availability.instagram;
+  const trustedProviders = SOCIAL_CONNECTORS.filter(
+    (connector) => availability[connector.id],
+  ).map((connector) => connector.id);
 
   return betterAuth({
     appName: "Open Marketplace",
     secret,
     baseURL: resolveBaseURL(request),
     trustedOrigins: trustedOriginsFor(request),
-    socialProviders: facebookConnectEnabled
-      ? {
-          facebook: {
-            clientId: facebookClientId!,
-            clientSecret: facebookClientSecret!,
-            disableDefaultScope: true,
-            scope: [...FACEBOOK_CONNECT_SCOPES],
-            disableSignUp: true,
-            disableImplicitSignUp: true,
-            disableIdTokenSignIn: true,
-            getUserInfo: async (token) => {
-              const accessToken = token.accessToken;
-              if (!accessToken) return null;
-              const profile = await readFacebookPublicProfile(
-                accessToken,
-                facebookClientId!,
-                facebookClientSecret!,
-              );
-              if (!profile) return null;
-              return {
-                user: {
-                  id: profile.id,
-                  name: profile.name,
-                  image: profile.image,
-                  emailVerified: false,
+    socialProviders,
+    plugins: instagramEnabled
+      ? [
+          genericOAuth({
+            config: [
+              {
+                providerId: "instagram",
+                clientId: env.INSTAGRAM_CLIENT_ID!.trim(),
+                clientSecret: env.INSTAGRAM_CLIENT_SECRET!.trim(),
+                authorizationUrl: "https://www.instagram.com/oauth/authorize",
+                tokenUrl: "https://api.instagram.com/oauth/access_token",
+                scopes: [...SOCIAL_CONNECTORS.find((item) => item.id === "instagram")!.scopes],
+                disableSignUp: true,
+                getUserInfo: async (tokens) => {
+                  const accessToken = tokens.accessToken;
+                  if (!accessToken) return null;
+                  const profile = await readOfficialSocialProfile(
+                    "instagram",
+                    accessToken,
+                  );
+                  if (!profile) return null;
+                  return {
+                    id: profile.providerAccountId,
+                    name: profile.name ?? profile.handle,
+                    emailVerified: false,
+                  };
                 },
-                data: profile,
-              };
-            },
-          },
-        }
-      : {},
+              },
+            ],
+          }),
+        ]
+      : [],
     account: {
       accountLinking: {
         enabled: true,
         disableImplicitLinking: true,
         allowDifferentEmails: true,
         updateUserInfoOnLink: false,
-        trustedProviders: ["facebook"],
+        trustedProviders,
       },
     },
     hooks: {
@@ -205,15 +242,26 @@ export async function getMarketplaceAuth(request?: Request) {
           ctx.body && typeof ctx.body === "object"
             ? (ctx.body as { provider?: unknown; providerId?: unknown })
             : {};
+        const provider =
+          typeof body.provider === "string"
+            ? body.provider
+            : typeof body.providerId === "string"
+              ? body.providerId
+              : "";
         if (
-          (path === "/sign-in/social" || path.endsWith("/sign-in/social")) &&
-          (body.provider === "facebook" || body.provider === "paypal")
+          (path === "/sign-in/social" ||
+            path.endsWith("/sign-in/social") ||
+            path === "/sign-in/oauth2" ||
+            path.endsWith("/sign-in/oauth2")) &&
+          (isSocialConnectorId(provider) ||
+            provider === "paypal" ||
+            path.includes("oauth2"))
         ) {
           throw new APIError("BAD_REQUEST", {
             message:
-              body.provider === "paypal"
+              provider === "paypal"
                 ? "PayPal is an account connector only. Sign in with email."
-                : "Facebook is an account connector only. Sign in with email.",
+                : "Social networks are account connectors only. Sign in with email.",
           });
         }
         if (
@@ -223,7 +271,7 @@ export async function getMarketplaceAuth(request?: Request) {
           path.endsWith("/refresh-token")
         ) {
           throw new APIError("BAD_REQUEST", {
-            message: "Facebook tokens stay on the server.",
+            message: "Social connector tokens stay on the server.",
           });
         }
       }),
@@ -268,34 +316,12 @@ export async function getMarketplaceAuth(request?: Request) {
       account: {
         create: {
           after: async (account) => {
-            if (account.providerId !== "facebook") return;
-            const [user] = await db
-              .select({ name: authUsers.name })
-              .from(authUsers)
-              .where(eq(authUsers.id, account.userId))
-              .limit(1);
-            await persistFacebookProfileLink(
-              account.userId,
-              user?.name ?? "Facebook",
-              undefined,
-              account.accessToken,
-            );
+            await persistLinkedSocialAccount(account);
           },
         },
         update: {
           after: async (account) => {
-            if (account.providerId !== "facebook") return;
-            const [user] = await db
-              .select({ name: authUsers.name })
-              .from(authUsers)
-              .where(eq(authUsers.id, account.userId))
-              .limit(1);
-            await persistFacebookProfileLink(
-              account.userId,
-              user?.name ?? "Facebook",
-              undefined,
-              account.accessToken,
-            );
+            await persistLinkedSocialAccount(account);
           },
         },
       },
@@ -362,6 +388,131 @@ export async function getMarketplaceAdminEmails() {
 export async function getFacebookConnectAvailability() {
   const env = await readWorkerEnv();
   return Boolean(env.FACEBOOK_CLIENT_ID?.trim() && env.FACEBOOK_CLIENT_SECRET?.trim());
+}
+
+function connectorScopes(id: SocialConnectorId) {
+  return [...(SOCIAL_CONNECTORS.find((connector) => connector.id === id)?.scopes ?? [])];
+}
+
+function buildSocialProviders(
+  env: CloudflareEnv,
+  facebook: {
+    facebookClientId?: string;
+    facebookClientSecret?: string;
+    facebookConnectEnabled: boolean;
+  },
+) {
+  const availability = socialAvailabilityFromEnv(env);
+  const providers: Record<string, Record<string, unknown>> = {};
+  if (facebook.facebookConnectEnabled) {
+    providers.facebook = {
+      clientId: facebook.facebookClientId!,
+      clientSecret: facebook.facebookClientSecret!,
+      disableDefaultScope: true,
+      scope: [...FACEBOOK_CONNECT_SCOPES],
+      disableSignUp: true,
+      disableImplicitSignUp: true,
+      disableIdTokenSignIn: true,
+      getUserInfo: async (token: { accessToken?: string }) => {
+        const accessToken = token.accessToken;
+        if (!accessToken) return null;
+        const profile = await readFacebookPublicProfile(
+          accessToken,
+          facebook.facebookClientId!,
+          facebook.facebookClientSecret!,
+        );
+        if (!profile) return null;
+        return {
+          user: {
+            id: profile.id,
+            name: profile.name,
+            image: profile.image,
+            emailVerified: false,
+          },
+          data: profile,
+        };
+      },
+    };
+  }
+  if (availability.tiktok) {
+    providers.tiktok = {
+      clientKey: env.TIKTOK_CLIENT_KEY!.trim(),
+      clientSecret: env.TIKTOK_CLIENT_SECRET!.trim(),
+      scope: connectorScopes("tiktok"),
+      disableSignUp: true,
+      disableImplicitSignUp: true,
+    };
+  }
+  if (availability.twitter) {
+    providers.twitter = {
+      clientId: env.TWITTER_CLIENT_ID!.trim(),
+      clientSecret: env.TWITTER_CLIENT_SECRET!.trim(),
+      scope: connectorScopes("twitter"),
+      disableSignUp: true,
+      disableImplicitSignUp: true,
+    };
+  }
+  if (availability.linkedin) {
+    providers.linkedin = {
+      clientId: env.LINKEDIN_CLIENT_ID!.trim(),
+      clientSecret: env.LINKEDIN_CLIENT_SECRET!.trim(),
+      disableDefaultScope: true,
+      scope: connectorScopes("linkedin"),
+      disableSignUp: true,
+      disableImplicitSignUp: true,
+    };
+  }
+  if (availability.reddit) {
+    providers.reddit = {
+      clientId: env.REDDIT_CLIENT_ID!.trim(),
+      clientSecret: env.REDDIT_CLIENT_SECRET!.trim(),
+      duration: "permanent",
+      scope: connectorScopes("reddit"),
+      disableSignUp: true,
+      disableImplicitSignUp: true,
+    };
+  }
+  if (availability.discord) {
+    providers.discord = {
+      clientId: env.DISCORD_CLIENT_ID!.trim(),
+      clientSecret: env.DISCORD_CLIENT_SECRET!.trim(),
+      disableDefaultScope: true,
+      scope: connectorScopes("discord"),
+      disableSignUp: true,
+      disableImplicitSignUp: true,
+    };
+  }
+  return providers;
+}
+
+async function persistLinkedSocialAccount(account: {
+  providerId: string;
+  userId: string;
+  accessToken?: string | null;
+}) {
+  if (!isSocialConnectorId(account.providerId)) return;
+  const db = await getDb();
+  const [user] = await db
+    .select({ name: authUsers.name })
+    .from(authUsers)
+    .where(eq(authUsers.id, account.userId))
+    .limit(1);
+  const displayName = user?.name ?? account.providerId;
+  if (account.providerId === "facebook") {
+    await persistFacebookProfileLink(
+      account.userId,
+      displayName,
+      undefined,
+      account.accessToken,
+    );
+    return;
+  }
+  await persistSocialConnectorLink(
+    account.userId,
+    displayName,
+    account.providerId,
+    account.accessToken,
+  );
 }
 
 function publicFacebookImageUrl(value?: string | null) {
@@ -525,34 +676,155 @@ export async function persistFacebookProfileLink(
     (token ? await readStoredFacebookProfileUrl(token) : "");
   const connected = Boolean(facebook || token);
   const next = connected
-    ? publicFacebookProfileUrl(fetchedLink)
-      ? upsertConnectedFacebookAccount(current, displayName, fetchedLink)
-      : current
+    ? upsertConnectedFacebookAccount(current, displayName, fetchedLink)
     : withoutConnectedFacebook(current);
-  const socialAccountsJson = JSON.stringify(next);
-  if (profileRow?.socialAccountsJson === socialAccountsJson) {
-    return publicFacebookProfileUrl(
-      next.find((account) => account.provider === "facebook")?.url,
+  await writeProfileSocialAccounts(userId, displayName, next, profileRow);
+  return publicFacebookProfileUrl(
+    next.find((account) => account.provider === "facebook")?.url,
+  );
+}
+
+export async function persistSocialConnectorLink(
+  userId: string,
+  displayName: string,
+  provider: SocialConnectorId,
+  accessToken?: string | null,
+) {
+  if (provider === "facebook") {
+    return persistFacebookProfileLink(userId, displayName, undefined, accessToken);
+  }
+  const db = await getDb();
+  const [account] = await db
+    .select({ accessToken: authAccounts.accessToken })
+    .from(authAccounts)
+    .where(
+      and(eq(authAccounts.userId, userId), eq(authAccounts.providerId, provider)),
+    )
+    .limit(1);
+  const [profileRow] = await db
+    .select()
+    .from(profiles)
+    .where(eq(profiles.id, userId))
+    .limit(1);
+  const current = parseSocialAccountsJson(profileRow?.socialAccountsJson);
+  const token = accessToken || account?.accessToken;
+  if (!account && !token) {
+    await writeProfileSocialAccounts(
+      userId,
+      displayName,
+      withoutConnectedProvider(current, provider),
+      profileRow,
+    );
+    return;
+  }
+  const official = token
+    ? await readOfficialSocialProfile(provider, token)
+    : null;
+  const profile: OfficialSocialProfile = official ?? {
+    provider,
+    providerAccountId: "",
+    name: displayName,
+  };
+  await writeProfileSocialAccounts(
+    userId,
+    displayName,
+    upsertConnectedSocialAccount(current, profile, displayName),
+    profileRow,
+  );
+}
+
+export async function persistAllConnectedSocial(
+  userId: string,
+  displayName: string,
+) {
+  const db = await getDb();
+  const accounts = await db
+    .select({
+      providerId: authAccounts.providerId,
+      accessToken: authAccounts.accessToken,
+    })
+    .from(authAccounts)
+    .where(eq(authAccounts.userId, userId));
+  const connected = new Set<SocialConnectorId>();
+  for (const account of accounts) {
+    if (!isSocialConnectorId(account.providerId)) continue;
+    connected.add(account.providerId);
+    if (account.providerId === "facebook") {
+      await persistFacebookProfileLink(
+        userId,
+        displayName,
+        undefined,
+        account.accessToken,
+      );
+      continue;
+    }
+    await persistSocialConnectorLink(
+      userId,
+      displayName,
+      account.providerId,
+      account.accessToken,
     );
   }
+  const [profileRow] = await db
+    .select()
+    .from(profiles)
+    .where(eq(profiles.id, userId))
+    .limit(1);
+  const kept = parseSocialAccountsJson(profileRow?.socialAccountsJson).filter(
+    (account) =>
+      isSocialConnectorId(account.provider) && connected.has(account.provider),
+  );
+  await writeProfileSocialAccounts(userId, displayName, kept, profileRow);
+}
 
+export async function listConnectedSocialProviderIds(userId: string) {
+  const db = await getDb();
+  const accounts = await db
+    .select({ providerId: authAccounts.providerId })
+    .from(authAccounts)
+    .where(eq(authAccounts.userId, userId));
+  return accounts
+    .map((account) => account.providerId)
+    .filter(isSocialConnectorId);
+}
+
+async function writeProfileSocialAccounts(
+  userId: string,
+  displayName: string,
+  next: SocialProof[],
+  profileRow?: typeof profiles.$inferSelect,
+) {
+  const db = await getDb();
+  const socialAccountsJson = JSON.stringify(next);
+  const socialCreditScore = computeSocialCreditScore({
+    sellerRating: profileRow?.sellerRating,
+    sellerRatingCount: profileRow?.sellerRatingCount,
+    buyerRating: profileRow?.buyerRating,
+    buyerRatingCount: profileRow?.buyerRatingCount,
+    itemsSold: profileRow?.itemsSold ?? 0,
+    connectedSocial: connectedSocialCreditInput(next),
+  });
+  if (
+    profileRow?.socialAccountsJson === socialAccountsJson &&
+    profileRow.socialCreditScore === socialCreditScore
+  ) {
+    return;
+  }
   const updatedAt = new Date().toISOString();
   if (profileRow) {
     await db
       .update(profiles)
-      .set({ socialAccountsJson, updatedAt })
+      .set({ socialAccountsJson, socialCreditScore, updatedAt })
       .where(eq(profiles.id, userId));
-  } else {
-    await db.insert(profiles).values({
-      id: userId,
-      displayName,
-      socialAccountsJson,
-      updatedAt,
-    });
+    return;
   }
-  return publicFacebookProfileUrl(
-    next.find((account) => account.provider === "facebook")?.url,
-  );
+  await db.insert(profiles).values({
+    id: userId,
+    displayName,
+    socialAccountsJson,
+    socialCreditScore,
+    updatedAt,
+  });
 }
 
 async function readStoredFacebookProfileUrl(accessToken?: string | null) {
@@ -635,5 +907,82 @@ export async function getFacebookConnection(
     return publicFacebookConnection(true, true, profile ?? undefined);
   } catch {
     return publicFacebookConnection(true, false);
+  }
+}
+
+export async function getSocialConnections(
+  requestOrHeaders?:
+    | Request
+    | Headers
+    | Awaited<ReturnType<typeof nextHeaders>>,
+): Promise<SocialConnection[]> {
+  const env = await readWorkerEnv();
+  const availability = socialAvailabilityFromEnv(env);
+  const empty = emptySocialConnections(availability);
+  try {
+    const headerBag = asHeaders(
+      requestOrHeaders instanceof Request
+        ? requestOrHeaders.headers
+        : (requestOrHeaders ?? (await nextHeaders())),
+    );
+    const request =
+      requestOrHeaders instanceof Request
+        ? requestOrHeaders
+        : requestFromHeaders(headerBag);
+    const auth = await getMarketplaceAuth(request);
+    const session = await auth.api.getSession({ headers: headerBag });
+    if (!session?.user) return empty;
+
+    const db = await getDb();
+    const accounts = await db
+      .select({
+        providerId: authAccounts.providerId,
+        accessToken: authAccounts.accessToken,
+      })
+      .from(authAccounts)
+      .where(eq(authAccounts.userId, session.user.id));
+    const connected = new Set(
+      accounts.map((account) => account.providerId).filter(isSocialConnectorId),
+    );
+    const [profileRow] = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, session.user.id))
+      .limit(1);
+    const proofs = parseSocialAccountsJson(profileRow?.socialAccountsJson).filter(
+      (account) =>
+        isSocialConnectorId(account.provider) && connected.has(account.provider),
+    );
+    if (
+      JSON.stringify(proofs) !==
+      JSON.stringify(parseSocialAccountsJson(profileRow?.socialAccountsJson))
+    ) {
+      await writeProfileSocialAccounts(
+        session.user.id,
+        session.user.name,
+        proofs,
+        profileRow,
+      );
+    }
+
+    return SOCIAL_CONNECTORS.map((connector) => {
+      const proof = proofs.find((account) => account.provider === connector.id);
+      return {
+        id: connector.id,
+        label: connector.label,
+        available: availability[connector.id],
+        connected: connected.has(connector.id),
+        name: proof?.handle ?? null,
+        handle: proof?.handle ?? null,
+        imageUrl: null,
+        profileUrl: proof?.url || null,
+        accountCreatedAt: proof?.accountCreatedAt ?? null,
+        connectionCount:
+          typeof proof?.connectionCount === "number" ? proof.connectionCount : null,
+        connectionLabel: connector.connectionLabel,
+      };
+    });
+  } catch {
+    return empty;
   }
 }

@@ -179,7 +179,17 @@ function installSocialFetchStub() {
           : input instanceof Request
             ? input.url
             : String(input);
-    if (/^https:\/\/(?:www\.)?(?:facebook|instagram|tiktok)\.com\//i.test(url)) {
+    if (
+      /^https:\/\/(?:graph\.instagram\.com|open\.tiktokapis\.com|api\.twitter\.com|api\.linkedin\.com|oauth\.reddit\.com|discord\.com\/api)\//i.test(
+        url,
+      )
+    ) {
+      return new Response(JSON.stringify({}), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (/^https:\/\/(?:www\.)?(?:facebook|instagram|tiktok|x|twitter|linkedin|reddit|discord)\.com\//i.test(url)) {
       return new Response("<html><body>profile</body></html>", {
         status: 200,
         headers: { "content-type": "text/html" },

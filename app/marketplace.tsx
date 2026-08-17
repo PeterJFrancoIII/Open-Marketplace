@@ -51,6 +51,10 @@ import {
 import { isConnectedFacebookProof } from "../lib/facebook-listing-proof";
 import { isLinkCheckFresh, listingLinksNeedCheck } from "../lib/link-health";
 import { computeSocialCreditScore } from "../lib/social-credit";
+import {
+  connectedSocialCreditInput,
+  socialConnectorById,
+} from "../lib/social-connectors";
 import type { Listing, PaymentDestination, SocialProof } from "../lib/types";
 
 const categories = [
@@ -531,6 +535,10 @@ function socialLabel(provider: SocialProof["provider"]): string {
   if (provider === "instagram") return "ig";
   if (provider === "facebook") return "fb";
   if (provider === "tiktok") return "tt";
+  if (provider === "twitter") return "x";
+  if (provider === "linkedin") return "in";
+  if (provider === "reddit") return "rd";
+  if (provider === "discord") return "dc";
   return "id";
 }
 
@@ -555,6 +563,9 @@ function reputationFor(listing: Listing) {
         buyerRating,
         buyerRatingCount,
         itemsSold,
+        connectedSocial: connectedSocialCreditInput(
+          listing.source === "demo" ? [] : listing.socialProofs,
+        ),
       }),
   };
 }
@@ -613,9 +624,10 @@ function SocialAccountFact({
   className: string;
   variant: "card" | "detail";
 }) {
+  const connectedOauth = account.metricsSource === "oauth";
   const connectedFacebook = isConnectedFacebookProof(account);
   const statusClass = `${className} status-${account.health ?? "unknown"}${
-    connectedFacebook ? " social-connected" : ""
+    connectedOauth ? " social-connected" : ""
   }`;
   const copy = connectedFacebook ? (
     <>
@@ -625,6 +637,24 @@ function SocialAccountFact({
           : account.handle ?? "Facebook"}
       </strong>
       <small>Connected with Facebook Login</small>
+    </>
+  ) : connectedOauth ? (
+    <>
+      <strong>
+        {variant === "detail"
+          ? `${providerName(account.provider)} · Connected`
+          : account.handle ?? providerName(account.provider)}
+      </strong>
+      <small>
+        Connected with {providerName(account.provider)}
+        {account.accountCreatedAt || account.connectionCount !== undefined
+          ? ` · ${account.accountCreatedAt ? formatAccountDate(account.accountCreatedAt) : "Date not supplied"}${
+              account.connectionCount !== undefined
+                ? ` · ${formatCompactCount(account.connectionCount)} ${account.connectionLabel ?? "connections"}`
+                : ""
+            }`
+          : ""}
+      </small>
     </>
   ) : variant === "detail" ? (
     <>
@@ -648,7 +678,7 @@ function SocialAccountFact({
       <span className="proof-mark">{socialLabel(account.provider)}</span>
       {variant === "card" ? <span className="social-fact-copy">{copy}</span> : <span>{copy}</span>}
       <span className="link-health">
-        {connectedFacebook ? "Connected" : healthLabel(account.health)}
+        {connectedOauth ? "Connected" : healthLabel(account.health)}
       </span>
     </>
   );
@@ -768,8 +798,9 @@ function healthLabel(health: SocialProof["health"]) {
 }
 
 function providerName(provider: SocialProof["provider"]) {
-  if (provider === "tiktok") return "TikTok";
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
+  return socialConnectorById(provider)?.label ?? (
+    provider === "tiktok" ? "TikTok" : provider.charAt(0).toUpperCase() + provider.slice(1)
+  );
 }
 
 function usesShipping(delivery: string) {

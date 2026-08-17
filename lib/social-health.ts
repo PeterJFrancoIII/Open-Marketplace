@@ -1,10 +1,14 @@
 import type { SocialProof } from "./types";
 
-type SupportedProvider = Exclude<SocialProof["provider"], "other">;
+type SupportedProvider = SocialConnectorId;
 
 const providerRules: Record<
   SupportedProvider,
-  { hosts: string[]; earliestDate: string; connectionLabel: "friends" | "followers" }
+  {
+    hosts: readonly string[];
+    earliestDate: string;
+    connectionLabel: SocialProof["connectionLabel"];
+  }
 > = {
   facebook: {
     hosts: ["facebook.com", "fb.com"],
@@ -21,7 +25,45 @@ const providerRules: Record<
     earliestDate: "2016-09-01",
     connectionLabel: "followers",
   },
+  twitter: {
+    hosts: ["x.com", "twitter.com"],
+    earliestDate: "2006-03-21",
+    connectionLabel: "followers",
+  },
+  linkedin: {
+    hosts: ["linkedin.com"],
+    earliestDate: "2003-05-05",
+    connectionLabel: "connections",
+  },
+  reddit: {
+    hosts: ["reddit.com"],
+    earliestDate: "2005-06-23",
+    connectionLabel: "followers",
+  },
+  discord: {
+    hosts: ["discord.com"],
+    earliestDate: "2015-05-13",
+    connectionLabel: "connections",
+  },
 };
+
+function keepHttpsProviderUrl(provider: SupportedProvider, value?: string) {
+  if (provider === "facebook") return keepHttpsFacebookUrl(value);
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== "https:") return "";
+    if (url.username || url.password || url.port) return "";
+    if (providerRules[provider].hosts.some((allowed) => hostMatches(host, allowed))) {
+      url.hash = "";
+      return url.toString();
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
 
 function keepHttpsFacebookUrl(value?: string) {
   if (!value) return "";
@@ -183,19 +225,36 @@ async function fetchAllowlistedProfile(initialUrl: URL): Promise<Response> {
 
 export async function checkSocialAccount(account: SocialProof): Promise<SocialProof> {
   const checkedAt = new Date().toISOString();
-  if (account.provider === "facebook" && account.metricsSource === "oauth") {
+  if (account.metricsSource === "oauth" && account.provider in providerRules) {
+    const provider = account.provider as SupportedProvider;
+    const rule = providerRules[provider];
     const handle =
       typeof account.handle === "string" && account.handle.trim()
         ? account.handle.trim()
-        : "Facebook";
+        : provider === "facebook"
+          ? "Facebook"
+          : provider;
+    if (provider === "facebook") {
+      return {
+        provider: "facebook",
+        url: keepHttpsFacebookUrl(account.url),
+        handle,
+        metricsSource: "oauth",
+        health: "active",
+        healthMessage: "Connected with Facebook Login.",
+        connectionLabel: "friends",
+        lastCheckedAt: checkedAt,
+      };
+    }
     return {
-      provider: "facebook",
-      url: keepHttpsFacebookUrl(account.url),
+      ...account,
+      provider,
+      url: keepHttpsProviderUrl(provider, account.url),
       handle,
       metricsSource: "oauth",
       health: "active",
-      healthMessage: "Connected with Facebook Login.",
-      connectionLabel: "friends",
+      healthMessage: `Connected with ${provider}.`,
+      connectionLabel: rule.connectionLabel,
       lastCheckedAt: checkedAt,
     };
   }
@@ -289,5 +348,7 @@ export async function checkSocialAccount(account: SocialProof): Promise<SocialPr
 }
 
 export async function checkSocialAccounts(accounts: SocialProof[]) {
-  return Promise.all(accounts.slice(0, 3).map(checkSocialAccount));
+  return Promise.all(
+    accounts.slice(0, Object.keys(providerRules).length).map(checkSocialAccount),
+  );
 }

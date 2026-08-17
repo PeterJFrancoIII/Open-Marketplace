@@ -226,7 +226,17 @@ function installSocialFetchStub() {
         headers: { "content-type": "application/json" },
       });
     }
-    if (/^https:\/\/(?:www\.)?(?:facebook|instagram|tiktok)\.com\//i.test(url)) {
+    if (
+      /^https:\/\/(?:graph\.instagram\.com|open\.tiktokapis\.com|api\.twitter\.com|api\.linkedin\.com|oauth\.reddit\.com|discord\.com\/api)\//i.test(
+        url,
+      )
+    ) {
+      return new Response(JSON.stringify({}), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (/^https:\/\/(?:www\.)?(?:facebook|instagram|tiktok|x|twitter|linkedin|reddit|discord)\.com\//i.test(url)) {
       return new Response("<html><body>profile</body></html>", {
         status: 200,
         headers: { "content-type": "text/html" },
@@ -760,8 +770,9 @@ test("account settings source offers Connect, Connected, and Disconnect only", a
   assert.match(source, /user_link/);
   assert.match(source, /Open Facebook profile/);
   assert.match(source, /Typed usernames[\s\S]*pasted links are not accepted/);
-  assert.match(source, /Connect Instagram is not available/);
-  assert.match(source, /Connect TikTok is not available/);
+  assert.match(source, /Connect \$\{connector\.label\}/);
+  assert.match(source, /SOCIAL_CONNECTORS/);
+  assert.match(source, /is not available on this copy of the site yet/);
   assert.doesNotMatch(source, /Save Facebook profile/);
   assert.doesNotMatch(source, /Connect social media/);
   assert.doesNotMatch(source, /expandSocialProfileInput/);

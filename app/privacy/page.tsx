@@ -14,6 +14,7 @@ const sections = [
   { id: "local-media-boundary", label: "Photographs" },
   { id: "facebook-connect-disclosure", label: "Facebook Login" },
   { id: "facebook-exclusions", label: "What Facebook does not give us" },
+  { id: "social-connectors-disclosure", label: "Other social Connect" },
   { id: "paypal-connect-disclosure", label: "PayPal Login" },
   { id: "provider-credential-boundary", label: "How Facebook credentials are kept" },
   { id: "purposes", label: "Why we use this information" },
@@ -126,6 +127,23 @@ export default function PrivacyPage() {
             Government-identity verification, or any “Facebook verified” label.
           </li>
         </ul>
+      </section>
+
+      <section
+        id="social-connectors-disclosure"
+        aria-labelledby="social-connectors-disclosure-title"
+      >
+        <h2 id="social-connectors-disclosure-title">Other social Connect</h2>
+        <p>
+          Signed-in people can also Connect Instagram, TikTok, X, LinkedIn,
+          Reddit, and Discord when those official apps are configured on this
+          copy of the site. Only public fields the provider returns after
+          Connect are stored: a handle, a profile link, an account-created
+          date, or a public connection count when the provider sends one.
+          Typed usernames and pasted links are not accepted. Provider emails
+          are not published on listings. These links are not a way to create
+          or open an Open Marketplace account.
+        </p>
       </section>
 
       <section

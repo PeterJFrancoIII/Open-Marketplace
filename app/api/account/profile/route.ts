@@ -4,6 +4,8 @@ import { profiles } from "../../../../db/schema";
 import {
   getFacebookConnection,
   getMarketplaceSession,
+  getSocialConnections,
+  listConnectedSocialProviderIds,
 } from "../../../../lib/auth";
 import { getPayPalConnection } from "../../../../lib/paypal-connect";
 import { mergePaymentDestinationsForSave } from "../../../../lib/paypal-public";
@@ -64,6 +66,7 @@ async function profilePayload(
     allowedPaymentRails: PAYMENT_RAILS,
     allowedShippingBrokers: SHIPPING_BROKERS,
     facebookConnection: await getFacebookConnection(request),
+    socialConnections: await getSocialConnections(request),
     paypalConnection: await getPayPalConnection(request),
   };
 }
@@ -134,7 +137,9 @@ export async function PUT(request: Request) {
           { status: 422 },
         );
       }
-      const facebookConnection = await getFacebookConnection(request);
+      const connectedProviders = await listConnectedSocialProviderIds(
+        session.user.id,
+      );
       const [fresh] = await db
         .select()
         .from(profiles)
@@ -146,7 +151,7 @@ export async function PUT(request: Request) {
       nextSocialAccounts = mergeSocialAccountsForSave(
         normalized.accounts,
         existingSocial,
-        facebookConnection.connected,
+        connectedProviders,
       );
       nextSocialJson = JSON.stringify(nextSocialAccounts);
     }
@@ -215,6 +220,7 @@ export async function PUT(request: Request) {
       allowedPaymentRails: PAYMENT_RAILS,
       allowedShippingBrokers: SHIPPING_BROKERS,
       facebookConnection: await getFacebookConnection(request),
+      socialConnections: await getSocialConnections(request),
       paypalConnection: await getPayPalConnection(request),
     });
   } catch (error) {

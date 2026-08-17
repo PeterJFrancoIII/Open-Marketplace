@@ -9,8 +9,9 @@ test("account settings require Connect and hide typed social fields", async () =
   ]);
   assert.match(settings, /Social profiles can only be added with official Connect/);
   assert.match(settings, /Connect Facebook/);
-  assert.match(settings, /Connect Instagram is not available/);
-  assert.match(settings, /Connect TikTok is not available/);
+  assert.match(settings, /Connect \$\{connector\.label\}/);
+  assert.match(settings, /SOCIAL_CONNECTORS/);
+  assert.match(settings, /is not available on this copy of the site yet/);
   assert.doesNotMatch(settings, /Save Facebook profile/);
   assert.doesNotMatch(settings, /Connect social media/);
   assert.doesNotMatch(settings, /Account created/);

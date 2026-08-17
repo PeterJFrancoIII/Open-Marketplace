@@ -1,10 +1,33 @@
+export type ConnectedSocialCreditField = {
+  provider: string;
+  hasProfileUrl?: boolean;
+  hasHandle?: boolean;
+  hasDisplayName?: boolean;
+  hasAccountCreatedAt?: boolean;
+  hasConnectionCount?: boolean;
+  hasImage?: boolean;
+};
+
 export type SocialCreditInput = {
   sellerRating?: number | null;
   sellerRatingCount?: number | null;
   buyerRating?: number | null;
   buyerRatingCount?: number | null;
   itemsSold?: number | null;
+  connectedSocial?: ConnectedSocialCreditField[];
 };
+
+export const SOCIAL_LINK_BONUS_CAP = 25;
+
+const SOCIAL_CREDIT_PROVIDERS = new Set([
+  "facebook",
+  "instagram",
+  "tiktok",
+  "twitter",
+  "linkedin",
+  "reddit",
+  "discord",
+]);
 
 export function computeSocialCreditScore(input: SocialCreditInput): number {
   const parts: number[] = [];
@@ -14,10 +37,33 @@ export function computeSocialCreditScore(input: SocialCreditInput): number {
   if ((input.buyerRatingCount ?? 0) > 0 && input.buyerRating != null) {
     parts.push(clampRating(input.buyerRating) / 5);
   }
-  if (!parts.length) return 0;
+  const linkBonus = connectedSocialBonus(input.connectedSocial);
+  if (!parts.length) return linkBonus;
   const ratingPart = parts.reduce((sum, value) => sum + value, 0) / parts.length;
   const volumePart = Math.min(Math.max(input.itemsSold ?? 0, 0), 10) / 10;
-  return Math.round(100 * (0.8 * ratingPart + 0.2 * volumePart));
+  const ratingBase = Math.round(100 * (0.8 * ratingPart + 0.2 * volumePart));
+  return Math.min(100, ratingBase + linkBonus);
+}
+
+export function connectedSocialBonus(
+  accounts?: ConnectedSocialCreditField[] | null,
+): number {
+  if (!accounts?.length) return 0;
+  const seen = new Set<string>();
+  let points = 0;
+  for (const account of accounts) {
+    if (!SOCIAL_CREDIT_PROVIDERS.has(account.provider) || seen.has(account.provider)) {
+      continue;
+    }
+    seen.add(account.provider);
+    points += 2;
+    if (account.hasProfileUrl) points += 1;
+    if (account.hasHandle || account.hasDisplayName) points += 1;
+    if (account.hasAccountCreatedAt) points += 1;
+    if (account.hasConnectionCount) points += 1;
+    if (account.hasImage) points += 1;
+  }
+  return Math.min(SOCIAL_LINK_BONUS_CAP, points);
 }
 
 function clampRating(value: number) {

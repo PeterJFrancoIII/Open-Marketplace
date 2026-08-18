@@ -1,9 +1,9 @@
 ---
-schema_version: "1.6"
+schema_version: "1.7"
 document_id: "OM-DECISIONS-001"
 kind: "decision_registry"
-updated_at: "2026-08-13T02:51:00Z"
-updated_by: "codex_architect"
+updated_at: "2026-08-18T23:10:00Z"
+updated_by: "human_owner_via_cursor"
 decisions:
   - {id: "OM-DEC-001", status: "accepted", title: "Architect and implementation-subagent role split", decision: "Codex owns architecture and administration; Cursor agents execute assigned work packages and return evidence.", authority: "human_owner", decided_on: "2026-08-12"}
   - {id: "OM-DEC-002", status: "accepted", title: "Git-backed shared memory", decision: "Use agent-memory/ for operational state and append-only handoffs, with Master_Descriptor.md as project authority.", authority: "human_owner", decided_on: "2026-08-12"}
@@ -74,6 +74,12 @@ decisions:
       - "Official Zelle guidance identifies an enrolled email address or U.S. mobile number as the recipient contact and advises sending money only to people known and trusted."
       - "Official Apple Cash guidance supports person-to-person transfers through a selected person/contact; transaction records may identify the person by name, phone number, or email, and Apple advises sending to people known and trusted."
     decided_on: "2026-08-13"
+  - id: "OM-DEC-015"
+    status: "accepted"
+    title: "Crowdsourced surface reports with administrator-only security"
+    decision: "Every page, section, and control exposes a single ! report action. The selected surface link is stored with a Bug or Feature Request in community_reports. Agents compile queued reports daily for human review so users can help build the product in a limited, controlled fashion. Cybersecurity and access-control surfaces belong only to administrators; such requests are filtered out of the community queue and must never be implemented as community-owned work."
+    authority: "human_owner"
+    decided_on: "2026-08-18"
 ---
 
 # Decision Registry

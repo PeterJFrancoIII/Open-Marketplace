@@ -1,12 +1,12 @@
 ---
-schema_version: "1.2"
+schema_version: "1.3"
 document:
   id: "OM-MASTER-001"
   kind: "project_master_descriptor"
   canonical: true
   status: "active"
-  updated_at: "2026-08-13T02:34:00Z"
-  updated_by: "codex_architect"
+  updated_at: "2026-08-18T23:10:00Z"
+  updated_by: "human_owner_via_cursor"
 project:
   id: "open-marketplace"
   name: "Open Marketplace"
@@ -28,6 +28,7 @@ authority:
 source_precedence:
   - "human_owner_instruction"
   - "Master_Descriptor.md"
+  - "GOVERNANCE.md"
   - "agent-memory/DECISIONS.md"
   - "agent-memory/STATE.md"
   - "agent-memory/TASKS.md"
@@ -58,6 +59,7 @@ current_repository_state:
     production_state: "not_released"
 workstreams:
   - {id: "OM-GOV", name: "Agent governance and shared memory", status: "specified", architect: "codex_architect_admin", implementer: "codex_architect_admin"}
+  - {id: "OM-CROWD", name: "Crowdsourced surface reports and daily human review", status: "reference_implementation", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
   - {id: "OM-ACC", name: "Account creation and account/admin consoles", status: "reference_implementation", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent", reference_pull_request: 21}
   - {id: "OM-DEP", name: "Cloudflare preview and production configuration", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
   - {id: "OM-FUL", name: "Listing fulfillment and transaction confidence", status: "specified", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
@@ -68,6 +70,18 @@ workstreams:
   - {id: "OM-PRIV", name: "Ad-free hosting benefits and privacy/cookie policy", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
   - {id: "OM-MOD", name: "Moderation, audit log, and administrator capabilities", status: "framework_required", architect: "codex_architect_admin", implementer: "cursor_implementation_subagent"}
 product_requirements:
+  crowdsourced_surface_feedback:
+    required: true
+    importance: "foundational"
+    every_surface_has_report_control: true
+    report_kinds: ["bug", "feature"]
+    surface_href_captured: true
+    storage: "community_reports"
+    daily_agent_compilation: true
+    human_review_required: true
+    users_build_the_product_in_controlled_fashion: true
+    security_controls_never_community_owned: true
+    security_control_reports: "filtered_to_administrators_only"
   public_browsing: {required: true}
   account_creation: {required: true, identity_verified_by_default: false}
   seller_handling_time:
@@ -112,6 +126,7 @@ security_and_privacy_invariants:
   - "Public browsing remains available unless the human owner explicitly changes this requirement."
   - "No destructive administrator capability is added without authorization, audit logging, tests, and a separate task approval."
   - "No production approval is inferred from builds, tests, previews, or subagent reports."
+  - "Cybersecurity and access-control surfaces belong only to administrators. Community bug and feature reports that ask to change those controls are filtered out of the daily crowdsource queue."
 shared_memory:
   root: "agent-memory"
   protocol: "agent-memory/README.md"
@@ -151,5 +166,7 @@ production_gates:
 # Open Marketplace Master Descriptor
 
 The YAML front matter is authoritative. The human owner and Codex jointly define architecture; Codex converts decisions into bounded machine-readable task contracts; Cursor implements assigned tasks only.
+
+Crowdsourced surface feedback is a foundational product feature. Every page, section, and control exposes a `!` report action. The community files bugs and feature requests against those exact surfaces. Agents compile the queued reports daily. A human reviews that digest and decides what to adapt. Users help build the application in this limited, controlled way. Cybersecurity and access-control work is never community-owned.
 
 Every Cursor task must begin by reading the GitHub-backed shared memory and must end with exact shared-memory references in its handoff. Every user-facing change must remain runnable for the human owner and cannot be accepted or merged until the owner reports a manual functional pass.

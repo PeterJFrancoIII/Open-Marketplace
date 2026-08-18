@@ -2,6 +2,23 @@
 
 Open exchange does not mean unlawful exchange. A public instance needs a short, predictable policy and an appeal path.
 
+## Crowdsourced surface reports
+
+Every page, section, and control exposes a `!` report action. Anyone who
+can see a surface may file a **Bug** or a **Feature Request**. The
+selected surface’s link is stored with the report in `community_reports`.
+
+This is a core product behavior, not an optional widget. The community
+tests the program. Agents compile queued reports daily. A human reviews
+that digest and decides what to adapt. In this limited and controlled
+way, users help build the application.
+
+Cybersecurity and access-control work is never placed in the hands of
+users. Reports that ask to change authentication, authorization,
+administrator control, encryption, secrets, sessions, or related
+protections are filtered to administrators and excluded from the daily
+community digest. See `GOVERNANCE.md`.
+
 This starter rejects listings for:
 
 - firearms, ammunition, explosives, silencers, and weapon-conversion parts;

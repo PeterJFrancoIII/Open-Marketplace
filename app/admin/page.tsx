@@ -51,7 +51,8 @@ export default async function AdminPage() {
         <h1 id="admin-overview-title">Admin overview</h1>
         <p className="portal-lead">
           Read-only system totals from D1. Destructive moderation actions are
-          intentionally unavailable in this console.
+          intentionally unavailable in this console. Community surface reports
+          are reviewed on the Community reports page.
         </p>
 
         <div className="portal-stat-row" aria-label="System totals">

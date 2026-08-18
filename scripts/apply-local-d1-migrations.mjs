@@ -21,6 +21,7 @@ const migrationFiles = [
     "drizzle/0009_conversation_media.sql",
     "drizzle/0010_cancel_transaction.sql",
     "drizzle/0011_evidence_exif_archive.sql",
+    "drizzle/0012_community_surface_reports.sql",
 ];
 
 function findLocalD1Files() {
@@ -95,6 +96,11 @@ for (const databasePath of databasePaths) {
       "SELECT 1 AS ok FROM pragma_table_info('conversations') WHERE name = 'evidence_archived_at' LIMIT 1",
     )
     .get();
+  const hasCommunityReports = db
+    .prepare(
+      "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'community_reports' LIMIT 1",
+    )
+    .get();
   const pending = alreadyApplied
     ? hasConversations
       ? [
@@ -105,6 +111,7 @@ for (const databasePath of databasePaths) {
           ...(hasConversationMedia ? [] : ["drizzle/0009_conversation_media.sql"]),
           ...(hasCancelTransaction ? [] : ["drizzle/0010_cancel_transaction.sql"]),
           ...(hasEvidenceArchive ? [] : ["drizzle/0011_evidence_exif_archive.sql"]),
+          ...(hasCommunityReports ? [] : ["drizzle/0012_community_surface_reports.sql"]),
         ]
       : [
           "drizzle/0004_chat_sale_credit.sql",
@@ -115,6 +122,7 @@ for (const databasePath of databasePaths) {
           "drizzle/0009_conversation_media.sql",
           "drizzle/0010_cancel_transaction.sql",
           "drizzle/0011_evidence_exif_archive.sql",
+          "drizzle/0012_community_surface_reports.sql",
         ]
     : migrationFiles;
   if (!pending.length) {

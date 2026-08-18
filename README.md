@@ -33,6 +33,9 @@ This repository is an MVP framework, not a promise that a browser can serve phot
 - Donation call-to-action configured with one public URL.
 - Demo data when the registry is unavailable, so the UI is easy to evaluate locally.
 - Default restricted-items policy and a report table ready for moderation tooling.
+- A `!` report control on every page, section, and button so testers can file a
+  Bug or Feature Request with that surface’s link. Daily agent compilation is
+  reviewed by a human. Security-control requests are filtered to administrators.
 
 ## Important boundaries
 

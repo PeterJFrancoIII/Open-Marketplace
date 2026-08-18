@@ -166,6 +166,34 @@ export const reports = sqliteTable(
   (table) => [index("reports_listing_status_idx").on(table.listingId, table.status)],
 );
 
+export const communityReports = sqliteTable(
+  "community_reports",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("queued"),
+    title: text("title").notNull(),
+    details: text("details").notNull(),
+    surfaceId: text("surface_id").notNull(),
+    surfaceLabel: text("surface_label").notNull(),
+    surfaceHref: text("surface_href").notNull(),
+    pagePath: text("page_path").notNull(),
+    filterReason: text("filter_reason"),
+    reporterUserId: text("reporter_user_id"),
+    reporterFingerprint: text("reporter_fingerprint"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("community_reports_status_created_idx").on(table.status, table.createdAt),
+    index("community_reports_kind_created_idx").on(table.kind, table.createdAt),
+    index("community_reports_surface_idx").on(table.surfaceId, table.createdAt),
+    index("community_reports_fingerprint_created_idx").on(
+      table.reporterFingerprint,
+      table.createdAt,
+    ),
+  ],
+);
+
 export const reputationRatings = sqliteTable(
   "reputation_ratings",
   {

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import CommunityFeedbackRoot from "./community-feedback";
 import "./globals.css";
 
 const LOGO_PATH = "/open-marketplace-logo.png";
@@ -60,7 +61,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <CommunityFeedbackRoot>{children}</CommunityFeedbackRoot>
+      </body>
     </html>
   );
 }

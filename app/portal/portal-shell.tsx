@@ -14,7 +14,8 @@ export type PortalSection =
   | "messages"
   | "history"
   | "settings"
-  | "admin";
+  | "admin"
+  | "community";
 
 const baseNav: { href: string; label: string; section: PortalSection }[] = [
   { href: "/account", label: "Overview", section: "overview" },
@@ -46,6 +47,11 @@ export default function PortalShell({
           href: "/admin",
           label: "Admin overview",
           section: "admin" as const,
+        },
+        {
+          href: "/admin/community",
+          label: "Community reports",
+          section: "community" as const,
         },
       ]
     : baseNav;

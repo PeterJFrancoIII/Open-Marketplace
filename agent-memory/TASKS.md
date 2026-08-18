@@ -1,12 +1,40 @@
 ---
-schema_version: "1.8"
+schema_version: "1.9"
 document_id: "OM-TASKS-001"
 kind: "task_registry"
-updated_at: "2026-08-13T02:51:00Z"
-updated_by: "codex_architect"
+updated_at: "2026-08-18T23:10:00Z"
+updated_by: "human_owner_via_cursor"
 tasks:
   - {id: "OM-GOV-001", title: "Create repository-backed shared memory and agent rules", workstream: "OM-GOV", status: "accepted", owner_role: "codex_architect_admin", assigned_agent: "codex-architect", implementation_commit: "5d560e8335438c3da08b9589fdf12555037ddba4", handoff_commit: "9dc317cdb402dc5ad024da1f740d1091c4c62ea6", pull_request: 22}
   - {id: "OM-GOV-002", title: "Merge shared-memory governance and establish first canonical state", workstream: "OM-GOV", status: "accepted", owner_role: "codex_architect_admin", assigned_agent: "codex-architect", depends_on: ["OM-GOV-001"], merge_commit: "b7c634829210cf2e386129058710a98a1db26663", human_approval_received: true}
+  - id: "OM-CROWD-001"
+    title: "Add per-surface community bug and feature reports with security filtering"
+    workstream: "OM-CROWD"
+    status: "ready_for_review"
+    owner_role: "cursor_implementation_subagent"
+    assigned_agent: "cursor-grok-4-6"
+    branch: "feature/community-surface-reports"
+    base_commit: "2a873308cf5c47bfe65e543e9b7fe38b874e6fcb"
+    authority: "human_owner_direct_instruction"
+    functional_preview_required: true
+    allowed_paths:
+      - "app/"
+      - "lib/community-reports.ts"
+      - "db/schema.ts"
+      - "drizzle/"
+      - "tests/"
+      - "scripts/compile-community-reports.mjs"
+      - "GOVERNANCE.md"
+      - "POLICY.md"
+      - "AGENTS.md"
+      - "Master_Descriptor.md"
+      - "agent-memory/"
+    forbidden_actions:
+      - "deploy to production"
+      - "apply production D1 migrations"
+      - "implement community-requested security-control changes"
+      - "mark owner manual test as pass"
+    objective: "Every surface has a ! report control whose link is stored with a Bug or Feature Request. Daily agent compilation is available for human review. Security-control requests are filtered to administrators."
   - id: "OM-ACC-001"
     title: "Audit account/admin reference implementation against the master descriptor"
     workstream: "OM-ACC"

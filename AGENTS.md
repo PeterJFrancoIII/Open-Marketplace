@@ -84,6 +84,20 @@ Use `agent-memory/HANDOFF_TEMPLATE.md` for every implementation handoff.
 - Production changes require every gate in `Master_Descriptor.md` plus explicit
   human approval.
 
+## Crowdsourced development
+
+`GOVERNANCE.md` makes community surface reports a foundational feature.
+
+- Every user-facing page, section, and control must keep a `!` report
+  action that captures that surface’s link.
+- Store community reports as `bug` or `feature` in `community_reports`.
+- At the end of each day, compile queued reports for human review. Do
+  not implement a community request unless a human authorizes that
+  adaptation.
+- Cybersecurity and access-control surfaces belong only to
+  administrators. Filter those requests out of the community queue.
+  Never treat them as community-owned work.
+
 ## Engineering boundaries
 
 - Keep public browsing available unless the master descriptor changes that

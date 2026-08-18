@@ -1,9 +1,9 @@
 ---
-schema_version: "1.9"
+schema_version: "1.10"
 document_id: "OM-STATE-001"
 kind: "project_state"
-updated_at: "2026-08-13T02:51:00Z"
-updated_by: "codex_architect"
+updated_at: "2026-08-18T23:10:00Z"
+updated_by: "human_owner_via_cursor"
 repository:
   name: "PeterJFrancoIII/Open-Marketplace"
   default_branch: "main"
@@ -12,8 +12,14 @@ production:
   provider: "Cloudflare Pages"
   project: "open-marketplace-demo"
   url: "https://open-marketplace-demo.pages.dev"
+  live_commit: "2a873308cf5c47bfe65e543e9b7fe38b874e6fcb"
+  live_bookmark_url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
   account_portal_released: false
   account_schema_applied_to_production: false
+development:
+  branch: "feature/community-surface-reports"
+  purpose: "Community surface reports and later accepted experiments"
+  must_not_overwrite_live: true
 governance:
   pull_request: 22
   state: "merged"
@@ -26,6 +32,12 @@ governance:
   cursor_shared_memory_citation_gate: "active"
   cursor_dispatch_protocol: "Codex writes and assigns a canonical task, then tells the human owner 'handoff to cursor'; the human owner invokes Cursor"
 active_changes:
+  - id: "OM-CROWD-001"
+    branch: "feature/community-surface-reports"
+    current_head: "uncommitted"
+    state: "in_progress"
+    purpose: "Per-surface community bug and feature reports with daily digest and administrator-only security filter"
+    owner_manual_result: "not_run"
   - id: "OM-ACC-002"
     branch: "feature/account-management-portal"
     current_head: "bec794fe9589a4ae15fe71ddb2e463d98eaca78c"
@@ -123,7 +135,7 @@ resolved_blockers:
   - {id: "OM-BLOCK-004", scope: "owner_preview", resolution: "Agent-only localhost rejected; persistent Cloudflare Pages branch-preview URL supplied for owner test."}
   - {id: "OM-BLOCK-005", scope: "account_settings", resolution: "Required manual social/profile settings and base payment settings were implemented; final account acceptance now includes OM-ACC-006."}
   - {id: "OM-BLOCK-006", scope: "crypto_payment_settings", resolution: "Solana was replaced by USDC and crypto destinations were bound to explicit launch networks in OM-ACC-005; architect review passed for that component."}
-next_cursor_task: "OM-ACC-006"
+next_cursor_task: "OM-CROWD-001"
 next_architect_action: "Wait for OM-ACC-006 handoff. Review exact five manual payment methods, Zelle/Apple Cash public-contact validation and privacy warning, unchanged social/crypto behavior, automated tests, production isolation, branch CI, and the updated owner-reachable HTTPS preview. If review passes, present the preview to the human owner for manual functional pass/fail. Do not accept OM-ACC-002, merge PR #21, deploy production, or assign OM-FUL-001 before that gate is resolved."
 ---
 

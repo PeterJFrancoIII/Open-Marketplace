@@ -65,9 +65,9 @@ Keep exactly two public versions:
   `https://open-marketplace-demo.pages.dev`. The working live bookmark is
   `https://feature-account-management-p.open-marketplace-demo.pages.dev/`.
 - **Development** is the next accepted experiment, currently
-  `feature/community-surface-reports`. It is published as a separate
-  Cloudflare Pages preview and must not overwrite live until the human
-  owner promotes it.
+  `feature/community-surface-reports` at
+  `https://feature-community-surface-re.open-marketplace-demo.pages.dev/`.
+  It must not overwrite live until the human owner promotes it.
 
 Do not recreate additional product forks. Security-control work still
 belongs only to administrators on both versions.

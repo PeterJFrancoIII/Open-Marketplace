@@ -18,6 +18,8 @@ production:
   account_schema_applied_to_production: false
 development:
   branch: "feature/community-surface-reports"
+  current_head: "90280c1d223a24d7ff069391647bbeab7fe9adc4"
+  preview_url: "https://feature-community-surface-re.open-marketplace-demo.pages.dev/"
   purpose: "Community surface reports and later accepted experiments"
   must_not_overwrite_live: true
 governance:

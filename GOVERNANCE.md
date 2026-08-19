@@ -60,17 +60,16 @@ authorize that exact change in a separate task.
 
 Keep exactly two public versions:
 
-- **Live** is the owner-promoted development track: community surface
-  reports on top of the prior account-management program. The working
-  live bookmark is
+- **Live** is the owner-confirmed account-management program with
+  community surface reports, commit
+  `2dbda209030d8f27126da44ba7bd6226f19af889`. It is served at both
+  `https://open-marketplace-demo.pages.dev` (`main`, Cloudflare Pages
+  production) and the live bookmark
   `https://feature-account-management-p.open-marketplace-demo.pages.dev/`
-  on `feature/account-management-portal`. Canonical production remains
-  `https://open-marketplace-demo.pages.dev` at
-  `2a873308cf5c47bfe65e543e9b7fe38b874e6fcb` until the owner separately
-  approves a production release.
-- **Development** remains `feature/community-surface-reports` at
-  `https://feature-community-surface-re.open-marketplace-demo.pages.dev/`
-  for the next experiment. TikTok Connect is not part of this promotion.
+  (`feature/account-management-portal`).
+- **Development** is `feature/community-surface-reports` at
+  `https://feature-community-surface-re.open-marketplace-demo.pages.dev/`.
+  New experiments stay on this track until the owner promotes them.
 
 Do not recreate additional product forks. Security-control work still
 belongs only to administrators on both versions.

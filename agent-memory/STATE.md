@@ -11,8 +11,9 @@ repository:
 production:
   provider: "Cloudflare Pages"
   project: "open-marketplace-demo"
-  url: "https://open-marketplace-demo.pages.dev"
-  live_commit: "2a873308cf5c47bfe65e543e9b7fe38b874e6fcb"
+  url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
+  retired_public_url: "https://open-marketplace-demo.pages.dev"
+  live_commit: "a4a78df3f3573f7d5d25a19f046a28503c9931fd"
   live_bookmark_url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
   account_portal_released: false
   account_schema_applied_to_production: false

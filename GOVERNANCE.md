@@ -58,21 +58,24 @@ authorize that exact change in a separate task.
 
 ## Live and development versions
 
-Keep exactly two public versions:
+Keep exactly two public versions. The public live link must stay
+constant. `https://open-marketplace-demo.pages.dev` is retired as a
+public live URL: that slot’s production database is empty, so accounts
+and listings fail there.
 
-- **Live** is the owner-confirmed account-management program with
-  community surface reports, commit
-  `2dbda209030d8f27126da44ba7bd6226f19af889`. It is served at both
-  `https://open-marketplace-demo.pages.dev` (`main`, Cloudflare Pages
-  production) and the live bookmark
+- **Live** is the owner-confirmed account-management program. Until a
+  purchased custom domain is attached, the only public live URL is
   `https://feature-account-management-p.open-marketplace-demo.pages.dev/`
-  (`feature/account-management-portal`).
+  on `feature/account-management-portal`. Do not send users to
+  `open-marketplace-demo.pages.dev`.
 - **Development** is `feature/community-surface-reports` at
   `https://feature-community-surface-re.open-marketplace-demo.pages.dev/`.
   New experiments stay on this track until the owner promotes them.
 
-Do not recreate additional product forks. Security-control work still
-belongs only to administrators on both versions.
+The Cloudflare Pages project remains the host. The public name must be
+a short custom domain the owner buys. Do not recreate additional
+product forks. Security-control work still belongs only to
+administrators on both versions.
 
 ## Authority reminder
 

@@ -78,8 +78,10 @@ Use `agent-memory/HANDOFF_TEMPLATE.md` for every implementation handoff.
   explicitly authorizes that exact action.
 - Codex performs repository administration and external-state changes only
   within the human owner's authorization.
-- Preserve the existing `open-marketplace-demo` Pages project and
-  `https://open-marketplace-demo.pages.dev` URL.
+- Preserve the existing `open-marketplace-demo` Pages project as the
+  host. Do not treat `https://open-marketplace-demo.pages.dev` as a
+  public live URL. The public live link must stay constant and must be
+  the owner-chosen custom domain once purchased.
 - A successful build or preview is not production approval.
 - Production changes require every gate in `Master_Descriptor.md` plus explicit
   human approval.

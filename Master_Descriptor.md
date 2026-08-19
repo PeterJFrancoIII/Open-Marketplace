@@ -14,7 +14,8 @@ project:
   repository_url: "https://github.com/PeterJFrancoIII/Open-Marketplace"
   default_branch: "main"
   production_branch: "main"
-  production_url: "https://open-marketplace-demo.pages.dev"
+  production_url: "https://feature-account-management-p.open-marketplace-demo.pages.dev/"
+  retired_public_url: "https://open-marketplace-demo.pages.dev"
 authority:
   - rank: 1
     role: "human_owner"

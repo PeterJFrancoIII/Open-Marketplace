@@ -126,10 +126,11 @@ Give Cursor this repository and ask it to work through these milestones in order
 
 The checked-in build emits a Cloudflare Worker-compatible artifact. The metadata registry can be hosted on a low-cost edge database. A fork that targets another platform should replace only the small registry adapter; the browser media vault and transport contract are platform-independent.
 
-The existing production URL is `https://open-marketplace-demo.pages.dev`. Preserve
-that Pages project rather than creating a duplicate. Before releasing account
-features, apply the D1 migrations and configure the runtime binding and secrets
-described above.
+The Cloudflare Pages project `open-marketplace-demo` is the host.
+`https://open-marketplace-demo.pages.dev` is retired as a public live
+URL. Until a purchased custom domain is attached, the public live URL is
+`https://feature-account-management-p.open-marketplace-demo.pages.dev/`.
+Preserve the Pages project rather than creating a duplicate.
 
 ## Funding and governance
 

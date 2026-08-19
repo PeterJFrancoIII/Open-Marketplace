@@ -60,14 +60,17 @@ authorize that exact change in a separate task.
 
 Keep exactly two public versions:
 
-- **Live** is the accepted account-management program at commit
-  `2a873308cf5c47bfe65e543e9b7fe38b874e6fcb`. Canonical production is
-  `https://open-marketplace-demo.pages.dev`. The working live bookmark is
-  `https://feature-account-management-p.open-marketplace-demo.pages.dev/`.
-- **Development** is the next accepted experiment, currently
-  `feature/community-surface-reports` at
-  `https://feature-community-surface-re.open-marketplace-demo.pages.dev/`.
-  It must not overwrite live until the human owner promotes it.
+- **Live** is the owner-promoted development track: community surface
+  reports on top of the prior account-management program. The working
+  live bookmark is
+  `https://feature-account-management-p.open-marketplace-demo.pages.dev/`
+  on `feature/account-management-portal`. Canonical production remains
+  `https://open-marketplace-demo.pages.dev` at
+  `2a873308cf5c47bfe65e543e9b7fe38b874e6fcb` until the owner separately
+  approves a production release.
+- **Development** remains `feature/community-surface-reports` at
+  `https://feature-community-surface-re.open-marketplace-demo.pages.dev/`
+  for the next experiment. TikTok Connect is not part of this promotion.
 
 Do not recreate additional product forks. Security-control work still
 belongs only to administrators on both versions.

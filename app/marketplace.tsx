@@ -770,14 +770,26 @@ function hasBrokenAccount(listing: Listing) {
   );
 }
 
-function paypalLinkLabel(listing: Listing) {
-  return listing.paypalLinked ? "PayPal · Linked" : "PayPal · Not linked";
-}
-
 function listingPaypalDestination(listing: Listing) {
   return (listing.paymentDestinations ?? []).find(
     (destination) => destination.rail === "paypal",
   );
+}
+
+function paypalListingState(listing: Listing) {
+  const paypal = listingPaypalDestination(listing);
+  const destination = paypal?.destination?.trim() ?? "";
+  const loginLinked =
+    Boolean(listing.paypalLinked) || paypal?.source === "oauth";
+  const connected = loginLinked || Boolean(destination);
+  return { paypal, destination, loginLinked, connected };
+}
+
+function paypalLinkLabel(listing: Listing) {
+  const { loginLinked, connected } = paypalListingState(listing);
+  if (loginLinked) return "PayPal · Linked";
+  if (connected) return "PayPal · Connected";
+  return "PayPal · Not connected";
 }
 
 function PayPalListingFact({
@@ -789,19 +801,22 @@ function PayPalListingFact({
   className: string;
   variant: "card" | "detail";
 }) {
-  const paypal = listingPaypalDestination(listing);
-  const destination = paypal?.destination?.trim() ?? "";
+  const { paypal, destination, loginLinked, connected } = paypalListingState(listing);
   const copy = (
     <>
       <strong>{paypalLinkLabel(listing)}</strong>
       <small>
-        {listing.paypalLinked
+        {loginLinked
           ? variant === "detail"
             ? "This PayPal account is currently linked with PayPal Login."
             : "Linked with PayPal Login"
-          : variant === "detail"
-            ? "This seller has not linked PayPal."
-            : "Seller has not linked PayPal"}
+          : connected
+            ? variant === "detail"
+              ? "This seller published a public PayPal pay-to."
+              : "Public PayPal pay-to"
+            : variant === "detail"
+              ? "This seller has not connected PayPal."
+              : "Seller has not connected PayPal"}
         {destination ? ` · ${destination}` : ""}
       </small>
     </>
@@ -809,18 +824,20 @@ function PayPalListingFact({
   return (
     <ConnectorAnchor
       href={paypal ? paymentLinkFor(paypal, listingPayDetails(listing)).href ?? "" : ""}
-      className={`${className} social-connected status-${listing.paypalLinked ? "active" : "unknown"}`}
+      className={`${className} social-connected status-${connected ? "active" : "unknown"}`}
       title={
-        listing.paypalLinked
+        loginLinked
           ? "Linked with PayPal Login"
-          : "Seller has not linked PayPal"
+          : connected
+            ? "Public PayPal pay-to"
+            : "Seller has not connected PayPal"
       }
       label="Pay with PayPal"
     >
       <span className="proof-mark">pp</span>
       {variant === "card" ? <span className="social-fact-copy">{copy}</span> : <span>{copy}</span>}
       <span className="link-health">
-        {listing.paypalLinked ? "Linked" : "Not linked"}
+        {loginLinked ? "Linked" : connected ? "Connected" : "Not connected"}
       </span>
     </ConnectorAnchor>
   );

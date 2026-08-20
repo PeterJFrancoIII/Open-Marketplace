@@ -54,6 +54,7 @@ test("listing UI rechecks links on first open in a 24-hour cycle", async () => {
   assert.match(marketplace, /om-link-health:/);
   assert.match(marketplace, /\/api\/link-health/);
   assert.match(marketplace, /PayPal · Linked/);
-  assert.match(marketplace, /PayPal · Not linked/);
+  assert.match(marketplace, /PayPal · Connected/);
+  assert.match(marketplace, /PayPal · Not connected/);
   assert.match(marketplace, /listingLinksNeedCheck/);
 });

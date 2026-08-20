@@ -93,7 +93,7 @@ function readOauthError() {
   const error = new URLSearchParams(window.location.search).get("error");
   if (!error) return "";
   if (error === "paypal") {
-    return "PayPal Login is not configured on this copy of the site yet. Connect PayPal cannot finish until a PayPal app is added to this preview.";
+    return "PayPal Login did not finish. Enter your public PayPal email or paypal.me link and click Connect PayPal.";
   }
   return "Social Connect did not complete. Try again.";
 }
@@ -282,6 +282,23 @@ export default function AccountSettings({
     return result;
   }
 
+  function paymentDestinationPayload() {
+    return PAYMENT_RAILS.flatMap((rail) => {
+      const destination = paymentDrafts[rail.id].trim();
+      return destination
+        ? [
+            {
+              rail: rail.id,
+              destination,
+              asset: rail.asset,
+              networkId: rail.networkId,
+              networkLabel: rail.networkLabel,
+            },
+          ]
+        : [];
+    });
+  }
+
   async function onSavePayments(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending("payment");
@@ -290,20 +307,7 @@ export default function AccountSettings({
     try {
       const result = await saveProfile(
         {
-          paymentDestinations: PAYMENT_RAILS.flatMap((rail) => {
-            const destination = paymentDrafts[rail.id].trim();
-            return destination
-              ? [
-                  {
-                    rail: rail.id,
-                    destination,
-                    asset: rail.asset,
-                    networkId: rail.networkId,
-                    networkLabel: rail.networkLabel,
-                  },
-                ]
-              : [];
-          }),
+          paymentDestinations: paymentDestinationPayload(),
         },
       );
       if (!result) return;
@@ -555,14 +559,36 @@ export default function AccountSettings({
     setPending("paypal-connect");
     setStatus("");
     setError("");
-    if (!paypalConnection.available) {
+    if (paypalConnection.available) {
+      window.location.assign("/api/paypal/connect");
+      return;
+    }
+    const destination = paymentDrafts.paypal.trim();
+    if (!destination) {
       setError(
-        "PayPal Login is not configured on this copy of the site yet. Connect PayPal cannot finish until a PayPal app is added to this preview.",
+        "Enter your public PayPal email or paypal.me link, then click Connect PayPal.",
       );
       setPending(null);
       return;
     }
-    window.location.assign("/api/paypal/connect");
+    try {
+      const result = await saveProfile({
+        paymentDestinations: paymentDestinationPayload(),
+      });
+      if (!result) return;
+      setPaymentDrafts(destinationsByRail(result.paymentDestinations ?? []));
+      setStatus(
+        "PayPal connected. Buyers will see this public pay-to. This does not sign you in or take payments.",
+      );
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Could not connect PayPal.",
+      );
+    } finally {
+      setPending(null);
+    }
   }
 
   async function onDisconnectPayPal() {
@@ -961,20 +987,20 @@ export default function AccountSettings({
               <strong>{rail.label}</strong>
               {rail.id === "paypal" && paypalConnection.connected ? (
                 <span className="portal-settings-health">Linked</span>
+              ) : rail.id === "paypal" && paymentDrafts.paypal ? (
+                <span className="portal-settings-health">Connected</span>
               ) : paymentDrafts[rail.id] ? (
                 <span className="portal-settings-health">Saved</span>
               ) : rail.id === "paypal" ? (
-                <span className="portal-settings-health">Not linked</span>
+                <span className="portal-settings-health">Not connected</span>
               ) : null}
             </div>
             {rail.id === "paypal" ? (
               <p className="portal-settings-note">
-                PayPal Link uses official Log in with PayPal and the email
-                scope only. It fills this public pay-to contact. It does not
+                Connect PayPal saves your public pay-to email or paypal.me
+                link. When official PayPal Login is available, Connect opens
+                PayPal and fills this field from your account. It does not
                 sign you in, take payments, or hold money.
-                {!paypalConnection.available && !paypalConnection.connected
-                  ? " PayPal Login is not available on this copy of the site, so you can still save a public PayPal email or paypal.me link."
-                  : ""}
               </p>
             ) : null}
             <label className="portal-field">
@@ -1015,8 +1041,9 @@ export default function AccountSettings({
                 <button
                   className="button button-dark"
                   type="button"
+                  id="surface-connect-paypal"
                   data-feedback-surface="Connect PayPal"
-                  onClick={onConnectPayPal}
+                  onClick={() => void onConnectPayPal()}
                   disabled={pending !== null}
                 >
                   {pending === "paypal-connect" ? "Connecting…" : "Connect PayPal"}

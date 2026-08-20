@@ -45,7 +45,7 @@ export async function GET(request: Request) {
   }
 
   const session = await getMarketplaceSession(request);
-  if (!session?.user.id || !session.user.name) {
+  if (!session?.user.id) {
     return redirectToAccount(origin, secure, "paypal");
   }
 
@@ -86,7 +86,7 @@ export async function GET(request: Request) {
   });
   await writePaypalPaymentDestination(
     session.user.id,
-    session.user.name,
+    session.user.name?.trim() || exchanged.name || exchanged.email,
     exchanged.email,
   );
 

@@ -193,11 +193,13 @@ export async function replacePaypalDestination(
     brokers,
   );
   const updatedAt = new Date().toISOString();
+  const nextDisplayName =
+    profile?.displayName?.trim() || displayName.trim() || "Member";
   await db
     .insert(profiles)
     .values({
       id: userId,
-      displayName,
+      displayName: nextDisplayName,
       socialAccountsJson: profile?.socialAccountsJson ?? "[]",
       paymentDestinationsJson,
       updatedAt,
@@ -205,7 +207,6 @@ export async function replacePaypalDestination(
     .onConflictDoUpdate({
       target: profiles.id,
       set: {
-        displayName,
         paymentDestinationsJson,
         updatedAt,
       },

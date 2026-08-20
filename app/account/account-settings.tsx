@@ -93,7 +93,7 @@ function readOauthError() {
   const error = new URLSearchParams(window.location.search).get("error");
   if (!error) return "";
   if (error === "paypal") {
-    return "PayPal Login did not finish. Enter your public PayPal email or paypal.me link and click Connect PayPal.";
+    return "PayPal Login did not finish. Click Connect PayPal to open official PayPal Login again.";
   }
   return "Social Connect did not complete. Try again.";
 }
@@ -561,60 +561,16 @@ export default function AccountSettings({
     setPending(`${railId}-connect`);
     setStatus("");
     setError("");
-    if (railId === "paypal" && paypalConnection.available) {
+    if (railId === "paypal") {
       window.location.assign("/api/paypal/connect");
       return;
     }
     const destination = paymentDrafts[railId].trim();
     if (!destination) {
       setError(
-        railId === "paypal"
-          ? "Enter your public PayPal email or paypal.me link, then click Connect PayPal."
-          : `Enter your public ${label} destination, then click Connect ${label}.`,
+        `Enter your public ${label} destination, then click Connect ${label}.`,
       );
       setPending(null);
-      return;
-    }
-    if (railId === "paypal") {
-      try {
-        const response = await fetch("/api/paypal/destination", {
-          method: "POST",
-          headers: { accept: "application/json", "content-type": "application/json" },
-          body: JSON.stringify({ destination }),
-        });
-        const result = (await response.json()) as {
-          error?: string;
-          paypalConnection?: PayPalConnection;
-          paymentDestinations?: PaymentDestination[];
-        };
-        if (response.status === 401) {
-          window.location.assign("/login?returnTo=%2Faccount");
-          return;
-        }
-        if (!response.ok) {
-          setError(result.error ?? "Could not connect PayPal.");
-          return;
-        }
-        if (result.paypalConnection) setPaypalConnection(result.paypalConnection);
-        setPaymentDrafts((current) => ({
-          ...current,
-          paypal:
-            result.paymentDestinations?.find((item) => item.rail === "paypal")
-              ?.destination ?? destination,
-        }));
-        setStatus(
-          "PayPal connected. Buyers will see this public pay-to. This does not sign you in or take payments.",
-        );
-        router.refresh();
-      } catch (submitError) {
-        setError(
-          submitError instanceof Error
-            ? submitError.message
-            : "Could not connect PayPal.",
-        );
-      } finally {
-        setPending(null);
-      }
       return;
     }
     try {
@@ -1064,12 +1020,13 @@ export default function AccountSettings({
         <div>
           <h3 id="payment-options-title">Payment options</h3>
           <p className="portal-lead">
-            Link PayPal with official PayPal Login to fill your public pay-to
-            email. Venmo, Cash App, Zelle, Apple Cash, Bitcoin on Bitcoin
-            Mainnet, Ethereum on Ethereum Mainnet, Tether (USDT) on Ethereum
-            Mainnet (ERC-20), BNB on BNB Smart Chain Mainnet, and USDC on
-            Ethereum Mainnet (ERC-20) stay typed public contacts. These are
-            connectors to the official apps, not a checkout.
+            Connect PayPal opens official PayPal Login and pulls your PayPal
+            account into Open Marketplace. Venmo, Cash App, Zelle, Apple Cash,
+            Bitcoin on Bitcoin Mainnet, Ethereum on Ethereum Mainnet, Tether
+            (USDT) on Ethereum Mainnet (ERC-20), BNB on BNB Smart Chain
+            Mainnet, and USDC on Ethereum Mainnet (ERC-20) stay typed public
+            contacts. These are connectors to the official apps, not a
+            checkout.
           </p>
           <p className="portal-settings-note">
             Zelle and Apple Cash are public payment contact information. Type an
@@ -1100,10 +1057,10 @@ export default function AccountSettings({
             </div>
             {rail.id === "paypal" ? (
               <p className="portal-settings-note">
-                Connect PayPal saves your public pay-to email or paypal.me
-                link. When official PayPal Login is available, Connect opens
-                PayPal and fills this field from your account. It does not
-                sign you in, take payments, or hold money.
+                Connect PayPal opens the official PayPal connector and fills
+                this public pay-to from your PayPal account. It does not sign
+                you in, take payments, or hold money. It does not replace your
+                Open Marketplace email or name.
               </p>
             ) : null}
             <label
@@ -1117,7 +1074,7 @@ export default function AccountSettings({
                 aria-label={rail.hint}
                 data-feedback-surface={`${rail.label} input`}
                 value={
-                  rail.id === "paypal" && paypalConnection.connected
+                  rail.id === "paypal"
                     ? paypalConnection.email ?? paymentDrafts.paypal
                     : paymentDrafts[rail.id]
                 }
@@ -1129,6 +1086,7 @@ export default function AccountSettings({
                 }
                 autoComplete="off"
                 spellCheck={false}
+                readOnly={rail.id === "paypal"}
                 disabled={
                   pending !== null ||
                   (rail.id === "paypal" && paypalConnection.connected)
@@ -1136,6 +1094,20 @@ export default function AccountSettings({
               />
             </label>
             <div className="portal-connector-actions">
+              {rail.id === "paypal" && !paypalConnection.connected ? (
+                <button
+                  className="button button-dark"
+                  type="button"
+                  id="surface-connect-paypal"
+                  data-feedback-surface="Connect PayPal"
+                  onClick={() => void onConnectPayment("paypal")}
+                  disabled={pending !== null}
+                >
+                  {pending === "paypal-connect"
+                    ? "Connecting…"
+                    : "Connect PayPal"}
+                </button>
+              ) : null}
               {rail.id === "paypal" &&
               (paypalConnection.connected || paymentDrafts.paypal) ? (
                 <button
@@ -1149,11 +1121,10 @@ export default function AccountSettings({
                     ? "Disconnecting…"
                     : "Disconnect PayPal"}
                 </button>
-              ) : (
+              ) : rail.id !== "paypal" ? (
                 <button
                   className="button button-dark"
                   type="button"
-                  id={rail.id === "paypal" ? "surface-connect-paypal" : undefined}
                   data-feedback-surface={`Connect ${rail.label}`}
                   onClick={() => void onConnectPayment(rail.id)}
                   disabled={pending !== null}
@@ -1162,7 +1133,7 @@ export default function AccountSettings({
                     ? "Connecting…"
                     : `Connect ${rail.label}`}
                 </button>
-              )}
+              ) : null}
               <a
                 className="button button-ghost"
                 href={rail.connectUrl}

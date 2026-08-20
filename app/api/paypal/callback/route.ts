@@ -86,7 +86,7 @@ export async function GET(request: Request) {
   });
   await writePaypalPaymentDestination(
     session.user.id,
-    session.user.name?.trim() || exchanged.name || exchanged.email,
+    session.user.name?.trim() || "Member",
     exchanged.email,
   );
 

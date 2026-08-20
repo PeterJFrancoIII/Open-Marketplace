@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 
   await replacePaypalDestination(
     session.user.id,
-    session.user.name?.trim() || paypal.destination,
+    session.user.name?.trim() || "Member",
     paypal,
   );
 

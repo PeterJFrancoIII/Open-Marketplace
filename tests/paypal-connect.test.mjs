@@ -318,6 +318,33 @@ test("typed PayPal stays self-reported until Login is linked", () => {
   assert.equal(preserved[0].source, "oauth");
 });
 
+test("Connect PayPal starts official Login and fails closed without app credentials", async () => {
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("paypal-connect-unavailable");
+  const env = createTestEnv(d1, { paypal: false });
+  const cookieJar = new Map();
+
+  await signUp(worker, env, {
+    name: "PayPal Owner",
+    email: "paypal-unavailable@example.com",
+    password: USER_PASSWORD,
+  });
+  await signIn(worker, env, cookieJar, {
+    email: "paypal-unavailable@example.com",
+    password: USER_PASSWORD,
+  });
+
+  const start = await workerFetch(worker, env, "/api/paypal/connect", {
+    cookieJar,
+    redirect: "manual",
+  });
+  assert.equal(start.status, 302);
+  const location = start.headers.get("location") ?? "";
+  assert.match(location, /error=paypal/);
+  assert.doesNotMatch(location, /paypal\.com\/connect/i);
+});
+
 test("unsigned PayPal social sign-in is rejected", async () => {
   const worker = await loadWorker("paypal-signin-blocked");
   const response = await workerFetch(worker, createTestEnv(undefined, { paypal: true }), "/api/auth/sign-in/social", {
@@ -380,6 +407,13 @@ test("PayPal connect requires a session and then populates the public pay-to ema
     assert.equal(profileBody.paypalConnection.available, true);
     assert.equal(profileBody.paypalConnection.connected, true);
     assert.equal(profileBody.paypalConnection.email, "seller-paypal@example.com");
+    const owner = d1.__sqlite
+      .prepare("SELECT id FROM auth_users WHERE email = ?")
+      .get("paypal-owner@example.com");
+    const savedProfile = d1.__sqlite
+      .prepare("SELECT display_name FROM profiles WHERE id = ?")
+      .get(owner.id);
+    assert.equal(savedProfile.display_name, "PayPal Owner");
     assert.equal(profileBody.paymentDestinations[0]?.rail, "paypal");
     assert.equal(profileBody.paymentDestinations[0]?.destination, "seller-paypal@example.com");
     assert.equal(profileBody.paymentDestinations[0]?.source, "oauth");
@@ -527,20 +561,20 @@ test("account settings and listings source offer Link PayPal without checkout", 
     readFile(new URL("../lib/paypal-public.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/paypal-pay-link.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(settings, /Link PayPal/);
   assert.match(settings, /Connect PayPal/);
+  assert.match(settings, /official PayPal Login/);
+  assert.match(settings, /official PayPal connector/);
   assert.match(settings, /Connect \$\{rail\.label\}/);
   assert.match(settings, /data-feedback-surface=\{\`Connect \$\{rail\.label\}\`\}/);
   assert.match(settings, /data-feedback-surface=\{\`\$\{rail.label\} input\`\}/);
   assert.match(settings, /surface-connect-paypal/);
-  assert.match(settings, /Enter your public PayPal email or paypal\.me link/);
   assert.match(settings, /onConnectPayment/);
-  assert.match(settings, /\/api\/paypal\/destination/);
   assert.match(settings, /onDisconnectPayPal/);
   assert.match(settings, /if \(railId === "paypal"\) \{/);
-  assert.match(settings, /if \(railId === "paypal" && paypalConnection.available\)/);
+  assert.match(settings, /window\.location\.assign\("\/api\/paypal\/connect"\)/);
+  assert.doesNotMatch(settings, /paypalConnection\.available\)/);
+  assert.doesNotMatch(settings, /\/api\/paypal\/destination/);
   assert.match(settings, /paymentDestinationPayload/);
-  assert.doesNotMatch(settings, /paypal && paypalConnection.available \?/);
   assert.match(settings, /\/api\/paypal\/connect/);
   assert.match(settings, /not a checkout/);
   assert.match(settings, /does not execute, insure, escrow/);

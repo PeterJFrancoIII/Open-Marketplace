@@ -111,6 +111,16 @@ product_requirements:
     required: true
     eligibility_requires: ["high_assurance_identity_verification", "verifiable_hosting_node_operation"]
     permitted_benefits: ["priority_listing_status", "ad_free_experience"]
+  social_connect_first_line_of_defense:
+    required: true
+    importance: "foundational"
+    official_connect_only: true
+    pull_all_official_provider_fields: true
+    more_official_fields_raise_social_credit: true
+    first_line_before_verified_buys_sells: true
+    not_a_verification_badge: true
+    not_a_credit_bureau_score: true
+    provider_verified_flags_are_not_marketplace_verified: true
   priority_listings:
     presentation: "yellow_box"
     ordering: "before_regular_listings"
@@ -169,5 +179,15 @@ production_gates:
 The YAML front matter is authoritative. The human owner and Codex jointly define architecture; Codex converts decisions into bounded machine-readable task contracts; Cursor implements assigned tasks only.
 
 Crowdsourced surface feedback is a foundational product feature. Every page, section, and control exposes a `!` report action. The community files bugs and feature requests against those exact surfaces. Agents compile the queued reports daily. A human reviews that digest and decides what to adapt. Users help build the application in this limited, controlled way. Cybersecurity and access-control work is never community-owned.
+
+## Project development fact: social Connect is first-line trust
+
+Official social Connect is the first line of defense when a seller has no
+verified buys or sells yet. The marketplace must pull every public field the
+connected provider already returns after Connect. More official fields raise
+Social Credit. Typed usernames and pasted links do not count. A provider
+`verified` flag is not an Open Marketplace verification badge. Social Credit
+is not a credit-bureau score. After verified buys and sells exist, ratings
+and completed sales raise the same number.
 
 Every Cursor task must begin by reading the GitHub-backed shared memory and must end with exact shared-memory references in its handoff. Every user-facing change must remain runnable for the human owner and cannot be accepted or merged until the owner reports a manual functional pass.

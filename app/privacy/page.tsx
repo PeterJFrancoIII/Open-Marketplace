@@ -5,7 +5,7 @@ import { LegalShell } from "../legal/legal-shell";
 export const metadata: Metadata = {
   title: "Privacy Policy — Open Marketplace",
   description:
-    "How Open Marketplace handles accounts, listings, Facebook Login, and PayPal Login on this site.",
+    "How Open Marketplace handles accounts, listings, optional Facebook Login, TikTok Login Kit, and PayPal Login.",
 };
 
 const sections = [
@@ -14,13 +14,15 @@ const sections = [
   { id: "local-media-boundary", label: "Photographs" },
   { id: "facebook-connect-disclosure", label: "Facebook Login" },
   { id: "facebook-exclusions", label: "What Facebook does not give us" },
+  { id: "tiktok-connect-disclosure", label: "TikTok Login Kit" },
   { id: "social-connectors-disclosure", label: "Other social Connect" },
   { id: "paypal-connect-disclosure", label: "PayPal Login" },
-  { id: "provider-credential-boundary", label: "How Facebook credentials are kept" },
+  { id: "provider-credential-boundary", label: "How provider credentials are kept" },
   { id: "purposes", label: "Why we use this information" },
   { id: "sharing-and-sale", label: "Sharing" },
   { id: "retention", label: "How long we keep it" },
   { id: "facebook-data-deletion", label: "Deleting Facebook data" },
+  { id: "tiktok-data-deletion", label: "Deleting TikTok data" },
   { id: "children", label: "Children" },
   { id: "effective-date", label: "Effective date" },
 ] as const;
@@ -29,7 +31,7 @@ export default function PrivacyPage() {
   return (
     <LegalShell
       title="Privacy Policy"
-      lead="This policy explains what Open Marketplace collects, what Facebook Login and PayPal Login can add, and how you can remove those links. Anyone can read it. You do not need an account."
+      lead="This policy explains what Open Marketplace collects, what optional Facebook Login, TikTok Login Kit, and PayPal Login can add, and how you can remove those links. Anyone can read it. You do not need an account."
     >
       <nav aria-label="On this page">
         <ul className="privacy-toc">
@@ -52,6 +54,11 @@ export default function PrivacyPage() {
           Facebook and Meta are external account providers, not the operator of
           this marketplace. A Facebook link never moves a listing onto Facebook,
           and it never makes Facebook responsible for a sale.
+        </p>
+        <p>
+          TikTok is also an external account provider. A TikTok link never moves
+          a listing onto TikTok, and it never makes TikTok responsible for a
+          sale.
         </p>
       </section>
 
@@ -96,13 +103,15 @@ export default function PrivacyPage() {
       >
         <h2 id="facebook-connect-disclosure-title">Facebook Login</h2>
         <p>
-          Signed-in people can choose Connect. That uses consumer Facebook
-          Login and asks for <code>public_profile</code> and{" "}
-          <code>user_link</code>. We use the public name, profile photo, and
-          profile link Facebook returns so Account settings can show that the
-          account is Connected and so a listing connector can open that
-          Facebook profile. Those Facebook details stay with the Facebook
-          link. They do not replace your Open Marketplace name or email.
+          Signed-in people can choose Connect. That uses Facebook Login and
+          asks for <code>public_profile</code>, <code>user_link</code>,{" "}
+          <code>user_hometown</code>, and <code>user_location</code>. We use
+          the public name, profile photo, profile link, hometown, location,
+          locale, gender, age range, and cover Facebook returns so Account settings
+          can show that the account is Connected and so a listing connector
+          can open that Facebook profile. Those Facebook details stay with
+          the Facebook link. They do not replace your Open Marketplace name
+          or email.
         </p>
         <p>
           Facebook Login is not a way to create or open an Open Marketplace
@@ -118,6 +127,7 @@ export default function PrivacyPage() {
         <p>Open Marketplace does not ask Facebook for:</p>
         <ul>
           <li>Facebook email permission.</li>
+          <li>Facebook birthday or mobile phone permission.</li>
           <li>Facebook friends or followers.</li>
           <li>Facebook Pages.</li>
           <li>Facebook Marketplace data.</li>
@@ -130,18 +140,57 @@ export default function PrivacyPage() {
       </section>
 
       <section
+        id="tiktok-connect-disclosure"
+        aria-labelledby="tiktok-connect-disclosure-title"
+      >
+        <h2 id="tiktok-connect-disclosure-title">TikTok Login Kit</h2>
+        <p>
+          Signed-in people can choose Connect TikTok. That optional connection
+          uses TikTok Login Kit OAuth and asks for{" "}
+          <code>user.info.basic</code>, <code>user.info.profile</code>, and{" "}
+          <code>user.info.stats</code>. After the user authorizes TikTok, our
+          server exchanges the authorization code and reads the TikTok
+          app-scoped <code>open_id</code>, display name, username, profile
+          link, avatar, and follower count TikTok returns. We use those fields
+          to show the linked TikTok identity on the existing Open Marketplace
+          account and, when connected, on listings and Social Credit. Official
+          fields include display name, username, profile link, avatar, bio,
+          follower count, following count, likes, and video count when TikTok
+          returns them. Those TikTok details stay with the TikTok connector.
+          They do not replace your Open Marketplace name, email, or image.
+        </p>
+        <p>
+          TikTok Login Kit is not a way to create or open an Open Marketplace
+          account. Open Marketplace does not post to TikTok, read TikTok
+          videos, or read TikTok messages.
+        </p>
+        <p>
+          TikTok access tokens, refresh tokens, and the client secret remain
+          server-side. They are not placed in public profile pages, public
+          listing records, or public project files.
+        </p>
+      </section>
+
+      <section
         id="social-connectors-disclosure"
         aria-labelledby="social-connectors-disclosure-title"
       >
         <h2 id="social-connectors-disclosure-title">Other social Connect</h2>
         <p>
-          Signed-in people can also Connect Instagram, TikTok, X, LinkedIn,
-          Reddit, and Discord when those official apps are configured on this
-          copy of the site. Only public fields the provider returns after
-          Connect are stored: a handle, a profile link, an account-created
-          date, or a public connection count when the provider sends one.
-          Typed usernames and pasted links are not accepted. Provider emails
-          are not published on listings. These links are not a way to create
+          Signed-in people can also Connect Instagram, X, LinkedIn, Reddit, and
+          Discord when those official apps are configured on this copy of the
+          site. Instagram Login asks for{" "}
+          <code>instagram_business_basic</code> only. It does not import posts
+          or read messages. Only public fields the provider returns after Connect are
+          stored: every public profile field the provider already returns after
+          Connect — handle, display name, profile link, avatar, banner, bio,
+          location, website, account type, locale, created date, and public
+          counts such as followers, following, likes, posts, lists, or karma.
+          More official fields raise Social Credit. That social signal is the
+          first line of defense before verified buys and sells exist. Typed
+          usernames and pasted links are not accepted. Provider emails are not
+          published on listings. A provider verified mark is not an Open
+          Marketplace verification badge. These links are not a way to create
           or open an Open Marketplace account.
         </p>
       </section>
@@ -171,12 +220,17 @@ export default function PrivacyPage() {
         aria-labelledby="provider-credential-boundary-title"
       >
         <h2 id="provider-credential-boundary-title">
-          How Facebook credentials are kept
+          How provider credentials are kept
         </h2>
         <p>
           Facebook access credentials and tokens remain server-side. They are
           not placed in public profile pages, public listing records, or
           public project files.
+        </p>
+        <p>
+          TikTok Login Kit tokens and the TikTok client secret also remain
+          server-side. They are not placed in public profile pages, public
+          listing records, or public project files.
         </p>
       </section>
 
@@ -190,6 +244,10 @@ export default function PrivacyPage() {
           <li>
             Link a Facebook account when a signed-in person chooses Connect.
           </li>
+          <li>
+            Link a TikTok identity to an existing marketplace account when a
+            signed-in person chooses Connect TikTok.
+          </li>
         </ul>
       </section>
 
@@ -199,10 +257,10 @@ export default function PrivacyPage() {
       >
         <h2 id="sharing-and-sale-title">Sharing</h2>
         <p>
-          Open Marketplace does not sell Facebook profile data. Hosting
-          companies that run the site may process the records needed to keep
-          the service online. We may also disclose information when the law
-          requires it.
+          Open Marketplace does not sell Facebook profile data. Open
+          Marketplace does not sell TikTok provider data. Hosting companies
+          that run the site may process the records needed to keep the service
+          online. We may also disclose information when the law requires it.
         </p>
       </section>
 
@@ -212,7 +270,9 @@ export default function PrivacyPage() {
           Account and listing records stay while the account is open and the
           listing is on the catalog. Facebook Login tokens and the Connected
           profile are removed when you disconnect, or when Facebook asks us to
-          delete that link. We do not keep a separate advertising profile.
+          delete that link. TikTok Login Kit tokens and the linked TikTok
+          identity are removed when you disconnect TikTok. We do not keep a
+          separate advertising profile.
         </p>
       </section>
 
@@ -238,18 +298,39 @@ export default function PrivacyPage() {
         </p>
       </section>
 
+      <section
+        id="tiktok-data-deletion"
+        aria-labelledby="tiktok-data-deletion-title"
+      >
+        <h2 id="tiktok-data-deletion-title">Deleting TikTok data</h2>
+        <p>
+          Account Settings offers Disconnect now. Disconnect removes the
+          active linked TikTok authorization and tokens and the TikTok display
+          name shown next to Connected, stops future TikTok access, and leaves
+          the Open Marketplace account and session intact.
+        </p>
+        <p>
+          You can also remove Open Marketplace from TikTok&apos;s own connected
+          apps settings. That revocation causes later Open Marketplace checks
+          to fail closed. Account Settings then shows Needs reconnect with
+          Disconnect and Connect TikTok, and does not keep displaying a stale
+          Connected state.
+        </p>
+      </section>
+
       <section id="children" aria-labelledby="children-title">
         <h2 id="children-title">Children</h2>
         <p>
           Open Marketplace is not directed at children under 13. Facebook Login
           is only available to people Facebook already allows to use that
-          product.
+          product. TikTok Login Kit is only available to people TikTok already
+          allows to use that product.
         </p>
       </section>
 
       <section id="effective-date" aria-labelledby="effective-date-title">
         <h2 id="effective-date-title">Effective date</h2>
-        <p className="privacy-effective">16 August 2026</p>
+        <p className="privacy-effective">20 August 2026</p>
       </section>
     </LegalShell>
   );

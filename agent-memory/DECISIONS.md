@@ -80,6 +80,12 @@ decisions:
     decision: "Every page, section, and control exposes a single ! report action. The selected surface link is stored with a Bug or Feature Request in community_reports. Agents compile queued reports daily for human review so users can help build the product in a limited, controlled fashion. Cybersecurity and access-control surfaces belong only to administrators; such requests are filtered out of the community queue and must never be implemented as community-owned work."
     authority: "human_owner"
     decided_on: "2026-08-18"
+  - id: "OM-DEC-016"
+    status: "accepted"
+    title: "Official social Connect is first-line Social Credit"
+    decision: "Official social-media Connect is the first line of defense when a seller has no verified buys or sells. The marketplace must persist every public field those official logins already return. More official fields raise Social Credit. Typed or pasted social claims do not count. Provider verified flags are not Open Marketplace verification. Social Credit is not a credit-bureau score. After verified buys and sells exist, ratings and completed sales raise the same number."
+    authority: "human_owner"
+    decided_on: "2026-08-19"
 ---
 
 # Decision Registry

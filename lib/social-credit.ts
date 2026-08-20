@@ -6,6 +6,15 @@ export type ConnectedSocialCreditField = {
   hasAccountCreatedAt?: boolean;
   hasConnectionCount?: boolean;
   hasImage?: boolean;
+  hasBio?: boolean;
+  hasFollowingCount?: boolean;
+  hasLikesCount?: boolean;
+  hasContentCount?: boolean;
+  hasLocation?: boolean;
+  hasWebsite?: boolean;
+  hasBanner?: boolean;
+  hasAccountType?: boolean;
+  hasProviderBadge?: boolean;
 };
 
 export type SocialCreditInput = {
@@ -17,7 +26,7 @@ export type SocialCreditInput = {
   connectedSocial?: ConnectedSocialCreditField[];
 };
 
-export const SOCIAL_LINK_BONUS_CAP = 25;
+export const SOCIAL_LINK_BONUS_CAP = 50;
 
 const SOCIAL_CREDIT_PROVIDERS = new Set([
   "facebook",
@@ -58,10 +67,20 @@ export function connectedSocialBonus(
     seen.add(account.provider);
     points += 2;
     if (account.hasProfileUrl) points += 1;
-    if (account.hasHandle || account.hasDisplayName) points += 1;
+    if (account.hasHandle) points += 1;
+    if (account.hasDisplayName) points += 1;
     if (account.hasAccountCreatedAt) points += 1;
     if (account.hasConnectionCount) points += 1;
     if (account.hasImage) points += 1;
+    if (account.hasBio) points += 1;
+    if (account.hasFollowingCount) points += 1;
+    if (account.hasLikesCount) points += 1;
+    if (account.hasContentCount) points += 1;
+    if (account.hasLocation) points += 1;
+    if (account.hasWebsite) points += 1;
+    if (account.hasBanner) points += 1;
+    if (account.hasAccountType) points += 1;
+    if (account.hasProviderBadge) points += 1;
   }
   return Math.min(SOCIAL_LINK_BONUS_CAP, points);
 }

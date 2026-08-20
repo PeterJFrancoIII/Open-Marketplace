@@ -77,6 +77,17 @@ a short custom domain the owner buys. Do not recreate additional
 product forks. Security-control work still belongs only to
 administrators on both versions.
 
+## Project development facts
+
+These facts govern product development. They are not optional UI copy.
+
+**Social Connect is the first line of defense.** Until a seller has verified
+buys and sells, official social-media Connect fields are the trust signal.
+The app must pull every public field those official logins already return.
+The more official data a user provides, the higher Social Credit goes.
+Typed or pasted social claims do not count. This does not create a
+marketplace “verified” badge and is not a credit-bureau score.
+
 ## Authority reminder
 
 1. Human owner: final product, acceptance, merge, and production.

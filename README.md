@@ -30,6 +30,9 @@ This repository is an MVP framework, not a promise that a browser can serve phot
 - Live allowlisted link checks on page load, manual recheck, and publication;
   dead or malformed profile links must be fixed or removed.
 - Central buyer/seller reputation summaries and items-sold counts on every listing.
+  Social Credit starts from official social Connect fields as the first line of
+  defense before verified buys and sells exist. More official fields raise that
+  number. It is not a credit-bureau score and not a verification badge.
 - Donation call-to-action configured with one public URL.
 - Demo data when the registry is unavailable, so the UI is easy to evaluate locally.
 - Default restricted-items policy and a report table ready for moderation tooling.

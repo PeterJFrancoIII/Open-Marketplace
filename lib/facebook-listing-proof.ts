@@ -1,6 +1,11 @@
 import type { SocialProof } from "./types";
 
-export const FACEBOOK_CONNECT_SCOPES = ["public_profile", "user_link"] as const;
+export const FACEBOOK_CONNECT_SCOPES = [
+  "public_profile",
+  "user_link",
+  "user_hometown",
+  "user_location",
+] as const;
 
 const FACEBOOK_PROFILE_HOSTS = ["facebook.com", "fb.com"];
 const BLOCKED_FACEBOOK_PATHS = new Set([
@@ -92,13 +97,28 @@ export function isConnectedFacebookProof(account: SocialProof): boolean {
 export function connectedFacebookSocialProof(
   sellerName: string,
   profileUrl = "",
+  official: {
+    displayName?: string | null;
+    hasOfficialImage?: boolean;
+    hasBio?: boolean;
+    hasLocation?: boolean;
+    hasWebsite?: boolean;
+    hasBanner?: boolean;
+  } = {},
 ): SocialProof {
   const handle = sellerName.trim() || "Facebook";
   const url = publicFacebookProfileUrl(profileUrl);
+  const displayName = official.displayName?.trim() || undefined;
   return {
     provider: "facebook",
     url,
     handle,
+    displayName,
+    hasOfficialImage: Boolean(official.hasOfficialImage),
+    hasBio: Boolean(official.hasBio),
+    hasLocation: Boolean(official.hasLocation),
+    hasWebsite: Boolean(official.hasWebsite),
+    hasBanner: Boolean(official.hasBanner),
     metricsSource: "oauth",
     health: "active",
     healthMessage: "Connected with Facebook Login.",
@@ -123,6 +143,14 @@ export function mergeConnectedFacebookProof(
     connectedFacebookSocialProof(
       sellerName,
       publicFacebookProfileUrl(oauthFacebook?.url),
+      {
+        displayName: oauthFacebook?.displayName,
+        hasOfficialImage: oauthFacebook?.hasOfficialImage,
+        hasBio: oauthFacebook?.hasBio,
+        hasLocation: oauthFacebook?.hasLocation,
+        hasWebsite: oauthFacebook?.hasWebsite,
+        hasBanner: oauthFacebook?.hasBanner,
+      },
     ),
     ...others,
   ];
@@ -132,12 +160,20 @@ export function upsertConnectedFacebookAccount(
   accounts: SocialProof[],
   sellerName: string,
   profileUrl: string,
+  official: {
+    displayName?: string | null;
+    hasOfficialImage?: boolean;
+    hasBio?: boolean;
+    hasLocation?: boolean;
+    hasWebsite?: boolean;
+    hasBanner?: boolean;
+  } = {},
 ): SocialProof[] {
   const others = accounts.filter(
     (account) =>
       account.provider !== "facebook" && account.metricsSource === "oauth",
   );
-  return [connectedFacebookSocialProof(sellerName, profileUrl), ...others];
+  return [connectedFacebookSocialProof(sellerName, profileUrl, official), ...others];
 }
 
 export function withoutConnectedFacebook(accounts: SocialProof[]): SocialProof[] {

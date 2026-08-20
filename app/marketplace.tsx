@@ -2092,7 +2092,7 @@ export default function Marketplace() {
                       <span>★ {formatRating(reputation.sellerRating, reputation.sellerRatingCount)} seller</span>
                       <span>★ {formatRating(reputation.buyerRating, reputation.buyerRatingCount)} buyer</span>
                       <span>{reputation.itemsSold} sold</span>
-                      <span title="Not a credit-bureau score. Not a verification badge.">
+                      <span title="Official social Connect is the first line of defense before verified buys and sells. Not a credit-bureau score. Not a verification badge.">
                         Social Credit {reputation.socialCreditScore}
                       </span>
                     </div>
@@ -2613,7 +2613,7 @@ export default function Marketplace() {
                         <span>Items sold</span>
                         <strong>{reputationFor(selectedListing).itemsSold}</strong>
                       </div>
-                      <div title="Not a credit-bureau score. Not a verification badge.">
+                      <div title="Official social Connect is the first line of defense before verified buys and sells. Not a credit-bureau score. Not a verification badge.">
                         <span>Social Credit</span>
                         <strong>{reputationFor(selectedListing).socialCreditScore}</strong>
                       </div>

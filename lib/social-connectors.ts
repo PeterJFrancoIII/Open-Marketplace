@@ -1,14 +1,43 @@
 import type { SocialProof } from "./types";
 
+// Official Connect order: most to least important for seller proof.
 export const SOCIAL_CONNECTOR_IDS = [
   "facebook",
-  "instagram",
   "tiktok",
+  "instagram",
   "twitter",
   "linkedin",
   "reddit",
   "discord",
 ] as const;
+
+export const TIKTOK_CONNECT_SCOPES = [
+  "user.info.basic",
+  "user.info.profile",
+  "user.info.stats",
+] as const;
+
+export const TIKTOK_USER_INFO_FIELDS = [
+  "open_id",
+  "union_id",
+  "avatar_url",
+  "avatar_url_100",
+  "avatar_large_url",
+  "display_name",
+  "username",
+  "profile_deep_link",
+  "bio_description",
+  "follower_count",
+  "following_count",
+  "likes_count",
+  "video_count",
+  "is_verified",
+].join(",");
+
+export const TIKTOK_PUBLIC_LISTING_PROOF_ENABLED = true;
+export const TIKTOK_SOCIAL_CREDIT_ENABLED = true;
+
+export const INSTAGRAM_CONNECT_SCOPES = ["instagram_business_basic"] as const;
 
 export type SocialConnectorId = (typeof SOCIAL_CONNECTOR_IDS)[number];
 
@@ -29,18 +58,9 @@ export const SOCIAL_CONNECTORS: readonly SocialConnector[] = [
     label: "Facebook",
     envId: "FACEBOOK_CLIENT_ID",
     envSecret: "FACEBOOK_CLIENT_SECRET",
-    scopes: ["public_profile", "user_link"],
+    scopes: ["public_profile", "user_link", "user_hometown", "user_location"],
     connectionLabel: "friends",
     hosts: ["facebook.com", "fb.com"],
-  },
-  {
-    id: "instagram",
-    label: "Instagram",
-    envId: "INSTAGRAM_CLIENT_ID",
-    envSecret: "INSTAGRAM_CLIENT_SECRET",
-    scopes: ["user_profile"],
-    connectionLabel: "followers",
-    hosts: ["instagram.com"],
   },
   {
     id: "tiktok",
@@ -48,9 +68,18 @@ export const SOCIAL_CONNECTORS: readonly SocialConnector[] = [
     envId: "TIKTOK_CLIENT_KEY",
     envSecret: "TIKTOK_CLIENT_SECRET",
     envKey: "TIKTOK_CLIENT_KEY",
-    scopes: ["user.info.basic", "user.info.profile", "user.info.stats"],
+    scopes: TIKTOK_CONNECT_SCOPES,
     connectionLabel: "followers",
     hosts: ["tiktok.com"],
+  },
+  {
+    id: "instagram",
+    label: "Instagram",
+    envId: "INSTAGRAM_CLIENT_ID",
+    envSecret: "INSTAGRAM_CLIENT_SECRET",
+    scopes: INSTAGRAM_CONNECT_SCOPES,
+    connectionLabel: "followers",
+    hosts: ["instagram.com"],
   },
   {
     id: "twitter",
@@ -97,8 +126,19 @@ export type OfficialSocialProfile = {
   handle?: string;
   imageUrl?: string;
   profileUrl?: string;
+  bio?: string;
+  location?: string;
+  websiteUrl?: string;
+  bannerUrl?: string;
+  locale?: string;
+  accountType?: string;
   accountCreatedAt?: string;
   connectionCount?: number;
+  followingCount?: number;
+  likesCount?: number;
+  contentCount?: number;
+  listedCount?: number;
+  providerVerified?: boolean;
 };
 
 export type SocialConnection = {
@@ -106,14 +146,34 @@ export type SocialConnection = {
   label: string;
   available: boolean;
   connected: boolean;
+  needsReconnect: boolean;
   name: string | null;
   handle: string | null;
   imageUrl: string | null;
   profileUrl: string | null;
+  bio: string | null;
+  location: string | null;
+  websiteUrl: string | null;
+  bannerUrl: string | null;
+  locale: string | null;
+  accountType: string | null;
   accountCreatedAt: string | null;
   connectionCount: number | null;
+  followingCount: number | null;
+  likesCount: number | null;
+  contentCount: number | null;
+  listedCount: number | null;
+  providerVerified: boolean;
   connectionLabel: SocialProof["connectionLabel"];
 };
+
+export function isPublicListingSocialProofProvider(provider: SocialConnectorId) {
+  return provider !== "tiktok" || TIKTOK_PUBLIC_LISTING_PROOF_ENABLED;
+}
+
+export function isSocialCreditProvider(provider: SocialConnectorId) {
+  return provider !== "tiktok" || TIKTOK_SOCIAL_CREDIT_ENABLED;
+}
 
 export function isSocialConnectorId(value: unknown): value is SocialConnectorId {
   return (
@@ -167,10 +227,26 @@ export function connectedSocialProof(
     provider: profile.provider,
     url: publicSocialProfileUrl(profile.provider, profile.profileUrl),
     handle,
+    displayName: profile.name?.trim() || undefined,
     accountCreatedAt: profile.accountCreatedAt,
     connectionCount: Number.isFinite(profile.connectionCount)
       ? profile.connectionCount
       : undefined,
+    followingCount: Number.isFinite(profile.followingCount)
+      ? profile.followingCount
+      : undefined,
+    likesCount: Number.isFinite(profile.likesCount) ? profile.likesCount : undefined,
+    contentCount: Number.isFinite(profile.contentCount)
+      ? profile.contentCount
+      : undefined,
+    hasOfficialImage: Boolean(profile.imageUrl?.trim()),
+    hasBio: Boolean(profile.bio?.trim()),
+    hasLocation: Boolean(profile.location?.trim()),
+    hasWebsite: Boolean(profile.websiteUrl?.trim()),
+    hasBanner: Boolean(profile.bannerUrl?.trim()),
+    hasAccountType: Boolean(profile.accountType?.trim()),
+    hasProviderBadge: profile.providerVerified === true,
+    listedCount: Number.isFinite(profile.listedCount) ? profile.listedCount : undefined,
     connectionLabel: connector?.connectionLabel,
     metricsSource: "oauth",
     health: "active",
@@ -213,6 +289,7 @@ export function mergeConnectedSocialProofs(
     if (account.metricsSource !== "oauth" || !isSocialConnectorId(account.provider)) {
       continue;
     }
+    if (!isPublicListingSocialProofProvider(account.provider)) continue;
     if (!connected.has(account.provider)) continue;
     byProvider.set(account.provider, {
       ...account,
@@ -222,6 +299,7 @@ export function mergeConnectedSocialProofs(
     });
   }
   for (const provider of connected) {
+    if (!isPublicListingSocialProofProvider(provider)) continue;
     if (byProvider.has(provider)) continue;
     byProvider.set(
       provider,
@@ -250,7 +328,9 @@ export function connectedSocialCreditInput(accounts: SocialProof[]) {
   return accounts
     .filter(
       (account) =>
-        account.metricsSource === "oauth" && isSocialConnectorId(account.provider),
+        account.metricsSource === "oauth" &&
+        isSocialConnectorId(account.provider) &&
+        isSocialCreditProvider(account.provider),
     )
     .map((account) => ({
       provider: account.provider,
@@ -258,10 +338,19 @@ export function connectedSocialCreditInput(accounts: SocialProof[]) {
         publicSocialProfileUrl(account.provider as SocialConnectorId, account.url),
       ),
       hasHandle: Boolean(account.handle?.trim()),
-      hasDisplayName: Boolean(account.handle?.trim()),
+      hasDisplayName: Boolean(account.displayName?.trim()),
       hasAccountCreatedAt: Boolean(account.accountCreatedAt),
       hasConnectionCount: Number.isFinite(account.connectionCount),
-      hasImage: false,
+      hasImage: Boolean(account.hasOfficialImage),
+      hasBio: Boolean(account.hasBio),
+      hasFollowingCount: Number.isFinite(account.followingCount),
+      hasLikesCount: Number.isFinite(account.likesCount),
+      hasContentCount: Number.isFinite(account.contentCount),
+      hasLocation: Boolean(account.hasLocation),
+      hasWebsite: Boolean(account.hasWebsite),
+      hasBanner: Boolean(account.hasBanner),
+      hasAccountType: Boolean(account.hasAccountType),
+      hasProviderBadge: Boolean(account.hasProviderBadge),
     }));
 }
 
@@ -298,6 +387,10 @@ function finiteCount(value: unknown): number | undefined {
   return Math.floor(count);
 }
 
+function optionalText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 export async function readOfficialSocialProfile(
   provider: SocialConnectorId,
   accessToken: string,
@@ -305,70 +398,113 @@ export async function readOfficialSocialProfile(
   if (!accessToken.trim()) return null;
   if (provider === "facebook") return null;
   if (provider === "instagram") {
-    const url = new URL("https://graph.instagram.com/me");
-    url.searchParams.set("fields", "id,username,account_type,name");
-    const body = await officialJson(url, accessToken);
+    const body = await officialJsonTrying(
+      accessToken,
+      [
+        "id,user_id,username,account_type,name,profile_picture_url,followers_count,follows_count,media_count,biography,website",
+        "id,username,account_type,name,profile_picture_url,followers_count,follows_count,media_count",
+        "id,username,account_type,name",
+      ],
+      (fields) => {
+        const url = new URL("https://graph.instagram.com/me");
+        url.searchParams.set("fields", fields);
+        return url;
+      },
+      (body) => typeof body.id === "string" && typeof body.username === "string",
+    );
     const id = typeof body.id === "string" ? body.id : "";
     const username = typeof body.username === "string" ? body.username : "";
     if (!id || !username) return null;
     return {
       provider,
       providerAccountId: id,
-      name: typeof body.name === "string" ? body.name : username,
+      name: optionalText(body.name) || username,
       handle: username,
+      imageUrl: optionalText(body.profile_picture_url),
       profileUrl: `https://www.instagram.com/${username}`,
+      bio: optionalText(body.biography),
+      websiteUrl: optionalText(body.website),
+      accountType: optionalText(body.account_type),
+      connectionCount: finiteCount(body.followers_count),
+      followingCount: finiteCount(body.follows_count),
+      contentCount: finiteCount(body.media_count),
     };
   }
   if (provider === "tiktok") {
     const url = new URL("https://open.tiktokapis.com/v2/user/info/");
-    url.searchParams.set(
-      "fields",
-      "open_id,union_id,avatar_url,display_name,username,follower_count,profile_deep_link",
-    );
+    url.searchParams.set("fields", TIKTOK_USER_INFO_FIELDS);
     const body = await officialJson(url, accessToken);
     const user = (body.data as { user?: Record<string, unknown> } | undefined)?.user;
     const id = typeof user?.open_id === "string" ? user.open_id : "";
     if (!id) return null;
-    const username = typeof user.username === "string" ? user.username : "";
+    const username = typeof user.username === "string" ? user.username.trim() : "";
+    const avatar =
+      typeof user.avatar_url === "string"
+        ? user.avatar_url
+        : typeof user.avatar_large_url === "string"
+          ? user.avatar_large_url
+          : typeof user.avatar_url_100 === "string"
+            ? user.avatar_url_100
+            : undefined;
+    const bio =
+      typeof user.bio_description === "string" ? user.bio_description.trim() : "";
     return {
       provider,
       providerAccountId: id,
-      name: typeof user.display_name === "string" ? user.display_name : username,
+      name:
+        typeof user.display_name === "string" && user.display_name.trim()
+          ? user.display_name
+          : username || undefined,
       handle: username || undefined,
-      imageUrl: typeof user.avatar_url === "string" ? user.avatar_url : undefined,
+      imageUrl: avatar,
       profileUrl:
-        typeof user.profile_deep_link === "string"
+        typeof user.profile_deep_link === "string" && user.profile_deep_link
           ? user.profile_deep_link
           : username
             ? `https://www.tiktok.com/@${username}`
             : undefined,
+      bio: bio || undefined,
       connectionCount: finiteCount(user.follower_count),
+      followingCount: finiteCount(user.following_count),
+      likesCount: finiteCount(user.likes_count),
+      contentCount: finiteCount(user.video_count),
+      providerVerified: user.is_verified === true,
     };
   }
   if (provider === "twitter") {
     const url = new URL("https://api.twitter.com/2/users/me");
     url.searchParams.set(
       "user.fields",
-      "created_at,public_metrics,username,name,profile_image_url,verified",
+      "created_at,description,location,name,profile_banner_url,profile_image_url,public_metrics,url,username,verified,verified_type",
     );
     const body = await officialJson(url, accessToken);
     const user = body.data as Record<string, unknown> | undefined;
     const id = typeof user?.id === "string" ? user.id : "";
     const username = typeof user?.username === "string" ? user.username : "";
     if (!id || !username) return null;
-    const metrics = user.public_metrics as { followers_count?: unknown } | undefined;
+    const metrics = user.public_metrics as {
+      followers_count?: unknown;
+      following_count?: unknown;
+      tweet_count?: unknown;
+      listed_count?: unknown;
+    } | undefined;
     return {
       provider,
       providerAccountId: id,
-      name: typeof user.name === "string" ? user.name : username,
+      name: optionalText(user.name) || username,
       handle: username,
-      imageUrl:
-        typeof user.profile_image_url === "string"
-          ? user.profile_image_url
-          : undefined,
+      imageUrl: optionalText(user.profile_image_url),
       profileUrl: `https://x.com/${username}`,
+      bio: optionalText(user.description),
+      location: optionalText(user.location),
+      websiteUrl: optionalText(user.url),
+      bannerUrl: optionalText(user.profile_banner_url),
       accountCreatedAt: isoDateFromIso(user.created_at),
       connectionCount: finiteCount(metrics?.followers_count),
+      followingCount: finiteCount(metrics?.following_count),
+      contentCount: finiteCount(metrics?.tweet_count),
+      listedCount: finiteCount(metrics?.listed_count),
+      providerVerified: user.verified === true,
     };
   }
   if (provider === "linkedin") {
@@ -378,11 +514,17 @@ export async function readOfficialSocialProfile(
     );
     const id = typeof body.sub === "string" ? body.sub : "";
     if (!id) return null;
+    const given = typeof body.given_name === "string" ? body.given_name.trim() : "";
+    const family = typeof body.family_name === "string" ? body.family_name.trim() : "";
     return {
       provider,
       providerAccountId: id,
-      name: typeof body.name === "string" ? body.name : undefined,
-      imageUrl: typeof body.picture === "string" ? body.picture : undefined,
+      name:
+        optionalText(body.name) ||
+        [given, family].filter(Boolean).join(" ") ||
+        undefined,
+      imageUrl: optionalText(body.picture),
+      locale: optionalText(body.locale),
     };
   }
   if (provider === "reddit") {
@@ -394,14 +536,24 @@ export async function readOfficialSocialProfile(
     const id = typeof body.id === "string" ? body.id : "";
     const name = typeof body.name === "string" ? body.name : "";
     if (!id || !name) return null;
+    const subreddit =
+      body.subreddit && typeof body.subreddit === "object"
+        ? (body.subreddit as Record<string, unknown>)
+        : undefined;
     return {
       provider,
       providerAccountId: id,
       name,
       handle: name,
-      imageUrl: typeof body.icon_img === "string" ? body.icon_img : undefined,
+      imageUrl: optionalText(body.icon_img) || optionalText(body.snoovatar_img),
       profileUrl: `https://www.reddit.com/user/${name}`,
+      bio: optionalText(subreddit?.public_description),
+      accountType: body.is_gold === true ? "premium" : body.is_mod === true ? "moderator" : undefined,
       accountCreatedAt: isoDateFromUnixSeconds(body.created_utc),
+      connectionCount: finiteCount(subreddit?.subscribers),
+      followingCount: finiteCount(body.num_friends),
+      likesCount: finiteCount(body.total_karma ?? body.link_karma),
+      contentCount: finiteCount(body.link_karma),
     };
   }
   if (provider === "discord") {
@@ -412,15 +564,32 @@ export async function readOfficialSocialProfile(
     const id = typeof body.id === "string" ? body.id : "";
     const username = typeof body.username === "string" ? body.username : "";
     if (!id) return null;
+    const avatar =
+      typeof body.avatar === "string" && body.avatar
+        ? `https://cdn.discordapp.com/avatars/${id}/${body.avatar}.png`
+        : undefined;
+    const banner =
+      typeof body.banner === "string" && body.banner
+        ? `https://cdn.discordapp.com/banners/${id}/${body.banner}.png`
+        : undefined;
+    const nitro =
+      body.premium_type === 1
+        ? "nitro-classic"
+        : body.premium_type === 2
+          ? "nitro"
+          : body.premium_type === 3
+            ? "nitro-basic"
+            : undefined;
     return {
       provider,
       providerAccountId: id,
-      name:
-        (typeof body.global_name === "string" && body.global_name) ||
-        username ||
-        undefined,
+      name: optionalText(body.global_name) || username || undefined,
       handle: username || undefined,
+      imageUrl: avatar,
       profileUrl: `https://discord.com/users/${id}`,
+      bannerUrl: banner,
+      locale: optionalText(body.locale),
+      accountType: nitro,
       accountCreatedAt: isoDateFromDiscordSnowflake(id),
     };
   }
@@ -443,6 +612,20 @@ async function officialJson(
   return body && typeof body === "object" ? (body as Record<string, unknown>) : {};
 }
 
+async function officialJsonTrying(
+  accessToken: string,
+  fieldLists: string[],
+  buildUrl: (fields: string) => URL,
+  isUsable: (body: Record<string, unknown>) => boolean,
+  extraHeaders: Record<string, string> = {},
+): Promise<Record<string, unknown>> {
+  for (const fields of fieldLists) {
+    const body = await officialJson(buildUrl(fields), accessToken, extraHeaders);
+    if (isUsable(body)) return body;
+  }
+  return {};
+}
+
 export function emptySocialConnections(
   availability: Partial<Record<SocialConnectorId, boolean>> = {},
 ): SocialConnection[] {
@@ -451,12 +634,24 @@ export function emptySocialConnections(
     label: connector.label,
     available: Boolean(availability[connector.id]),
     connected: false,
+    needsReconnect: false,
     name: null,
     handle: null,
     imageUrl: null,
     profileUrl: null,
+    bio: null,
+    location: null,
+    websiteUrl: null,
+    bannerUrl: null,
+    locale: null,
+    accountType: null,
     accountCreatedAt: null,
     connectionCount: null,
+    followingCount: null,
+    likesCount: null,
+    contentCount: null,
+    listedCount: null,
+    providerVerified: false,
     connectionLabel: connector.connectionLabel,
   }));
 }

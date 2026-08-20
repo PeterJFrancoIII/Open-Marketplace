@@ -178,7 +178,6 @@ function installFacebookProfileStub({ id, name, pictureUrl }) {
       const fields = (parsed.searchParams.get("fields") ?? "").split(",");
       assert.equal(fields.includes("email"), false);
       assert.equal(fields.includes("birthday"), false);
-      assert.equal(fields.includes("location"), false);
       assert.ok(fields.includes("id"));
       assert.ok(fields.includes("first_name"));
       assert.ok(fields.includes("last_name"));
@@ -198,6 +197,14 @@ function installFacebookProfileStub({ id, name, pictureUrl }) {
           name_format: "{first} {last}",
           link: "https://www.facebook.com/openmarketplace.seller",
           picture: { data: { url: pictureUrl, width: 720, height: 720, is_silhouette: false } },
+          about: "Seller bio from Facebook",
+          website: "https://www.example.com",
+          hometown: { name: "Philadelphia, PA" },
+          location: { name: "New York, NY" },
+          locale: "en_US",
+          gender: "male",
+          age_range: { min: 21, max: 21 },
+          cover: { source: "https://scontent.xx.fbcdn.net/cover.jpg" },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
@@ -322,7 +329,7 @@ test("Facebook link-social requires a session", async () => {
   assertNoSecrets(await response.json());
 });
 
-test("signed-in Facebook link-social requests public_profile only", async () => {
+test("signed-in Facebook link-social requests official hometown and location scopes", async () => {
   const d1 = createMemoryD1();
   applyMarketplaceMigrations(d1);
   const worker = await loadWorker("facebook-link-scope");
@@ -354,7 +361,7 @@ test("signed-in Facebook link-social requests public_profile only", async () => 
     provider: "facebook",
     callbackURL: "/account",
     errorCallbackURL: "/account",
-    scopes: ["public_profile", "user_link"],
+    scopes: ["public_profile", "user_link", "user_hometown", "user_location"],
     disableRedirect: true,
   });
   assert.equal(response.status, 200);
@@ -371,8 +378,14 @@ test("signed-in Facebook link-social requests public_profile only", async () => 
   const scopes = facebookScopes(body.url);
   assert.ok(scopes.includes("public_profile"));
   assert.ok(scopes.includes("user_link"));
+  assert.ok(scopes.includes("user_hometown"));
+  assert.ok(scopes.includes("user_location"));
   assert.equal(
-    scopes.every((scope) => scope === "public_profile" || scope === "user_link"),
+    scopes.every((scope) =>
+      ["public_profile", "user_link", "user_hometown", "user_location"].includes(
+        scope,
+      ),
+    ),
     true,
   );
   assert.equal(scopes.includes("email"), false);
@@ -558,14 +571,30 @@ test("Disconnect removes a linked Facebook account without deleting the marketpl
 
 test("Facebook Graph fields stay public_profile only and never request email", async () => {
   const authSource = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
+  const proofSource = await readFile(
+    new URL("../lib/facebook-listing-proof.ts", import.meta.url),
+    "utf8",
+  );
   assert.match(authSource, /FACEBOOK_GRAPH_FIELDS = \[/);
+  assert.match(authSource, /FACEBOOK_GRAPH_FIELDS_EXTENDED/);
   assert.match(authSource, /first_name/);
   assert.match(authSource, /last_name/);
   assert.match(authSource, /picture\.type\(large\)/);
   assert.match(authSource, /"link"/);
+  assert.match(authSource, /"about"/);
+  assert.match(authSource, /"website"/);
+  assert.match(authSource, /"hometown"/);
+  assert.match(authSource, /"location"/);
+  assert.match(authSource, /"locale"/);
+  assert.match(authSource, /"cover"/);
+  assert.match(authSource, /"age_range"/);
+  assert.match(authSource, /"gender"/);
   assert.match(authSource, /getUserInfo:/);
   assert.doesNotMatch(authSource, /fields:\s*\[[^\]]*email/);
-  assert.doesNotMatch(authSource, /user_birthday|user_location|user_hometown|user_mobile_phone/);
+  assert.match(proofSource, /user_hometown/);
+  assert.match(proofSource, /user_location/);
+  assert.doesNotMatch(authSource, /user_birthday|user_mobile_phone/);
+  assert.doesNotMatch(proofSource, /user_birthday|user_mobile_phone|user_friends/);
   assert.doesNotMatch(authSource, /fillEmptyProfileFromFacebook/);
   assert.match(authSource, /updateUserInfoOnLink:\s*false/);
 
@@ -638,6 +667,17 @@ test("Facebook identity stays connection-scoped and is not copied into the core 
     assert.equal(body.facebookConnection.firstName, "Peter");
     assert.equal(body.facebookConnection.lastName, "Franco");
     assert.equal(body.facebookConnection.imageUrl, photoUrl);
+    assert.equal(body.facebookConnection.about, "Seller bio from Facebook");
+    assert.equal(body.facebookConnection.location, "New York, NY");
+    assert.equal(body.facebookConnection.hometown, "Philadelphia, PA");
+    assert.equal(body.facebookConnection.websiteUrl, "https://www.example.com");
+    assert.equal(body.facebookConnection.locale, "en_US");
+    assert.equal(body.facebookConnection.gender, "male");
+    assert.equal(body.facebookConnection.ageRange, "21-21");
+    assert.equal(
+      body.facebookConnection.coverUrl,
+      "https://scontent.xx.fbcdn.net/cover.jpg",
+    );
     assertNoSecrets(body);
 
     const row = d1.__sqlite
@@ -768,6 +808,8 @@ test("account settings source offers Connect, Connected, and Disconnect only", a
   assert.match(source, /unlinkAccount/);
   assert.match(source, /public_profile/);
   assert.match(source, /user_link/);
+  assert.match(source, /user_hometown/);
+  assert.match(source, /user_location/);
   assert.match(source, /Open Facebook profile/);
   assert.match(source, /Typed usernames[\s\S]*pasted links are not accepted/);
   assert.match(source, /Connect \$\{connector\.label\}/);

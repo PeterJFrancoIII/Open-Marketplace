@@ -102,6 +102,14 @@ the central summary on every listing. A production rating write must require
 an authenticated completed transaction and allow no more than one rating per
 party, listing, and role.
 
+Social Credit uses official Connect fields as the first line of defense when
+those sale ratings do not exist yet. Each official network can contribute
+more points as it returns more public fields: profile URL, handle, display
+name, image, bio, account age, and public counts. Self-typed social claims
+never enter that score. Provider “verified” flags do not become marketplace
+verification. After verified buys and sells exist, ratings and items sold
+raise the same Social Credit number.
+
 ## Integrity and portability
 
 The next protocol revision should wrap every listing in a canonical JSON envelope signed by the seller's device key. A registry then indexes envelopes without becoming their authority. Include a monotonic revision, prior revision hash, expiry, and tombstone state so edits and deletions are auditable.

@@ -24,6 +24,7 @@ import { parseSocialAccountsJson } from "./profile-settings";
 import { computeSocialCreditScore } from "./social-credit";
 import {
   connectedSocialCreditInput,
+  connectedSocialProof,
   emptySocialConnections,
   isSocialConnectorId,
   readOfficialSocialProfile,
@@ -49,6 +50,34 @@ export const FACEBOOK_GRAPH_FIELDS = [
   "short_name",
   "picture.type(large)",
   "link",
+  "about",
+  "website",
+  "hometown",
+  "location",
+  "locale",
+  "cover",
+  "age_range",
+  "gender",
+] as const;
+
+const FACEBOOK_GRAPH_FIELDS_CORE = [
+  "id",
+  "first_name",
+  "last_name",
+  "middle_name",
+  "name",
+  "name_format",
+  "short_name",
+  "picture.type(large)",
+  "link",
+] as const;
+
+const FACEBOOK_GRAPH_FIELDS_EXTENDED = [
+  ...FACEBOOK_GRAPH_FIELDS_CORE,
+  "about",
+  "website",
+  "hometown",
+  "location",
 ] as const;
 
 const PRODUCTION_BASE_URL = "https://open-marketplace-demo.pages.dev";
@@ -436,11 +465,28 @@ function buildSocialProviders(
   }
   if (availability.tiktok) {
     providers.tiktok = {
+      clientId: env.TIKTOK_CLIENT_KEY!.trim(),
       clientKey: env.TIKTOK_CLIENT_KEY!.trim(),
       clientSecret: env.TIKTOK_CLIENT_SECRET!.trim(),
+      disableDefaultScope: true,
       scope: connectorScopes("tiktok"),
       disableSignUp: true,
       disableImplicitSignUp: true,
+      disableIdTokenSignIn: true,
+      getUserInfo: async (token: { accessToken?: string }) => {
+        const accessToken = token.accessToken;
+        if (!accessToken) return null;
+        const profile = await readOfficialSocialProfile("tiktok", accessToken);
+        if (!profile) return null;
+        return {
+          user: {
+            id: profile.providerAccountId,
+            name: profile.name ?? "TikTok",
+            emailVerified: false,
+          },
+          data: profile,
+        };
+      },
     };
   }
   if (availability.twitter) {
@@ -545,11 +591,36 @@ type FacebookPublicProfile = {
   short_name?: string;
   picture?: { data?: { url?: string } };
   link?: string;
+  about?: string;
+  website?: string;
+  hometown?: { name?: string };
+  location?: { name?: string };
+  locale?: string;
+  gender?: string;
+  age_range?: { min?: number; max?: number };
+  cover?: { source?: string };
 };
+
+function facebookPlaceName(value?: { name?: string } | string | null) {
+  if (typeof value === "string") {
+    const name = value.trim();
+    return name && name.length <= 120 ? name : null;
+  }
+  const name = value?.name?.trim() ?? "";
+  return name && name.length <= 120 ? name : null;
+}
 
 function trimFacebookName(value?: string | null) {
   const name = value?.trim() ?? "";
   return name && name.length <= 80 ? name : null;
+}
+
+function facebookAgeRange(value?: { min?: number; max?: number } | null) {
+  const min = Number(value?.min);
+  const max = Number(value?.max);
+  if (Number.isFinite(min) && Number.isFinite(max)) return `${min}-${max}`;
+  if (Number.isFinite(min)) return `${min}+`;
+  return null;
 }
 
 function displayNameFromFacebook(profile: {
@@ -583,14 +654,8 @@ async function readFacebookPublicProfile(
     return null;
   }
 
-  const meUrl = new URL("https://graph.facebook.com/me");
-  meUrl.searchParams.set("fields", FACEBOOK_GRAPH_FIELDS.join(","));
-  const meResponse = await fetch(meUrl, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!meResponse.ok) return null;
-  const profile = (await meResponse.json()) as FacebookPublicProfile;
-  if (!profile.id || profile.id !== debug.user_id) return null;
+  const profile = await readFacebookGraphMe(accessToken, debug.user_id);
+  if (!profile) return null;
 
   return {
     id: profile.id,
@@ -605,7 +670,33 @@ async function readFacebookPublicProfile(
     }),
     image: publicFacebookImageUrl(profile.picture?.data?.url) ?? undefined,
     link: publicFacebookProfileUrl(profile.link) || undefined,
+    about: facebookPlaceName(profile.about),
+    website: facebookPlaceName(profile.website),
+    hometown: facebookPlaceName(profile.hometown),
+    location: facebookPlaceName(profile.location),
+    locale: facebookPlaceName(profile.locale),
+    gender: facebookPlaceName(profile.gender),
+    ageRange: facebookAgeRange(profile.age_range),
+    cover: publicFacebookImageUrl(profile.cover?.source) ?? undefined,
   };
+}
+
+async function readFacebookGraphMe(accessToken: string, userId: string) {
+  for (const fields of [
+    FACEBOOK_GRAPH_FIELDS,
+    FACEBOOK_GRAPH_FIELDS_EXTENDED,
+    FACEBOOK_GRAPH_FIELDS_CORE,
+  ]) {
+    const meUrl = new URL("https://graph.facebook.com/me");
+    meUrl.searchParams.set("fields", fields.join(","));
+    const meResponse = await fetch(meUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!meResponse.ok) continue;
+    const profile = (await meResponse.json()) as FacebookPublicProfile;
+    if (profile.id && profile.id === userId) return profile;
+  }
+  return null;
 }
 
 function publicFacebookConnection(
@@ -619,6 +710,14 @@ function publicFacebookConnection(
     shortName?: string | null;
     image?: string | null;
     link?: string | null;
+    about?: string | null;
+    website?: string | null;
+    hometown?: string | null;
+    location?: string | null;
+    locale?: string | null;
+    gender?: string | null;
+    ageRange?: string | null;
+    cover?: string | null;
   },
 ): FacebookConnection {
   if (!connected) {
@@ -632,6 +731,14 @@ function publicFacebookConnection(
       shortName: null,
       imageUrl: null,
       profileUrl: null,
+      about: null,
+      location: null,
+      hometown: null,
+      websiteUrl: null,
+      locale: null,
+      gender: null,
+      ageRange: null,
+      coverUrl: null,
     };
   }
   return {
@@ -644,6 +751,14 @@ function publicFacebookConnection(
     shortName: trimFacebookName(profile?.shortName),
     imageUrl: publicFacebookImageUrl(profile?.image),
     profileUrl: publicFacebookProfileUrl(profile?.link) || null,
+    about: profile?.about?.trim() || null,
+    location: profile?.location?.trim() || null,
+    hometown: profile?.hometown?.trim() || null,
+    websiteUrl: profile?.website?.trim() || null,
+    locale: profile?.locale?.trim() || null,
+    gender: profile?.gender?.trim() || null,
+    ageRange: profile?.ageRange?.trim() || null,
+    coverUrl: publicFacebookImageUrl(profile?.cover),
   };
 }
 
@@ -671,12 +786,19 @@ export async function persistFacebookProfileLink(
     .limit(1);
   const current = parseSocialAccountsJson(profileRow?.socialAccountsJson);
   const token = accessToken || facebook?.accessToken;
+  const official = token ? await readStoredFacebookOfficial(token) : null;
   const fetchedLink =
-    publicFacebookProfileUrl(knownLink) ||
-    (token ? await readStoredFacebookProfileUrl(token) : "");
+    publicFacebookProfileUrl(knownLink) || official?.link || "";
   const connected = Boolean(facebook || token);
   const next = connected
-    ? upsertConnectedFacebookAccount(current, displayName, fetchedLink)
+    ? upsertConnectedFacebookAccount(current, displayName, fetchedLink, {
+        displayName: official?.name,
+        hasOfficialImage: Boolean(official?.image),
+        hasBio: Boolean(official?.about),
+        hasLocation: Boolean(official?.location || official?.hometown),
+        hasWebsite: Boolean(official?.website),
+        hasBanner: Boolean(official?.cover),
+      })
     : withoutConnectedFacebook(current);
   await writeProfileSocialAccounts(userId, displayName, next, profileRow);
   return publicFacebookProfileUrl(
@@ -720,6 +842,15 @@ export async function persistSocialConnectorLink(
   const official = token
     ? await readOfficialSocialProfile(provider, token)
     : null;
+  if (provider === "tiktok" && !official) {
+    await writeProfileSocialAccounts(
+      userId,
+      displayName,
+      withoutConnectedProvider(current, provider),
+      profileRow,
+    );
+    return;
+  }
   const profile: OfficialSocialProfile = official ?? {
     provider,
     providerAccountId: "",
@@ -827,17 +958,12 @@ async function writeProfileSocialAccounts(
   });
 }
 
-async function readStoredFacebookProfileUrl(accessToken?: string | null) {
+async function readStoredFacebookOfficial(accessToken?: string | null) {
   const env = await readWorkerEnv();
   const clientId = env.FACEBOOK_CLIENT_ID?.trim();
   const clientSecret = env.FACEBOOK_CLIENT_SECRET?.trim();
-  if (!accessToken || !clientId || !clientSecret) return "";
-  const profile = await readFacebookPublicProfile(
-    accessToken,
-    clientId,
-    clientSecret,
-  );
-  return profile?.link ?? "";
+  if (!accessToken || !clientId || !clientSecret) return null;
+  return readFacebookPublicProfile(accessToken, clientId, clientSecret);
 }
 
 export async function getFacebookConnection(
@@ -949,10 +1075,32 @@ export async function getSocialConnections(
       .from(profiles)
       .where(eq(profiles.id, session.user.id))
       .limit(1);
-    const proofs = parseSocialAccountsJson(profileRow?.socialAccountsJson).filter(
+    let proofs = parseSocialAccountsJson(profileRow?.socialAccountsJson).filter(
       (account) =>
         isSocialConnectorId(account.provider) && connected.has(account.provider),
     );
+    const officialById = new Map<SocialConnectorId, OfficialSocialProfile>();
+    let tiktokNeedsReconnect = false;
+    for (const account of accounts) {
+      if (!isSocialConnectorId(account.providerId) || account.providerId === "facebook") {
+        continue;
+      }
+      const official = account.accessToken
+        ? await readOfficialSocialProfile(account.providerId, account.accessToken)
+        : null;
+      if (account.providerId === "tiktok" && !official) {
+        tiktokNeedsReconnect = true;
+        proofs = proofs.filter((item) => item.provider !== "tiktok");
+        continue;
+      }
+      if (official) {
+        officialById.set(account.providerId, official);
+        proofs = [
+          ...proofs.filter((item) => item.provider !== account.providerId),
+          connectedSocialProof(official, session.user.name),
+        ];
+      }
+    }
     if (
       JSON.stringify(proofs) !==
       JSON.stringify(parseSocialAccountsJson(profileRow?.socialAccountsJson))
@@ -966,19 +1114,41 @@ export async function getSocialConnections(
     }
 
     return SOCIAL_CONNECTORS.map((connector) => {
+      const official = officialById.get(connector.id);
       const proof = proofs.find((account) => account.provider === connector.id);
+      const countOrNull = (value?: number | null) =>
+        typeof value === "number" ? value : null;
       return {
         id: connector.id,
         label: connector.label,
         available: availability[connector.id],
-        connected: connected.has(connector.id),
-        name: proof?.handle ?? null,
-        handle: proof?.handle ?? null,
-        imageUrl: null,
-        profileUrl: proof?.url || null,
-        accountCreatedAt: proof?.accountCreatedAt ?? null,
-        connectionCount:
-          typeof proof?.connectionCount === "number" ? proof.connectionCount : null,
+        connected:
+          connector.id === "tiktok"
+            ? Boolean(official)
+            : connected.has(connector.id),
+        needsReconnect: connector.id === "tiktok" ? tiktokNeedsReconnect : false,
+        name: official?.name ?? proof?.displayName ?? proof?.handle ?? null,
+        handle: official?.handle ?? proof?.handle ?? null,
+        imageUrl: official?.imageUrl ?? null,
+        profileUrl: official?.profileUrl || proof?.url || null,
+        bio: official?.bio ?? null,
+        location: official?.location ?? null,
+        websiteUrl: official?.websiteUrl ?? null,
+        bannerUrl: official?.bannerUrl ?? null,
+        locale: official?.locale ?? null,
+        accountType: official?.accountType ?? null,
+        accountCreatedAt:
+          official?.accountCreatedAt ?? proof?.accountCreatedAt ?? null,
+        connectionCount: countOrNull(
+          official?.connectionCount ?? proof?.connectionCount,
+        ),
+        followingCount: countOrNull(
+          official?.followingCount ?? proof?.followingCount,
+        ),
+        likesCount: countOrNull(official?.likesCount ?? proof?.likesCount),
+        contentCount: countOrNull(official?.contentCount ?? proof?.contentCount),
+        listedCount: countOrNull(official?.listedCount ?? proof?.listedCount),
+        providerVerified: official?.providerVerified === true,
         connectionLabel: connector.connectionLabel,
       };
     });

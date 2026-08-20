@@ -62,6 +62,10 @@ test("renders the marketplace shell and local-media principle", async () => {
   assert.match(html, /href=["']\/login["']/i);
   assert.match(html, /class=["'][^"']*button-login[^"']*["']/i);
   assert.match(html, />Log in</i);
+  assert.match(html, /href=["']\/terms["']/);
+  assert.match(html, /href=["']\/privacy["']/);
+  assert.match(html, />Terms</);
+  assert.match(html, />Privacy</);
   assert.doesNotMatch(html, /\/workspace\/scratch|\.vinext\/fonts/i);
 });
 

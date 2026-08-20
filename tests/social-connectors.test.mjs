@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { FACEBOOK_CONNECT_SCOPES } from "../lib/facebook-listing-proof.ts";
 import { computeSocialCreditScore } from "../lib/social-credit.ts";
 import {
   connectedSocialCreditInput,
@@ -8,14 +9,20 @@ import {
   publicSocialProfileUrl,
   SOCIAL_CONNECTOR_IDS,
   SOCIAL_CONNECTORS,
+  INSTAGRAM_CONNECT_SCOPES,
+  TIKTOK_CONNECT_SCOPES,
+  TIKTOK_PUBLIC_LISTING_PROOF_ENABLED,
+  TIKTOK_SOCIAL_CREDIT_ENABLED,
+  TIKTOK_USER_INFO_FIELDS,
+  socialAvailabilityFromEnv,
 } from "../lib/social-connectors.ts";
 import { buildPagesPreviewDeploymentConfigs } from "../scripts/configure-pages-preview.mjs";
 
 test("social connector catalog covers official Better Auth networks", () => {
   assert.deepEqual(SOCIAL_CONNECTOR_IDS, [
     "facebook",
-    "instagram",
     "tiktok",
+    "instagram",
     "twitter",
     "linkedin",
     "reddit",
@@ -29,6 +36,10 @@ test("social connector catalog covers official Better Auth networks", () => {
 });
 
 test("public social URLs stay on the provider host allowlist", () => {
+  assert.equal(
+    publicSocialProfileUrl("tiktok", "https://www.tiktok.com/@openmarketplace"),
+    "https://www.tiktok.com/@openmarketplace",
+  );
   assert.equal(
     publicSocialProfileUrl("instagram", "https://www.instagram.com/openmarketplace"),
     "https://www.instagram.com/openmarketplace",
@@ -54,6 +65,84 @@ test("public social URLs stay on the provider host allowlist", () => {
     "",
   );
   assert.equal(publicSocialProfileUrl("linkedin", ""), "");
+  assert.equal(
+    publicSocialProfileUrl("tiktok", "https://evil.example/tiktok.com/@spoof"),
+    "",
+  );
+});
+
+test("Facebook Connect requests official hometown and location scopes", () => {
+  const facebook = SOCIAL_CONNECTORS.find((connector) => connector.id === "facebook");
+  assert.deepEqual([...FACEBOOK_CONNECT_SCOPES], [
+    "public_profile",
+    "user_link",
+    "user_hometown",
+    "user_location",
+  ]);
+  assert.deepEqual([...(facebook?.scopes ?? [])], [...FACEBOOK_CONNECT_SCOPES]);
+  assert.equal(FACEBOOK_CONNECT_SCOPES.includes("email"), false);
+  assert.equal(FACEBOOK_CONNECT_SCOPES.includes("user_birthday"), false);
+  assert.equal(FACEBOOK_CONNECT_SCOPES.includes("user_mobile_phone"), false);
+  assert.equal(FACEBOOK_CONNECT_SCOPES.includes("user_friends"), false);
+});
+
+test("TikTok Connect uses Login Kit basic, profile, and stats scopes", () => {
+  const tiktok = SOCIAL_CONNECTORS.find((connector) => connector.id === "tiktok");
+  assert.deepEqual([...TIKTOK_CONNECT_SCOPES], [
+    "user.info.basic",
+    "user.info.profile",
+    "user.info.stats",
+  ]);
+  assert.deepEqual([...(tiktok?.scopes ?? [])], [...TIKTOK_CONNECT_SCOPES]);
+  assert.equal(TIKTOK_USER_INFO_FIELDS.includes("username"), true);
+  assert.equal(TIKTOK_USER_INFO_FIELDS.includes("profile_deep_link"), true);
+  assert.equal(TIKTOK_USER_INFO_FIELDS.includes("bio_description"), true);
+  assert.equal(TIKTOK_USER_INFO_FIELDS.includes("follower_count"), true);
+  assert.equal(TIKTOK_USER_INFO_FIELDS.includes("following_count"), true);
+  assert.equal(TIKTOK_USER_INFO_FIELDS.includes("likes_count"), true);
+  assert.equal(TIKTOK_USER_INFO_FIELDS.includes("video_count"), true);
+  assert.equal(TIKTOK_USER_INFO_FIELDS.includes("is_verified"), true);
+  assert.equal(TIKTOK_PUBLIC_LISTING_PROOF_ENABLED, true);
+  assert.equal(TIKTOK_SOCIAL_CREDIT_ENABLED, true);
+});
+
+test("Instagram Connect uses Instagram Login basic scope only", async () => {
+  const instagram = SOCIAL_CONNECTORS.find((connector) => connector.id === "instagram");
+  assert.deepEqual([...INSTAGRAM_CONNECT_SCOPES], ["instagram_business_basic"]);
+  assert.deepEqual([...(instagram?.scopes ?? [])], [...INSTAGRAM_CONNECT_SCOPES]);
+  const [auth, settings, privacy] = await Promise.all([
+    readFile(new URL("../lib/auth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/account/account-settings.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/privacy/page.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(auth, /www\.instagram\.com\/oauth\/authorize/);
+  assert.match(auth, /api\.instagram\.com\/oauth\/access_token/);
+  assert.match(auth, /disableSignUp:\s*true/);
+  assert.doesNotMatch(auth, /user_profile/);
+  assert.doesNotMatch(
+    `${auth}\n${settings}\n${privacy}`,
+    /instagram_business_manage_messages|instagram_business_content_publish|instagram_business_manage_comments/,
+  );
+  assert.match(settings, /instagram_business_basic/);
+  assert.match(privacy, /instagram_business_basic/);
+});
+
+test("TikTok is available only when preview client key and secret are both set", () => {
+  assert.equal(
+    socialAvailabilityFromEnv({
+      TIKTOK_CLIENT_KEY: "tt-key",
+      TIKTOK_CLIENT_SECRET: "tt-secret",
+    }).tiktok,
+    true,
+  );
+  assert.equal(
+    socialAvailabilityFromEnv({
+      TIKTOK_CLIENT_KEY: "tt-key",
+    }).tiktok,
+    false,
+  );
+  assert.equal(socialAvailabilityFromEnv({}).tiktok, false);
+  assert.equal(socialAvailabilityFromEnv({}).facebook, false);
 });
 
 test("saved social proofs stay oauth-only and drop typed spoofs", async () => {
@@ -64,6 +153,40 @@ test("saved social proofs stay oauth-only and drop typed spoofs", async () => {
   assert.match(source, /metricsSource !== "oauth"/);
   assert.match(source, /isSocialConnectorId/);
   assert.match(source, /SOCIAL_CONNECT_ONLY_ERROR/);
+});
+
+test("TikTok official fields populate listing proofs and Social Credit input", () => {
+  const merged = mergeConnectedSocialProofs(
+    [
+      {
+        provider: "tiktok",
+        url: "https://www.tiktok.com/@seller",
+        handle: "seller",
+        connectionCount: 12,
+        metricsSource: "oauth",
+      },
+      {
+        provider: "facebook",
+        url: "https://www.facebook.com/openmarketplace.seller",
+        handle: "Peter Franco",
+        metricsSource: "oauth",
+      },
+    ],
+    ["tiktok", "facebook"],
+    "Peter Franco",
+  );
+  assert.deepEqual(
+    merged.map((account) => account.provider),
+    ["facebook", "tiktok"],
+  );
+  assert.equal(merged[1].url, "https://www.tiktok.com/@seller");
+  assert.equal(merged[1].connectionCount, 12);
+  const credit = connectedSocialCreditInput(merged);
+  assert.deepEqual(
+    credit.map((account) => account.provider),
+    ["facebook", "tiktok"],
+  );
+  assert.equal(computeSocialCreditScore({ connectedSocial: credit }), 9);
 });
 
 test("listing proofs only include currently connected providers", () => {
@@ -113,7 +236,29 @@ test("more official social fields raise Social Credit and never exceed the cap",
       metricsSource: "oauth",
     })),
   );
-  assert.equal(computeSocialCreditScore({ connectedSocial: many }), 25);
+  assert.equal(computeSocialCreditScore({ connectedSocial: many }), 35);
+  const richer = connectedSocialCreditInput(
+    SOCIAL_CONNECTOR_IDS.map((provider) => ({
+      provider,
+      url: `https://example.test/${provider}`,
+      handle: provider,
+      displayName: `${provider} name`,
+      accountCreatedAt: "2018-01-01",
+      connectionCount: 10,
+      followingCount: 4,
+      likesCount: 8,
+      contentCount: 3,
+      hasOfficialImage: true,
+      hasBio: true,
+      hasLocation: true,
+      hasWebsite: true,
+      hasBanner: true,
+      hasAccountType: true,
+      hasProviderBadge: true,
+      metricsSource: "oauth",
+    })),
+  );
+  assert.equal(computeSocialCreditScore({ connectedSocial: richer }), 50);
 });
 
 test("account settings and auth keep Connect-only anti-spoof wiring", async () => {
@@ -127,6 +272,7 @@ test("account settings and auth keep Connect-only anti-spoof wiring", async () =
     assert.match(catalog, new RegExp(`id: "${id}"`));
   }
   assert.match(settings, /SOCIAL_CONNECTORS/);
+  assert.match(settings, /first line of defense/);
   assert.match(settings, /linkSocial/);
   assert.match(settings, /unlinkAccount/);
   assert.match(auth, /genericOAuth/);

@@ -23,6 +23,7 @@ import {
 import { FACEBOOK_CONNECT_SCOPES } from "../../lib/facebook-listing-proof";
 import {
   SOCIAL_CONNECTORS,
+  TIKTOK_CONNECT_SCOPES,
   type SocialConnection,
   type SocialConnectorId,
 } from "../../lib/social-connectors";
@@ -100,6 +101,14 @@ const emptyFacebookConnection: FacebookConnection = {
   shortName: null,
   imageUrl: null,
   profileUrl: null,
+  about: null,
+  location: null,
+  hometown: null,
+  websiteUrl: null,
+  locale: null,
+  gender: null,
+  ageRange: null,
+  coverUrl: null,
 };
 
 const emptyPayPalConnection: PayPalConnection = {
@@ -427,7 +436,9 @@ export default function AccountSettings({
         scopes:
           id === "facebook"
             ? [...FACEBOOK_CONNECT_SCOPES]
-            : [...(connector?.scopes ?? [])],
+            : id === "tiktok"
+              ? [...TIKTOK_CONNECT_SCOPES]
+              : [...(connector?.scopes ?? [])],
       });
       if (result.error) {
         setError(
@@ -479,6 +490,14 @@ export default function AccountSettings({
           shortName: null,
           imageUrl: null,
           profileUrl: null,
+          about: null,
+          location: null,
+          hometown: null,
+          websiteUrl: null,
+          locale: null,
+          gender: null,
+          ageRange: null,
+          coverUrl: null,
         });
       }
       setSocialConnections((current) =>
@@ -487,12 +506,24 @@ export default function AccountSettings({
             ? {
                 ...connection,
                 connected: false,
+                needsReconnect: false,
                 name: null,
                 handle: null,
                 imageUrl: null,
                 profileUrl: null,
+                bio: null,
+                location: null,
+                websiteUrl: null,
+                bannerUrl: null,
+                locale: null,
+                accountType: null,
                 accountCreatedAt: null,
                 connectionCount: null,
+                followingCount: null,
+                likesCount: null,
+                contentCount: null,
+                listedCount: null,
+                providerVerified: false,
               }
             : connection,
         ),
@@ -664,7 +695,9 @@ export default function AccountSettings({
           <p className="portal-lead">
             Social profiles can only be added with official Connect. Typed usernames
             and pasted links are not accepted, so a seller cannot spoof a profile
-            they do not control. Each official link can raise Social Credit.
+            they do not control. Official fields are the first line of defense
+            before verified buys and sells exist. The more official data a
+            connection returns, the higher Social Credit can go.
           </p>
         </div>
         {SOCIAL_CONNECTORS.map((connector) => {
@@ -672,9 +705,29 @@ export default function AccountSettings({
           const facebook = connector.id === "facebook" ? facebookConnection : null;
           const available = facebook ? facebook.available : Boolean(saved?.available);
           const connected = facebook ? facebook.connected : Boolean(saved?.connected);
+          const needsReconnect =
+            connector.id === "tiktok" && Boolean(saved?.needsReconnect);
           const name = facebook ? facebook.name : saved?.name;
+          const handle = facebook ? null : saved?.handle;
           const imageUrl = facebook ? facebook.imageUrl : saved?.imageUrl;
           const profileUrl = facebook ? facebook.profileUrl : saved?.profileUrl;
+          const connectionCount = facebook ? null : saved?.connectionCount;
+          const followingCount = facebook ? null : saved?.followingCount;
+          const likesCount = facebook ? null : saved?.likesCount;
+          const contentCount = facebook ? null : saved?.contentCount;
+          const listedCount = facebook ? null : saved?.listedCount;
+          const bio = facebook ? facebook.about : saved?.bio;
+          const location = facebook
+            ? [facebook.location, facebook.hometown].filter(Boolean).join(" · ") || null
+            : saved?.location;
+          const websiteUrl = facebook ? facebook.websiteUrl : saved?.websiteUrl;
+          const bannerUrl = facebook ? facebook.coverUrl : saved?.bannerUrl;
+          const locale = facebook ? facebook.locale : saved?.locale;
+          const gender = facebook ? facebook.gender : null;
+          const ageRange = facebook ? facebook.ageRange : null;
+          const accountType = facebook ? null : saved?.accountType;
+          const providerVerified = Boolean(saved?.providerVerified);
+          const connectionLabel = saved?.connectionLabel;
           return (
             <div
               className="portal-settings-row"
@@ -690,16 +743,42 @@ export default function AccountSettings({
                 <strong id={`${connector.id}-connect-title`}>{connector.label}</strong>
                 {connected ? (
                   <span className="portal-settings-health">Connected</span>
+                ) : needsReconnect ? (
+                  <span className="portal-settings-health">Needs reconnect</span>
                 ) : null}
               </div>
               {connector.id === "facebook" ? (
                 <p className="portal-settings-note">
                   Connect Facebook to prove you control the account. This uses
-                  consumer Facebook Login with public_profile and user_link.
-                  Facebook Login fills the public profile URL when Facebook sends
-                  one. Those values stay on the Facebook connector and do not
-                  replace your Open Marketplace email or name. It does not sign you in,
-                  import listings, or make you Facebook verified.
+                  Facebook Login with public_profile, user_link, user_hometown,
+                  and user_location. Facebook Login fills the public profile
+                  URL, hometown, location, locale, gender, age range, and cover
+                  when Facebook sends them. Those values stay on the Facebook
+                  connector and do not replace your Open Marketplace email or
+                  name. It does not sign you in, import listings, or make you
+                  Facebook verified.
+                </p>
+              ) : connector.id === "tiktok" ? (
+                <p className="portal-settings-note">
+                  Connect TikTok to prove you control the account. This uses
+                  TikTok Login Kit with user.info.basic, user.info.profile, and
+                  user.info.stats.                   The display name, username, profile link, avatar,
+                  bio, follower count, following count, likes, video count, and
+                  TikTok verified mark TikTok returns stay on this connector and
+                  can raise Social Credit. They do not replace your Open
+                  Marketplace email or name.
+                  A typed TikTok URL cannot be saved. It does not sign you in,
+                  import videos, read messages, or make you TikTok verified.
+                </p>
+              ) : connector.id === "instagram" ? (
+                <p className="portal-settings-note">
+                  Connect Instagram to prove you control the account. This uses
+                  Instagram Login with instagram_business_basic. The username,
+                  name, avatar, account type, and public counts Instagram returns
+                  stay on this connector and can raise Social Credit. They do
+                  not replace your Open Marketplace email or name. A typed
+                  Instagram URL cannot be saved. It does not sign you in, import
+                  posts, read messages, or make you Instagram verified.
                 </p>
               ) : (
                 <p className="portal-settings-note">
@@ -720,7 +799,41 @@ export default function AccountSettings({
                       {name
                         ? name
                         : `${connector.label} account connected.`}
+                      {handle ? ` (@${handle.replace(/^@/, "")})` : ""}
+                      {typeof connectionCount === "number"
+                        ? ` · ${connectionCount} ${connectionLabel ?? "followers"}`
+                        : ""}
+                      {typeof followingCount === "number"
+                        ? ` · ${followingCount} following`
+                        : ""}
+                      {typeof likesCount === "number" ? ` · ${likesCount} likes` : ""}
+                      {typeof contentCount === "number"
+                        ? ` · ${contentCount} posts`
+                        : ""}
+                      {typeof listedCount === "number"
+                        ? ` · ${listedCount} lists`
+                        : ""}
+                      {accountType ? ` · ${accountType}` : ""}
+                      {location ? ` · ${location}` : ""}
+                      {locale ? ` · ${locale}` : ""}
+                      {gender ? ` · ${gender}` : ""}
+                      {ageRange ? ` · ages ${ageRange}` : ""}
                     </p>
+                    {bio ? <p className="portal-settings-note">{bio}</p> : null}
+                    {websiteUrl ? (
+                      <p className="portal-settings-note">{websiteUrl}</p>
+                    ) : null}
+                    {bannerUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={bannerUrl} alt="" width={160} height={48} />
+                    ) : null}
+                    {providerVerified ? (
+                      <p className="portal-settings-note">
+                        {connector.label} shows its own verified mark on this
+                        account. That is not an Open Marketplace verification
+                        badge.
+                      </p>
+                    ) : null}
                   </div>
                   <div className="portal-connector-actions">
                     {profileUrl ? (
@@ -747,6 +860,29 @@ export default function AccountSettings({
                     </button>
                   </div>
                 </>
+              ) : needsReconnect ? (
+                <div className="portal-connector-actions">
+                  <button
+                    className="button button-ghost"
+                    type="button"
+                    onClick={() => void onDisconnectSocial(connector.id)}
+                    disabled={pending !== null}
+                  >
+                    {pending === `${connector.id}-disconnect`
+                      ? "Disconnecting…"
+                      : "Disconnect"}
+                  </button>
+                  <button
+                    className="button button-dark"
+                    type="button"
+                    onClick={() => void onConnectSocial(connector.id)}
+                    disabled={pending !== null}
+                  >
+                    {pending === `${connector.id}-connect`
+                      ? "Connecting…"
+                      : "Connect TikTok"}
+                  </button>
+                </div>
               ) : available ? (
                 <div className="portal-connector-actions">
                   <button

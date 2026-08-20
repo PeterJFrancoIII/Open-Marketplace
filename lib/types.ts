@@ -16,6 +16,14 @@ export type FacebookConnection = {
   shortName: string | null;
   imageUrl: string | null;
   profileUrl: string | null;
+  about: string | null;
+  location: string | null;
+  hometown: string | null;
+  websiteUrl: string | null;
+  locale: string | null;
+  gender: string | null;
+  ageRange: string | null;
+  coverUrl: string | null;
 };
 
 export type PayPalConnection = {
@@ -36,9 +44,21 @@ export type SocialProof = {
     | "other";
   url: string;
   handle?: string;
+  displayName?: string;
   accountCreatedAt?: string;
   connectionCount?: number;
   connectionLabel?: "friends" | "followers" | "connections";
+  followingCount?: number;
+  likesCount?: number;
+  contentCount?: number;
+  hasOfficialImage?: boolean;
+  hasBio?: boolean;
+  hasLocation?: boolean;
+  hasWebsite?: boolean;
+  hasBanner?: boolean;
+  hasAccountType?: boolean;
+  hasProviderBadge?: boolean;
+  listedCount?: number;
   metricsSource?: "self-reported" | "oauth";
   health?: "active" | "dead" | "unknown" | "invalid" | "checking";
   lastCheckedAt?: string;

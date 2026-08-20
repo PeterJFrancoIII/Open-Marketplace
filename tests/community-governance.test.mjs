@@ -25,8 +25,12 @@ test("governance documents rank crowdsourced surface reports as foundational", a
 
   assert.match(governance, /foundational|community builds the product/i);
   assert.match(governance, /daily/i);
+  assert.match(governance, /first line of defense/);
+  assert.match(governance, /Social Credit/);
   assert.match(master, /crowdsourced_surface_feedback/);
   assert.match(master, /security_controls_never_community_owned/);
+  assert.match(master, /social_connect_first_line_of_defense/);
+  assert.match(master, /first_line_before_verified_buys_sells/);
   assert.match(policy, /community_reports/);
   assert.match(agents, /Filter those requests out of the community queue/);
 });

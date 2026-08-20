@@ -67,8 +67,10 @@ export default async function AccountPage() {
           </div>
         </div>
         <p className="portal-settings-note">
-          Social Credit is a marketplace number from ratings and completed
-          sales. It is not a credit-bureau score and not a verification badge.
+          Social Credit starts from official social Connect fields. That is the
+          first line of defense before verified buys and sells exist. Ratings
+          and completed sales then raise the same number. It is not a
+          credit-bureau score and not a verification badge.
         </p>
       </section>
     </PortalShell>

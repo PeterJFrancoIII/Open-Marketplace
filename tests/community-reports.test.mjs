@@ -196,3 +196,22 @@ test("ordinary product bugs and features stay in the community queue", async () 
   assert.match(digest.markdown, /Search listings/);
   assert.doesNotMatch(digest.markdown, /Let users change who is admin/);
 });
+
+test("community feedback keeps ! report controls off React-owned children", async () => {
+  const feedback = await readFile(
+    new URL("../app/community-feedback.tsx", import.meta.url),
+    "utf8",
+  );
+  const settings = await readFile(
+    new URL("../app/account/account-settings.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(feedback, /community-feedback-bangs/);
+  assert.match(feedback, /feedback-bang-overlay/);
+  assert.match(feedback, /shouldSkipNestedField/);
+  assert.match(feedback, /positionOverlayBang/);
+  assert.doesNotMatch(feedback, /insertAdjacentElement\("afterend"/);
+  assert.doesNotMatch(feedback, /element\.appendChild\(bang\)/);
+  assert.match(settings, /data-feedback-surface=\{\`\$\{rail.label\} input\`\}/);
+  assert.match(settings, /onConnectPayment/);
+});

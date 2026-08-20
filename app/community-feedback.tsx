@@ -21,6 +21,7 @@ const SURFACE_SELECTOR = [
   "input:not([type='hidden'])",
   "select",
   "textarea",
+  "label",
   "section",
   "article",
   "header",
@@ -30,6 +31,8 @@ const SURFACE_SELECTOR = [
   "form",
   "[data-feedback-surface]",
 ].join(",");
+
+const overlayBangs = new Map<HTMLElement, HTMLButtonElement>();
 
 function pagePathFromLocation() {
   return `${window.location.pathname}${window.location.search}` || "/";
@@ -68,6 +71,38 @@ function isSkippable(element: Element) {
   return false;
 }
 
+function isSurfaceVisible(element: HTMLElement) {
+  const rect = element.getBoundingClientRect();
+  if (rect.width < 8 || rect.height < 8) return false;
+  const style = window.getComputedStyle(element);
+  return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+}
+
+function shouldSkipNestedField(element: HTMLElement) {
+  if (
+    !(
+      element instanceof HTMLInputElement ||
+      element instanceof HTMLSelectElement ||
+      element instanceof HTMLTextAreaElement
+    )
+  ) {
+    return false;
+  }
+  const label = element.closest("label");
+  return Boolean(label && label !== element && !isSkippable(label));
+}
+
+function bangHost() {
+  return document.getElementById("community-feedback-bangs");
+}
+
+function positionOverlayBang(element: HTMLElement, bang: HTMLButtonElement) {
+  const rect = element.getBoundingClientRect();
+  bang.hidden = !isSurfaceVisible(element);
+  bang.style.left = `${Math.max(4, rect.right - 20)}px`;
+  bang.style.top = `${Math.max(4, rect.top + 2)}px`;
+}
+
 function targetFrom(element: Element): SurfaceTarget {
   const surfaceId = surfaceIdFor(element);
   const pagePath = pagePathFromLocation().split("#")[0] || "/";
@@ -81,16 +116,19 @@ function targetFrom(element: Element): SurfaceTarget {
 
 function attachBang(element: Element) {
   if (!(element instanceof HTMLElement) || isSkippable(element)) return;
-  if (element.dataset.feedbackMarked === "1") return;
-  if (element.querySelector(":scope > .feedback-bang")) {
+  if (shouldSkipNestedField(element)) return;
+  const host = bangHost();
+  if (!host) return;
+  const existing = overlayBangs.get(element);
+  if (existing?.isConnected) {
     element.dataset.feedbackMarked = "1";
+    positionOverlayBang(element, existing);
     return;
   }
-  element.dataset.feedbackMarked = "1";
   const target = targetFrom(element);
   const bang = document.createElement("button");
   bang.type = "button";
-  bang.className = "feedback-bang";
+  bang.className = "feedback-bang feedback-bang-overlay";
   bang.dataset.feedbackBang = "1";
   bang.dataset.feedbackIgnore = "1";
   bang.textContent = "!";
@@ -106,26 +144,33 @@ function attachBang(element: Element) {
       new CustomEvent("open-marketplace:community-report", { detail: target }),
     );
   });
+  host.appendChild(bang);
+  overlayBangs.set(element, bang);
+  element.dataset.feedbackMarked = "1";
+  positionOverlayBang(element, bang);
+}
 
-  const voidOrField =
-    element instanceof HTMLInputElement ||
-    element instanceof HTMLSelectElement ||
-    element instanceof HTMLTextAreaElement ||
-    element instanceof HTMLImageElement;
-  if (voidOrField) {
-    bang.classList.add("feedback-bang-sibling");
-    element.insertAdjacentElement("afterend", bang);
-    return;
+function pruneOverlayBangs(root: ParentNode) {
+  for (const [element, bang] of overlayBangs) {
+    if (
+      !element.isConnected ||
+      !(root instanceof Element ? root.contains(element) : document.contains(element)) ||
+      isSkippable(element) ||
+      shouldSkipNestedField(element)
+    ) {
+      bang.remove();
+      overlayBangs.delete(element);
+      delete element.dataset.feedbackMarked;
+    }
   }
-  const position = window.getComputedStyle(element).position;
-  if (position === "static") {
-    element.style.position = "relative";
-  }
-  element.appendChild(bang);
 }
 
 function markDocumentSurfaces(root: ParentNode) {
+  pruneOverlayBangs(root);
   root.querySelectorAll(SURFACE_SELECTOR).forEach(attachBang);
+  for (const [element, bang] of overlayBangs) {
+    positionOverlayBang(element, bang);
+  }
 }
 
 export default function CommunityFeedbackRoot({
@@ -155,17 +200,13 @@ export default function CommunityFeedbackRoot({
   useEffect(() => {
     const root = document.getElementById("community-feedback-root");
     if (!root) return;
+    let frame = 0;
+    const refresh = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => markDocumentSurfaces(root));
+    };
     markDocumentSurfaces(root);
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (node instanceof Element) {
-            if (!isSkippable(node)) attachBang(node);
-            markDocumentSurfaces(node);
-          }
-        }
-      }
-    });
+    const observer = new MutationObserver(refresh);
     observer.observe(root, { childList: true, subtree: true });
     const onOpen = (event: Event) => {
       const detail = (event as CustomEvent<SurfaceTarget>).detail;
@@ -178,9 +219,19 @@ export default function CommunityFeedbackRoot({
       setError(null);
     };
     window.addEventListener("open-marketplace:community-report", onOpen);
+    window.addEventListener("scroll", refresh, true);
+    window.addEventListener("resize", refresh);
     return () => {
+      cancelAnimationFrame(frame);
       observer.disconnect();
       window.removeEventListener("open-marketplace:community-report", onOpen);
+      window.removeEventListener("scroll", refresh, true);
+      window.removeEventListener("resize", refresh);
+      for (const [element, bang] of overlayBangs) {
+        bang.remove();
+        overlayBangs.delete(element);
+        delete element.dataset.feedbackMarked;
+      }
     };
   }, []);
 
@@ -235,6 +286,11 @@ export default function CommunityFeedbackRoot({
   return (
     <div id="community-feedback-root" className="community-feedback-root">
       {children}
+      <div
+        id="community-feedback-bangs"
+        className="community-feedback-bangs"
+        data-feedback-ignore="1"
+      />
       {target ? (
         <div
           className="feedback-modal-backdrop"

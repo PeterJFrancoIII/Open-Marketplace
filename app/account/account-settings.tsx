@@ -555,18 +555,22 @@ export default function AccountSettings({
     }
   }
 
-  async function onConnectPayPal() {
-    setPending("paypal-connect");
+  async function onConnectPayment(railId: PaymentRail) {
+    const rail = PAYMENT_RAILS.find((item) => item.id === railId);
+    const label = rail?.label ?? "payment";
+    setPending(`${railId}-connect`);
     setStatus("");
     setError("");
-    if (paypalConnection.available) {
+    if (railId === "paypal" && paypalConnection.available) {
       window.location.assign("/api/paypal/connect");
       return;
     }
-    const destination = paymentDrafts.paypal.trim();
+    const destination = paymentDrafts[railId].trim();
     if (!destination) {
       setError(
-        "Enter your public PayPal email or paypal.me link, then click Connect PayPal.",
+        railId === "paypal"
+          ? "Enter your public PayPal email or paypal.me link, then click Connect PayPal."
+          : `Enter your public ${label} destination, then click Connect ${label}.`,
       );
       setPending(null);
       return;
@@ -578,13 +582,55 @@ export default function AccountSettings({
       if (!result) return;
       setPaymentDrafts(destinationsByRail(result.paymentDestinations ?? []));
       setStatus(
-        "PayPal connected. Buyers will see this public pay-to. This does not sign you in or take payments.",
+        `${label} connected. Buyers will see this public pay-to. This does not sign you in or take payments.`,
       );
     } catch (submitError) {
       setError(
         submitError instanceof Error
           ? submitError.message
-          : "Could not connect PayPal.",
+          : `Could not connect ${label}.`,
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function onDisconnectPayment(railId: PaymentRail) {
+    if (railId === "paypal" && paypalConnection.connected) {
+      await onDisconnectPayPal();
+      return;
+    }
+    const rail = PAYMENT_RAILS.find((item) => item.id === railId);
+    const label = rail?.label ?? "payment";
+    setPending(`${railId}-disconnect`);
+    setStatus("");
+    setError("");
+    try {
+      const result = await saveProfile({
+        paymentDestinations: PAYMENT_RAILS.flatMap((item) => {
+          const destination =
+            item.id === railId ? "" : paymentDrafts[item.id].trim();
+          return destination
+            ? [
+                {
+                  rail: item.id,
+                  destination,
+                  asset: item.asset,
+                  networkId: item.networkId,
+                  networkLabel: item.networkLabel,
+                },
+              ]
+            : [];
+        }),
+      });
+      if (!result) return;
+      setPaymentDrafts(destinationsByRail(result.paymentDestinations ?? []));
+      setStatus(`${label} disconnected.`);
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : `Could not disconnect ${label}.`,
       );
     } finally {
       setPending(null);
@@ -662,11 +708,13 @@ export default function AccountSettings({
       </p>
 
       <form className="portal-form" onSubmit={onUpdateName}>
-        <label className="portal-field">
+        <label className="portal-field" data-feedback-surface="Display name input">
           <span>Display name</span>
           <input
             name="name"
             autoComplete="name"
+            aria-label="Display name"
+            data-feedback-surface="Display name input"
             value={name}
             onChange={(event) => setName(event.target.value)}
             required
@@ -674,9 +722,17 @@ export default function AccountSettings({
             disabled={pending !== null}
           />
         </label>
-        <label className="portal-field">
+        <label className="portal-field" data-feedback-surface="Email input">
           <span>Email</span>
-          <input type="email" value={email} readOnly aria-readonly="true" />
+          <input
+            type="email"
+            name="email"
+            aria-label="Email"
+            data-feedback-surface="Email input"
+            value={email}
+            readOnly
+            aria-readonly="true"
+          />
         </label>
         <button
           className="button button-dark"
@@ -688,11 +744,13 @@ export default function AccountSettings({
       </form>
 
       <form className="portal-form" onSubmit={onChangePassword}>
-        <label className="portal-field">
+        <label className="portal-field" data-feedback-surface="Current password input">
           <span>Current password</span>
           <input
             type="password"
             name="currentPassword"
+            aria-label="Current password"
+            data-feedback-surface="Current password input"
             autoComplete="current-password"
             value={currentPassword}
             onChange={(event) => setCurrentPassword(event.target.value)}
@@ -702,11 +760,13 @@ export default function AccountSettings({
             disabled={pending !== null}
           />
         </label>
-        <label className="portal-field">
+        <label className="portal-field" data-feedback-surface="New password input">
           <span>New password</span>
           <input
             type="password"
             name="newPassword"
+            aria-label="New password"
+            data-feedback-surface="New password input"
             autoComplete="new-password"
             value={newPassword}
             onChange={(event) => setNewPassword(event.target.value)}
@@ -1003,9 +1063,16 @@ export default function AccountSettings({
                 sign you in, take payments, or hold money.
               </p>
             ) : null}
-            <label className="portal-field">
+            <label
+              className="portal-field"
+              data-feedback-surface={`${rail.label} input`}
+            >
               <span>{rail.hint}</span>
               <input
+                id={`surface-${rail.id}-input`}
+                name={rail.id}
+                aria-label={rail.hint}
+                data-feedback-surface={`${rail.label} input`}
                 value={
                   rail.id === "paypal" && paypalConnection.connected
                     ? paypalConnection.email ?? paymentDrafts.paypal
@@ -1037,18 +1104,20 @@ export default function AccountSettings({
                     ? "Disconnecting…"
                     : "Disconnect PayPal"}
                 </button>
-              ) : rail.id === "paypal" ? (
+              ) : (
                 <button
                   className="button button-dark"
                   type="button"
-                  id="surface-connect-paypal"
-                  data-feedback-surface="Connect PayPal"
-                  onClick={() => void onConnectPayPal()}
+                  id={rail.id === "paypal" ? "surface-connect-paypal" : undefined}
+                  data-feedback-surface={`Connect ${rail.label}`}
+                  onClick={() => void onConnectPayment(rail.id)}
                   disabled={pending !== null}
                 >
-                  {pending === "paypal-connect" ? "Connecting…" : "Connect PayPal"}
+                  {pending === `${rail.id}-connect`
+                    ? "Connecting…"
+                    : `Connect ${rail.label}`}
                 </button>
-              ) : null}
+              )}
               <a
                 className="button button-ghost"
                 href={rail.connectUrl}
@@ -1062,12 +1131,12 @@ export default function AccountSettings({
                 <button
                   className="button button-ghost"
                   type="button"
-                  onClick={() =>
-                    setPaymentDrafts((current) => ({ ...current, [rail.id]: "" }))
-                  }
+                  onClick={() => void onDisconnectPayment(rail.id)}
                   disabled={pending !== null}
                 >
-                  Disconnect
+                  {pending === `${rail.id}-disconnect`
+                    ? "Disconnecting…"
+                    : "Disconnect"}
                 </button>
               ) : null}
             </div>
@@ -1082,9 +1151,16 @@ export default function AccountSettings({
                 <span className="portal-settings-health">Connected</span>
               ) : null}
             </div>
-            <label className="portal-field">
+            <label
+              className="portal-field"
+              data-feedback-surface={`${rail.label} input`}
+            >
               <span>{rail.hint}</span>
               <input
+                id={`surface-${rail.id}-input`}
+                name={rail.id}
+                aria-label={rail.hint}
+                data-feedback-surface={`${rail.label} input`}
                 value={paymentDrafts[rail.id]}
                 onChange={(event) =>
                   setPaymentDrafts((current) => ({
@@ -1098,6 +1174,17 @@ export default function AccountSettings({
               />
             </label>
             <div className="portal-connector-actions">
+              <button
+                className="button button-dark"
+                type="button"
+                data-feedback-surface={`Connect ${rail.label}`}
+                onClick={() => void onConnectPayment(rail.id)}
+                disabled={pending !== null}
+              >
+                {pending === `${rail.id}-connect`
+                  ? "Connecting…"
+                  : `Connect ${rail.label}`}
+              </button>
               <a
                 className="button button-ghost"
                 href={rail.connectUrl}
@@ -1110,12 +1197,12 @@ export default function AccountSettings({
                 <button
                   className="button button-ghost"
                   type="button"
-                  onClick={() =>
-                    setPaymentDrafts((current) => ({ ...current, [rail.id]: "" }))
-                  }
+                  onClick={() => void onDisconnectPayment(rail.id)}
                   disabled={pending !== null}
                 >
-                  Disconnect
+                  {pending === `${rail.id}-disconnect`
+                    ? "Disconnecting…"
+                    : "Disconnect"}
                 </button>
               ) : null}
             </div>
@@ -1154,10 +1241,16 @@ export default function AccountSettings({
             </div>
             <p className="portal-settings-note">{broker.hint}</p>
             {broker.id === "parcel_monkey" && shippingDrafts[broker.id].connected ? (
-              <label className="portal-field">
+              <label
+                className="portal-field"
+                data-feedback-surface="Parcel Monkey input"
+              >
                 <span>Public Parcel Monkey account email, optional</span>
                 <input
                   type="email"
+                  name="parcelMonkeyAccount"
+                  aria-label="Public Parcel Monkey account email, optional"
+                  data-feedback-surface="Parcel Monkey input"
                   value={shippingDrafts[broker.id].account}
                   onChange={(event) =>
                     setShippingDrafts((current) => ({
@@ -1242,22 +1335,26 @@ export default function AccountSettings({
             host only while at least three duplicates remain.
           </p>
         </div>
-        <label className="portal-field">
+        <label className="portal-field" data-feedback-surface="Host origin input">
           <span>Host origin</span>
           <input
             type="url"
             name="mediaNodeOrigin"
+            aria-label="Host origin"
+            data-feedback-surface="Host origin input"
             placeholder="https://host.your-nas.example"
             value={mediaNodeOrigin}
             onChange={(event) => setMediaNodeOrigin(event.target.value)}
             disabled={pending !== null}
           />
         </label>
-        <label className="portal-field">
+        <label className="portal-field" data-feedback-surface="Write token input">
           <span>Write token</span>
           <input
             type="password"
             name="mediaNodeToken"
+            aria-label="Write token"
+            data-feedback-surface="Write token input"
             autoComplete="off"
             value={mediaNodeToken}
             onChange={(event) => setMediaNodeToken(event.target.value)}

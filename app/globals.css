@@ -2901,6 +2901,18 @@ a.detail-social-account.social-connected:hover,
   vertical-align: middle;
 }
 
+.community-feedback-bangs {
+  pointer-events: none;
+}
+
+.feedback-bang-overlay {
+  margin: 0;
+  pointer-events: auto;
+  position: fixed;
+  right: auto;
+  top: auto;
+}
+
 .feedback-bang:hover,
 .feedback-bang:focus-visible {
   background: #fff;

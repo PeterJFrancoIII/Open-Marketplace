@@ -444,10 +444,14 @@ test("account settings and listings source offer Link PayPal without checkout", 
   ]);
   assert.match(settings, /Link PayPal/);
   assert.match(settings, /Connect PayPal/);
-  assert.match(settings, /data-feedback-surface="Connect PayPal"/);
-  assert.match(settings, /id="surface-connect-paypal"/);
+  assert.match(settings, /Connect \$\{rail\.label\}/);
+  assert.match(settings, /data-feedback-surface=\{\`Connect \$\{rail\.label\}\`\}/);
+  assert.match(settings, /data-feedback-surface=\{\`\$\{rail.label\} input\`\}/);
+  assert.match(settings, /surface-connect-paypal/);
   assert.match(settings, /Enter your public PayPal email or paypal\.me link/);
-  assert.match(settings, /if \(paypalConnection.available\)/);
+  assert.match(settings, /onConnectPayment/);
+  assert.match(settings, /onDisconnectPayment/);
+  assert.match(settings, /if \(railId === "paypal" && paypalConnection.available\)/);
   assert.match(settings, /paymentDestinationPayload/);
   assert.doesNotMatch(settings, /paypal && paypalConnection.available \?/);
   assert.match(settings, /\/api\/paypal\/connect/);

@@ -830,7 +830,7 @@ test("account settings source offers Connect, Connected, and Disconnect only", a
   assert.match(source, /user_location/);
   assert.match(source, /Open Facebook profile/);
   assert.match(source, /officialConnectorDisplay/);
-  assert.match(source, /OfficialConnectorDisclosure/);
+  assert.match(source, /officialConnectorSummary/);
   assert.match(source, /Buyers see these same official/);
   assert.match(source, /factsFromFacebookConnection/);
   assert.match(source, /Typed usernames[\s\S]*pasted links are not accepted/);

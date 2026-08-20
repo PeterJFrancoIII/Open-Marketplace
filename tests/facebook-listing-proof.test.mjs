@@ -148,9 +148,9 @@ test("listing cards show Connected Facebook instead of a typed URL", async () =>
   const marketplace = await readFile(new URL("../app/marketplace.tsx", import.meta.url), "utf8");
   assert.match(marketplace, /Connected with Facebook Login/);
   assert.match(marketplace, /officialConnectorDisplay/);
-  assert.match(marketplace, /OfficialConnectorDisclosure/);
-  assert.match(marketplace, /OfficialConnectorCatalog/);
-  assert.match(marketplace, /Official social connectors/);
+  assert.match(marketplace, /officialConnectorLine/);
+  assert.match(marketplace, /SocialAccountFact/);
+  assert.match(marketplace, /Not connected:/);
   assert.match(marketplace, /isConnectedFacebookProof/);
   assert.match(marketplace, /ConnectorAnchor/);
   assert.match(marketplace, /socialProfileHref/);

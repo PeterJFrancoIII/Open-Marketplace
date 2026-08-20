@@ -53,11 +53,9 @@ import { isLinkCheckFresh, listingLinksNeedCheck } from "../lib/link-health";
 import {
   factsFromSocialProof,
   officialConnectorDisplay,
+  officialConnectorLine,
+  publicConnectorCatalog,
 } from "../lib/official-connector-facts";
-import {
-  OfficialConnectorCatalog,
-  OfficialConnectorDisclosure,
-} from "./official-connector-disclosure";
 import { computeSocialCreditScore } from "../lib/social-credit";
 import {
   connectedSocialCreditInput,
@@ -623,6 +621,14 @@ function socialAccountsFor(listing: Listing): SocialProof[] {
   });
 }
 
+function missingConnectorNote(accounts: SocialProof[]) {
+  const missing = publicConnectorCatalog(accounts)
+    .filter((row) => !row.connected)
+    .map((row) => row.label);
+  if (!missing.length) return null;
+  return <span className="no-social">Not connected: {missing.join(", ")}</span>;
+}
+
 function SocialAccountFact({
   account,
   className,
@@ -639,6 +645,7 @@ function SocialAccountFact({
       ? { ...factsFromSocialProof(account), connectionCount: null, accountCreatedAt: null }
       : factsFromSocialProof(account),
   );
+  const officialLine = officialConnectorLine(official);
   const statusClass = `${className} status-${account.health ?? "unknown"}${
     connectedOauth ? " social-connected" : ""
   }`;
@@ -646,18 +653,15 @@ function SocialAccountFact({
     <>
       <strong>
         {variant === "detail"
-          ? `${providerName(account.provider)}${official.headline ? ` · ${official.headline}` : ""}`
-          : official.headline || providerName(account.provider)}
+          ? `${providerName(account.provider)}${official.headline ? ` · ${official.headline}` : " · Connected"}`
+          : official.headline || account.handle || providerName(account.provider)}
       </strong>
       <small>
         {connectedFacebook
           ? "Connected with Facebook Login"
           : `Connected with ${providerName(account.provider)}`}
+        {officialLine ? ` · ${officialLine}` : ""}
       </small>
-      <OfficialConnectorDisclosure
-        official={official}
-        rowKey={`${account.provider}-${variant}`}
-      />
       {official.providerVerified ? (
         <small>
           {providerName(account.provider)} shows its own verified mark on this
@@ -695,7 +699,7 @@ function SocialAccountFact({
     <ConnectorAnchor
       href={socialProfileHref(account.url)}
       className={statusClass}
-      title={account.healthMessage}
+      title={officialLine || account.healthMessage}
       label={`Open ${providerName(account.provider)} profile`}
     >
       {inner}
@@ -2106,22 +2110,15 @@ export default function Marketplace() {
                       </span>
                     </div>
                     <div className="social-facts" aria-label={`${socialAccounts.length} linked social accounts`}>
-                      {listing.source === "demo" ? (
-                        socialAccounts.length ? socialAccounts.map((account, index) => (
-                          <SocialAccountFact
-                            account={account}
-                            className="social-fact"
-                            variant="card"
-                            key={`${account.provider}-${index}`}
-                          />
-                        )) : (
-                          <span className="no-social">No social account supplied</span>
-                        )
-                      ) : (
-                        <OfficialConnectorCatalog
-                          accounts={socialAccounts}
-                          heading="Official social connectors"
+                      {socialAccounts.length ? socialAccounts.map((account, index) => (
+                        <SocialAccountFact
+                          account={account}
+                          className="social-fact"
+                          variant="card"
+                          key={`${account.provider}-${index}`}
                         />
+                      )) : (
+                        <span className="no-social">No social account supplied</span>
                       )}
                       {listing.source === "registry" ? (
                         <ConnectorAnchor
@@ -2616,12 +2613,6 @@ export default function Marketplace() {
                   <div className="seller-card">
                     <strong>Listed by {selectedListing.sellerName}</strong>
                     <p>{selectedListing.locationLabel} · public trust record</p>
-                    {selectedListing.source === "demo" ? null : (
-                      <OfficialConnectorCatalog
-                        accounts={socialAccountsFor(selectedListing)}
-                        heading="Official social connectors"
-                      />
-                    )}
                     <div className="reputation-grid">
                       <div>
                         <span>Seller rating</span>
@@ -2640,22 +2631,23 @@ export default function Marketplace() {
                         <strong>{reputationFor(selectedListing).socialCreditScore}</strong>
                       </div>
                     </div>
-                    {selectedListing.source === "demo" ? (
-                      <div className="detail-social-list">
-                        {socialAccountsFor(selectedListing).length ? (
-                          socialAccountsFor(selectedListing).map((account, index) => (
-                            <SocialAccountFact
-                              account={account}
-                              className="detail-social-account"
-                              variant="detail"
-                              key={`${account.provider}-${index}`}
-                            />
-                          ))
-                        ) : (
-                          <span className="no-social">No social account supplied</span>
-                        )}
-                      </div>
-                    ) : null}
+                    <div className="detail-social-list">
+                      {socialAccountsFor(selectedListing).length ? (
+                        socialAccountsFor(selectedListing).map((account, index) => (
+                          <SocialAccountFact
+                            account={account}
+                            className="detail-social-account"
+                            variant="detail"
+                            key={`${account.provider}-${index}`}
+                          />
+                        ))
+                      ) : (
+                        <span className="no-social">No social account supplied</span>
+                      )}
+                      {selectedListing.source === "demo" ? null : missingConnectorNote(
+                        socialAccountsFor(selectedListing),
+                      )}
+                    </div>
                     <button
                       className="recheck-button"
                       onClick={() => void recheckListingLinks(selectedListing)}

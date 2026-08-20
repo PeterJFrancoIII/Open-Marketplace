@@ -695,7 +695,7 @@ a {
 }
 
 .social-fact {
-  align-items: start;
+  align-items: center;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -735,18 +735,17 @@ a.detail-social-account.social-connected:hover,
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .social-fact-copy strong {
   font-size: 9px;
-  white-space: normal;
 }
 
 .social-fact-copy small {
   color: var(--muted);
   font-size: 8px;
   margin-top: 2px;
-  white-space: normal;
 }
 
 .link-health {
@@ -1420,7 +1419,7 @@ a.detail-social-account.social-connected:hover,
 }
 
 .detail-social-account {
-  align-items: start;
+  align-items: center;
   border: 1px solid var(--line);
   border-radius: 9px;
   display: grid;
@@ -2480,8 +2479,8 @@ a.detail-social-account.social-connected:hover,
 }
 
 .portal-connector-identity {
-  align-items: start;
-  display: grid;
+  align-items: center;
+  display: flex;
   gap: 12px;
   min-width: 0;
 }
@@ -2499,20 +2498,10 @@ a.detail-social-account.social-connected:hover,
   width: 48px;
 }
 
-.social-fact .official-connector-disclosure,
-.detail-social-account .official-connector-disclosure {
-  margin-top: 6px;
-}
-
-.social-fact .portal-connector-facts dt,
-.detail-social-account .portal-connector-facts dt {
-  font-size: 8px;
-}
-
-.social-fact .portal-connector-facts dd,
-.detail-social-account .portal-connector-facts dd {
-  font-size: 9px;
-  overflow-wrap: anywhere;
+.official-connector-chips-title {
+  display: block;
+  font-size: 12px;
+  margin: 2px 0;
 }
 
 .portal-connector-identity img {
@@ -2553,42 +2542,6 @@ a.detail-social-account.social-connected:hover,
 
 .portal-connector-facts dd {
   margin: 0;
-}
-
-.official-connector-catalog {
-  display: grid;
-  gap: 10px;
-}
-
-.official-connector-catalog-title {
-  display: block;
-  font-size: 12px;
-  margin: 8px 0 2px;
-}
-
-.official-connector-catalog-row {
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  display: grid;
-  gap: 8px;
-  padding: 8px;
-}
-
-.official-connector-catalog-head {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.official-connector-catalog-head span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.official-connector-profile-link {
-  justify-self: start;
 }
 
 .portal-connector-actions {

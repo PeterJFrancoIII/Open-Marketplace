@@ -133,6 +133,22 @@ export function officialConnectorDisplay(facts: OfficialConnectorFacts) {
   };
 }
 
+export function officialConnectorSummary(official: OfficialConnectorDisplay): string {
+  return [
+    official.handle ? `@${official.handle}` : "",
+    ...official.alsoKnownAs,
+    ...official.details,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+export function officialConnectorLine(official: OfficialConnectorDisplay): string {
+  return [officialConnectorSummary(official), official.bio, official.websiteUrl]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function officialConnectorRows(facts: OfficialConnectorFacts) {
   const rows: { label: string; value: string }[] = [];
   const name = trimText(facts.name);

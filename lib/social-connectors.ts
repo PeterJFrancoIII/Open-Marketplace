@@ -453,12 +453,12 @@ export async function readOfficialSocialProfile(
     if (!id) return null;
     const username = typeof user.username === "string" ? user.username.trim() : "";
     const avatar =
-      typeof user.avatar_url === "string"
-        ? user.avatar_url
-        : typeof user.avatar_large_url === "string"
-          ? user.avatar_large_url
-          : typeof user.avatar_url_100 === "string"
-            ? user.avatar_url_100
+      typeof user.avatar_large_url === "string"
+        ? user.avatar_large_url
+        : typeof user.avatar_url_100 === "string"
+          ? user.avatar_url_100
+          : typeof user.avatar_url === "string"
+            ? user.avatar_url
             : undefined;
     const bio =
       typeof user.bio_description === "string" ? user.bio_description.trim() : "";

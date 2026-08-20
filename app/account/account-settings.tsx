@@ -23,9 +23,9 @@ import {
 import { FACEBOOK_CONNECT_SCOPES } from "../../lib/facebook-listing-proof";
 import {
   officialConnectorDisplay,
+  officialConnectorSummary,
   factsFromFacebookConnection,
 } from "../../lib/official-connector-facts";
-import { OfficialConnectorDisclosure } from "../official-connector-disclosure";
 import {
   SOCIAL_CONNECTORS,
   TIKTOK_CONNECT_SCOPES,
@@ -804,12 +804,35 @@ export default function AccountSettings({
               {connected ? (
                 <>
                   <div className="portal-connector-identity">
-                    <OfficialConnectorDisclosure
-                      official={official}
-                      emptyLabel={`${connector.label} account connected.`}
-                      rowKey={connector.id}
-                    />
+                    {official.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={official.imageUrl} alt="" width={48} height={48} />
+                    ) : null}
                     <div>
+                      <p>
+                        {official.headline
+                          ? official.headline
+                          : `${connector.label} account connected.`}
+                        {officialConnectorSummary(official)
+                          ? ` · ${officialConnectorSummary(official)}`
+                          : ""}
+                      </p>
+                      {official.bio ? (
+                        <p className="portal-settings-note">{official.bio}</p>
+                      ) : null}
+                      {official.websiteUrl ? (
+                        <p className="portal-settings-note">{official.websiteUrl}</p>
+                      ) : null}
+                      {official.bannerUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          className="portal-connector-banner"
+                          src={official.bannerUrl}
+                          alt=""
+                          width={160}
+                          height={48}
+                        />
+                      ) : null}
                       {official.providerVerified ? (
                         <p className="portal-settings-note">
                           {connector.label} shows its own verified mark on this

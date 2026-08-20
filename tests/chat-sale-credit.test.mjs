@@ -296,7 +296,7 @@ test("chat and sold-archive source contracts stay private and session-gated", as
     new URL("../app/account/messages/messages-client.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(messagesUi, /OfficialConnectorCatalog/);
+  assert.match(messagesUi, /OfficialConnectorChips/);
   assert.match(messagesUi, /Buyer official social connectors/);
   assert.match(messagesUi, /Seller official social connectors/);
   assert.match(messagesUi, /Pending/);

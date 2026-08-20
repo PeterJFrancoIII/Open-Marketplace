@@ -7,6 +7,7 @@ import {
   factsFromFacebookConnection,
   factsFromSocialProof,
   officialConnectorDisplay,
+  officialConnectorLine,
   publicConnectorCatalog,
 } from "../lib/official-connector-facts.ts";
 import { connectedFacebookSocialProof } from "../lib/facebook-listing-proof.ts";
@@ -55,6 +56,10 @@ test("official connector display includes every stored public field", () => {
   assert.equal(display.bio, "Seller bio from Facebook");
   assert.equal(display.websiteUrl, "https://www.example.com");
   assert.equal(display.providerVerified, true);
+  assert.equal(
+    officialConnectorLine(display),
+    "@peterfranco · Pete · 1.2K followers · 80 following · 3.4K likes · 42 posts · 3 lists · BUSINESS · New York, NY · Hometown Philadelphia, PA · en_US · male · ages 21-21 · Joined Jun 2018 · Seller bio from Facebook · https://www.example.com",
+  );
   assert.deepEqual(
     display.rows.map((row) => row.label),
     [

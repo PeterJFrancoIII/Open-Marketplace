@@ -25,7 +25,7 @@ import {
   saleTrackingDetails,
 } from "../../../lib/tracking-embed";
 import type { MediaManifest, SocialProof } from "../../../lib/types";
-import { OfficialConnectorCatalog } from "../../official-connector-disclosure";
+import { OfficialConnectorChips } from "../../official-connector-disclosure";
 
 type Rating = { score: number; note: string };
 
@@ -1020,7 +1020,7 @@ export default function MessagesClient({
             <p className="portal-lead">
               With {otherName}. Listing is {conversation.listingStatus}.
             </p>
-            <OfficialConnectorCatalog
+            <OfficialConnectorChips
               accounts={
                 conversation.myRole === "buyer"
                   ? conversation.sellerSocialProofs

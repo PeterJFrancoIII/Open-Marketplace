@@ -774,6 +774,58 @@ function paypalLinkLabel(listing: Listing) {
   return listing.paypalLinked ? "PayPal · Linked" : "PayPal · Not linked";
 }
 
+function listingPaypalDestination(listing: Listing) {
+  return (listing.paymentDestinations ?? []).find(
+    (destination) => destination.rail === "paypal",
+  );
+}
+
+function PayPalListingFact({
+  listing,
+  className,
+  variant,
+}: {
+  listing: Listing;
+  className: string;
+  variant: "card" | "detail";
+}) {
+  const paypal = listingPaypalDestination(listing);
+  const destination = paypal?.destination?.trim() ?? "";
+  const copy = (
+    <>
+      <strong>{paypalLinkLabel(listing)}</strong>
+      <small>
+        {listing.paypalLinked
+          ? variant === "detail"
+            ? "This PayPal account is currently linked with PayPal Login."
+            : "Linked with PayPal Login"
+          : variant === "detail"
+            ? "This seller has not linked PayPal."
+            : "Seller has not linked PayPal"}
+        {destination ? ` · ${destination}` : ""}
+      </small>
+    </>
+  );
+  return (
+    <ConnectorAnchor
+      href={paypal ? paymentLinkFor(paypal, listingPayDetails(listing)).href ?? "" : ""}
+      className={`${className} social-connected status-${listing.paypalLinked ? "active" : "unknown"}`}
+      title={
+        listing.paypalLinked
+          ? "Linked with PayPal Login"
+          : "Seller has not linked PayPal"
+      }
+      label="Pay with PayPal"
+    >
+      <span className="proof-mark">pp</span>
+      {variant === "card" ? <span className="social-fact-copy">{copy}</span> : <span>{copy}</span>}
+      <span className="link-health">
+        {listing.paypalLinked ? "Linked" : "Not linked"}
+      </span>
+    </ConnectorAnchor>
+  );
+}
+
 function socialProfileHref(value?: string) {
   if (!value?.trim()) return "";
   try {
@@ -796,11 +848,11 @@ function listingPayDetails(listing: Listing) {
   };
 }
 
-function paypalConnectorHref(listing: Listing) {
-  const paypal = (listing.paymentDestinations ?? []).find(
-    (destination) => destination.rail === "paypal",
-  );
-  return paypal ? paymentLinkFor(paypal, listingPayDetails(listing)).href ?? "" : "";
+function publicPayLinksFor(listing: Listing) {
+  return paymentLinksFor(
+    listing.paymentDestinations ?? [],
+    listingPayDetails(listing),
+  ).filter((link) => link.rail !== "paypal");
 }
 
 function healthLabel(health: SocialProof["health"]) {
@@ -2121,29 +2173,11 @@ export default function Marketplace() {
                         <span className="no-social">No social account supplied</span>
                       )}
                       {listing.source === "registry" ? (
-                        <ConnectorAnchor
-                          href={paypalConnectorHref(listing)}
-                          className={`social-fact social-connected status-${listing.paypalLinked ? "active" : "unknown"}`}
-                          title={
-                            listing.paypalLinked
-                              ? "Linked with PayPal Login"
-                              : "Seller has not linked PayPal"
-                          }
-                          label="Pay with PayPal"
-                        >
-                          <span className="proof-mark">pp</span>
-                          <span className="social-fact-copy">
-                            <strong>{paypalLinkLabel(listing)}</strong>
-                            <small>
-                              {listing.paypalLinked
-                                ? "Linked with PayPal Login"
-                                : "Seller has not linked PayPal"}
-                            </small>
-                          </span>
-                          <span className="link-health">
-                            {listing.paypalLinked ? "Linked" : "Not linked"}
-                          </span>
-                        </ConnectorAnchor>
+                        <PayPalListingFact
+                          listing={listing}
+                          className="social-fact"
+                          variant="card"
+                        />
                       ) : null}
                     </div>
                   </div>
@@ -2664,37 +2698,13 @@ export default function Marketplace() {
                       <p className="form-note">
                         Public destinations only. The marketplace does not send, hold, escrow, convert, or protect this transfer.
                       </p>
-                      <ConnectorAnchor
-                        href={paypalConnectorHref(selectedListing)}
-                        className={`detail-social-account social-connected status-${selectedListing.paypalLinked ? "active" : "unknown"}`}
-                        title={
-                          selectedListing.paypalLinked
-                            ? "This PayPal account is currently linked with PayPal Login."
-                            : "This seller has not linked PayPal."
-                        }
-                        label="Pay with PayPal"
-                      >
-                        <span className="proof-mark">pp</span>
-                        <span>
-                          <strong>{paypalLinkLabel(selectedListing)}</strong>
-                          <small>
-                            {selectedListing.paypalLinked
-                              ? "This PayPal account is currently linked with PayPal Login."
-                              : "This seller has not linked PayPal."}
-                          </small>
-                        </span>
-                        <span className="link-health">
-                          {selectedListing.paypalLinked ? "Linked" : "Not linked"}
-                        </span>
-                      </ConnectorAnchor>
-                      {paymentLinksFor(
-                        selectedListing.paymentDestinations ?? [],
-                        listingPayDetails(selectedListing),
-                      ).length
-                        ? paymentLinksFor(
-                            selectedListing.paymentDestinations ?? [],
-                            listingPayDetails(selectedListing),
-                          ).map((link) => (
+                      <PayPalListingFact
+                        listing={selectedListing}
+                        className="detail-social-account"
+                        variant="detail"
+                      />
+                      {publicPayLinksFor(selectedListing).length
+                        ? publicPayLinksFor(selectedListing).map((link) => (
                             link.href ? (
                               <a
                                 className="detail-social-account"
@@ -2720,7 +2730,7 @@ export default function Marketplace() {
                               </button>
                             )
                           ))
-                        : (
+                        : listingPaypalDestination(selectedListing) ? null : (
                           <span className="no-social">Seller has not published a public pay-to destination.</span>
                         )}
                     </div>

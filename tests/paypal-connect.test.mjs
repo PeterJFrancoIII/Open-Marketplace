@@ -448,6 +448,7 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(settings, /does not execute, insure, escrow/);
   assert.doesNotMatch(settings, /Orders API|CreateShipment|\/v2\/checkout\/orders|payouts/i);
   assert.match(marketplace, /PayPal · Linked/);
+  assert.match(marketplace, /PayPalListingFact/);
   assert.match(marketplace, /listingPayDetails/);
   assert.match(marketplace, /goods_and_services/);
   assert.match(payLink, /cmd/);

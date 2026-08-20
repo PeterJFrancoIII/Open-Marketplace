@@ -92,7 +92,9 @@ function readOauthError() {
   if (typeof window === "undefined") return "";
   const error = new URLSearchParams(window.location.search).get("error");
   if (!error) return "";
-  if (error === "paypal") return "PayPal Link did not complete. Try again.";
+  if (error === "paypal") {
+    return "PayPal Login is not configured on this copy of the site yet. Connect PayPal cannot finish until a PayPal app is added to this preview.";
+  }
   return "Social Connect did not complete. Try again.";
 }
 
@@ -553,6 +555,13 @@ export default function AccountSettings({
     setPending("paypal-connect");
     setStatus("");
     setError("");
+    if (!paypalConnection.available) {
+      setError(
+        "PayPal Login is not configured on this copy of the site yet. Connect PayPal cannot finish until a PayPal app is added to this preview.",
+      );
+      setPending(null);
+      return;
+    }
     window.location.assign("/api/paypal/connect");
   }
 

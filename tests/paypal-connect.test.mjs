@@ -445,6 +445,8 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(settings, /Link PayPal/);
   assert.match(settings, /Connect PayPal/);
   assert.match(settings, /data-feedback-surface="Connect PayPal"/);
+  assert.match(settings, /PayPal Login is not configured on this copy/);
+  assert.match(settings, /if \(!paypalConnection.available\)/);
   assert.doesNotMatch(settings, /paypal && paypalConnection.available \?/);
   assert.match(settings, /\/api\/paypal\/connect/);
   assert.match(settings, /not a checkout/);

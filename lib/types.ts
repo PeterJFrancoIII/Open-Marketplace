@@ -45,6 +45,10 @@ export type SocialProof = {
   url: string;
   handle?: string;
   displayName?: string;
+  firstName?: string;
+  lastName?: string;
+  middleName?: string;
+  shortName?: string;
   accountCreatedAt?: string;
   connectionCount?: number;
   connectionLabel?: "friends" | "followers" | "connections";
@@ -59,6 +63,16 @@ export type SocialProof = {
   hasAccountType?: boolean;
   hasProviderBadge?: boolean;
   listedCount?: number;
+  imageUrl?: string;
+  bio?: string;
+  location?: string;
+  hometown?: string;
+  websiteUrl?: string;
+  bannerUrl?: string;
+  locale?: string;
+  gender?: string;
+  ageRange?: string;
+  accountType?: string;
   metricsSource?: "self-reported" | "oauth";
   health?: "active" | "dead" | "unknown" | "invalid" | "checking";
   lastCheckedAt?: string;

@@ -34,7 +34,8 @@ test("connected Facebook replaces typed Facebook and drops pasted profiles", () 
   assert.equal(merged.length, 1);
   assert.equal(merged[0].provider, "facebook");
   assert.equal(merged[0].metricsSource, "oauth");
-  assert.equal(merged[0].handle, "Peter Franco");
+  assert.equal(merged[0].displayName, "Peter Franco");
+  assert.equal(merged[0].handle, undefined);
   assert.equal(merged[0].url, "");
   assert.equal(merged[0].connectionCount, undefined);
   assert.equal(merged[0].accountCreatedAt, undefined);
@@ -84,6 +85,12 @@ test("social connect completes a username into the official profile URL", () => 
     "https://www.facebook.com/profile.php?id=61500000000000",
   );
   assert.equal(publicFacebookProfileUrl("https://facebook.com"), "");
+  assert.equal(
+    publicFacebookProfileUrl(
+      "https://www.facebook.com/app_scoped_user_id/example-app-scoped-id/",
+    ),
+    "",
+  );
   assert.equal(expandSocialProfileInput("facebook", ""), "");
 });
 
@@ -112,6 +119,13 @@ test("social health does not invent Facebook friends or require a profile URL fo
     provider: "facebook",
     url: "https://www.facebook.com/openmarketplace.seller",
     handle: "Peter Franco",
+    displayName: "Peter Franco",
+    location: "New York, NY",
+    hometown: "Philadelphia, PA",
+    bio: "Seller bio from Facebook",
+    locale: "en_US",
+    gender: "male",
+    ageRange: "21-21",
     metricsSource: "oauth",
     accountCreatedAt: "2012-06-15",
     connectionCount: 5400,
@@ -121,12 +135,22 @@ test("social health does not invent Facebook friends or require a profile URL fo
   assert.equal(checked.url, "https://www.facebook.com/openmarketplace.seller");
   assert.equal(checked.connectionCount, undefined);
   assert.equal(checked.accountCreatedAt, undefined);
+  assert.equal(checked.location, "New York, NY");
+  assert.equal(checked.hometown, "Philadelphia, PA");
+  assert.equal(checked.bio, "Seller bio from Facebook");
+  assert.equal(checked.locale, "en_US");
+  assert.equal(checked.gender, "male");
+  assert.equal(checked.ageRange, "21-21");
   assert.match(checked.healthMessage ?? "", /Connected with Facebook Login/);
 });
 
 test("listing cards show Connected Facebook instead of a typed URL", async () => {
   const marketplace = await readFile(new URL("../app/marketplace.tsx", import.meta.url), "utf8");
   assert.match(marketplace, /Connected with Facebook Login/);
+  assert.match(marketplace, /officialConnectorDisplay/);
+  assert.match(marketplace, /OfficialConnectorDisclosure/);
+  assert.match(marketplace, /OfficialConnectorCatalog/);
+  assert.match(marketplace, /Official social connectors/);
   assert.match(marketplace, /isConnectedFacebookProof/);
   assert.match(marketplace, /ConnectorAnchor/);
   assert.match(marketplace, /socialProfileHref/);

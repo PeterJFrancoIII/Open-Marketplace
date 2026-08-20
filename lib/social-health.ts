@@ -1,3 +1,4 @@
+import type { SocialConnectorId } from "./social-connectors";
 import type { SocialProof } from "./types";
 
 type SupportedProvider = SocialConnectorId;
@@ -236,6 +237,7 @@ export async function checkSocialAccount(account: SocialProof): Promise<SocialPr
           : provider;
     if (provider === "facebook") {
       return {
+        ...account,
         provider: "facebook",
         url: keepHttpsFacebookUrl(account.url),
         handle,
@@ -244,6 +246,12 @@ export async function checkSocialAccount(account: SocialProof): Promise<SocialPr
         healthMessage: "Connected with Facebook Login.",
         connectionLabel: "friends",
         lastCheckedAt: checkedAt,
+        connectionCount: undefined,
+        followingCount: undefined,
+        likesCount: undefined,
+        contentCount: undefined,
+        listedCount: undefined,
+        accountCreatedAt: undefined,
       };
     }
     return {

@@ -15,7 +15,6 @@ import { authAccounts, listings, profiles, saleHistory } from "../../../db/schem
 import {
   getMarketplaceSession,
   persistAllConnectedSocial,
-  persistFacebookProfileLink,
 } from "../../../lib/auth";
 import {
   isConnectedFacebookProof,
@@ -141,14 +140,15 @@ async function refreshMissingFacebookProfileLinks(
     const accounts = parseSocialAccountsJson(
       profileById.get(sellerId)?.socialAccountsJson,
     );
-    return !publicFacebookProfileUrl(
-      accounts.find(isConnectedFacebookProof)?.url,
-    );
+    const facebook = accounts.find(isConnectedFacebookProof);
+    if (!facebook) return true;
+    if (!publicFacebookProfileUrl(facebook.url)) return true;
+    return !facebook.displayName && !facebook.location && !facebook.hometown && !facebook.imageUrl;
   });
   if (!missing.length) return profileById;
   await Promise.all(
     missing.map((sellerId) =>
-      persistFacebookProfileLink(
+      persistAllConnectedSocial(
         sellerId,
         profileById.get(sellerId)?.displayName ??
           rows.find((row) => row.sellerId === sellerId)?.sellerName ??

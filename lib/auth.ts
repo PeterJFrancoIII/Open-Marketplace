@@ -767,6 +767,7 @@ export async function persistFacebookProfileLink(
   displayName: string,
   knownLink?: string | null,
   accessToken?: string | null,
+  knownOfficial?: Awaited<ReturnType<typeof readFacebookPublicProfile>> | null,
 ) {
   const db = await getDb();
   const [facebook] = await db
@@ -786,13 +787,27 @@ export async function persistFacebookProfileLink(
     .limit(1);
   const current = parseSocialAccountsJson(profileRow?.socialAccountsJson);
   const token = accessToken || facebook?.accessToken;
-  const official = token ? await readStoredFacebookOfficial(token) : null;
+  const official =
+    knownOfficial ?? (token ? await readStoredFacebookOfficial(token) : null);
   const fetchedLink =
     publicFacebookProfileUrl(knownLink) || official?.link || "";
   const connected = Boolean(facebook || token);
   const next = connected
     ? upsertConnectedFacebookAccount(current, displayName, fetchedLink, {
         displayName: official?.name,
+        firstName: official?.firstName,
+        lastName: official?.lastName,
+        middleName: official?.middleName,
+        shortName: official?.shortName,
+        imageUrl: official?.image,
+        bio: official?.about,
+        location: official?.location,
+        hometown: official?.hometown,
+        websiteUrl: official?.website,
+        bannerUrl: official?.cover,
+        locale: official?.locale,
+        gender: official?.gender,
+        ageRange: official?.ageRange,
         hasOfficialImage: Boolean(official?.image),
         hasBio: Boolean(official?.about),
         hasLocation: Boolean(official?.location || official?.hometown),
@@ -1028,6 +1043,8 @@ export async function getFacebookConnection(
       session.user.id,
       session.user.name,
       profile?.link ?? "",
+      facebook.accessToken,
+      profile,
     );
 
     return publicFacebookConnection(true, true, profile ?? undefined);

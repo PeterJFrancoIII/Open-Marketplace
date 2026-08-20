@@ -22,6 +22,11 @@ import {
 } from "../../lib/shipping-brokers";
 import { FACEBOOK_CONNECT_SCOPES } from "../../lib/facebook-listing-proof";
 import {
+  officialConnectorDisplay,
+  factsFromFacebookConnection,
+} from "../../lib/official-connector-facts";
+import { OfficialConnectorDisclosure } from "../official-connector-disclosure";
+import {
   SOCIAL_CONNECTORS,
   TIKTOK_CONNECT_SCOPES,
   type SocialConnection,
@@ -707,27 +712,31 @@ export default function AccountSettings({
           const connected = facebook ? facebook.connected : Boolean(saved?.connected);
           const needsReconnect =
             connector.id === "tiktok" && Boolean(saved?.needsReconnect);
-          const name = facebook ? facebook.name : saved?.name;
-          const handle = facebook ? null : saved?.handle;
-          const imageUrl = facebook ? facebook.imageUrl : saved?.imageUrl;
           const profileUrl = facebook ? facebook.profileUrl : saved?.profileUrl;
-          const connectionCount = facebook ? null : saved?.connectionCount;
-          const followingCount = facebook ? null : saved?.followingCount;
-          const likesCount = facebook ? null : saved?.likesCount;
-          const contentCount = facebook ? null : saved?.contentCount;
-          const listedCount = facebook ? null : saved?.listedCount;
-          const bio = facebook ? facebook.about : saved?.bio;
-          const location = facebook
-            ? [facebook.location, facebook.hometown].filter(Boolean).join(" · ") || null
-            : saved?.location;
-          const websiteUrl = facebook ? facebook.websiteUrl : saved?.websiteUrl;
-          const bannerUrl = facebook ? facebook.coverUrl : saved?.bannerUrl;
-          const locale = facebook ? facebook.locale : saved?.locale;
-          const gender = facebook ? facebook.gender : null;
-          const ageRange = facebook ? facebook.ageRange : null;
-          const accountType = facebook ? null : saved?.accountType;
-          const providerVerified = Boolean(saved?.providerVerified);
-          const connectionLabel = saved?.connectionLabel;
+          const official = officialConnectorDisplay(
+            facebook
+              ? factsFromFacebookConnection(facebook)
+              : {
+                  name: saved?.name,
+                  handle: saved?.handle,
+                  profileUrl: saved?.profileUrl,
+                  imageUrl: saved?.imageUrl,
+                  bannerUrl: saved?.bannerUrl,
+                  bio: saved?.bio,
+                  location: saved?.location,
+                  websiteUrl: saved?.websiteUrl,
+                  locale: saved?.locale,
+                  accountType: saved?.accountType,
+                  accountCreatedAt: saved?.accountCreatedAt,
+                  connectionCount: saved?.connectionCount,
+                  followingCount: saved?.followingCount,
+                  likesCount: saved?.likesCount,
+                  contentCount: saved?.contentCount,
+                  listedCount: saved?.listedCount,
+                  connectionLabel: saved?.connectionLabel,
+                  providerVerified: saved?.providerVerified,
+                },
+          );
           return (
             <div
               className="portal-settings-row"
@@ -749,14 +758,18 @@ export default function AccountSettings({
               </div>
               {connector.id === "facebook" ? (
                 <p className="portal-settings-note">
-                  Connect Facebook to prove you control the account. This uses
-                  Facebook Login with public_profile, user_link, user_hometown,
-                  and user_location. Facebook Login fills the public profile
-                  URL, hometown, location, locale, gender, age range, and cover
-                  when Facebook sends them. Those values stay on the Facebook
-                  connector and do not replace your Open Marketplace email or
-                  name. It does not sign you in, import listings, or make you
-                  Facebook verified.
+                  Connect Facebook to prove you control the account. Facebook
+                  currently sends name, profile photo, profile link, hometown,
+                  and current city after public_profile, user_link,
+                  user_hometown, and user_location. Facebook no longer gives
+                  apps a bio, cover photo, locale, website, friends list, or
+                  work and education. Gender and age range need extra Facebook
+                  permissions that this app does not request. Those values stay
+                  on the Facebook connector and do not replace your Open
+                  Marketplace email or name. Buyers see these same official
+                  Facebook fields on your listings, and a seller sees the
+                  buyer’s official connectors in Messages. It does not sign you in,
+                  import listings, or make you Facebook verified.
                 </p>
               ) : connector.id === "tiktok" ? (
                 <p className="portal-settings-note">
@@ -791,49 +804,20 @@ export default function AccountSettings({
               {connected ? (
                 <>
                   <div className="portal-connector-identity">
-                    {imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={imageUrl} alt="" width={48} height={48} />
-                    ) : null}
-                    <p>
-                      {name
-                        ? name
-                        : `${connector.label} account connected.`}
-                      {handle ? ` (@${handle.replace(/^@/, "")})` : ""}
-                      {typeof connectionCount === "number"
-                        ? ` · ${connectionCount} ${connectionLabel ?? "followers"}`
-                        : ""}
-                      {typeof followingCount === "number"
-                        ? ` · ${followingCount} following`
-                        : ""}
-                      {typeof likesCount === "number" ? ` · ${likesCount} likes` : ""}
-                      {typeof contentCount === "number"
-                        ? ` · ${contentCount} posts`
-                        : ""}
-                      {typeof listedCount === "number"
-                        ? ` · ${listedCount} lists`
-                        : ""}
-                      {accountType ? ` · ${accountType}` : ""}
-                      {location ? ` · ${location}` : ""}
-                      {locale ? ` · ${locale}` : ""}
-                      {gender ? ` · ${gender}` : ""}
-                      {ageRange ? ` · ages ${ageRange}` : ""}
-                    </p>
-                    {bio ? <p className="portal-settings-note">{bio}</p> : null}
-                    {websiteUrl ? (
-                      <p className="portal-settings-note">{websiteUrl}</p>
-                    ) : null}
-                    {bannerUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={bannerUrl} alt="" width={160} height={48} />
-                    ) : null}
-                    {providerVerified ? (
-                      <p className="portal-settings-note">
-                        {connector.label} shows its own verified mark on this
-                        account. That is not an Open Marketplace verification
-                        badge.
-                      </p>
-                    ) : null}
+                    <OfficialConnectorDisclosure
+                      official={official}
+                      emptyLabel={`${connector.label} account connected.`}
+                      rowKey={connector.id}
+                    />
+                    <div>
+                      {official.providerVerified ? (
+                        <p className="portal-settings-note">
+                          {connector.label} shows its own verified mark on this
+                          account. That is not an Open Marketplace verification
+                          badge.
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="portal-connector-actions">
                     {profileUrl ? (

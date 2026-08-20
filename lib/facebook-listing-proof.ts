@@ -26,6 +26,7 @@ const BLOCKED_FACEBOOK_PATHS = new Set([
   "recover",
   "reg",
   "r.php",
+  "app_scoped_user_id",
 ]);
 
 function hostMatches(hostname: string, suffix: string) {
@@ -94,31 +95,82 @@ export function isConnectedFacebookProof(account: SocialProof): boolean {
   return account.provider === "facebook" && account.metricsSource === "oauth";
 }
 
+export type OfficialFacebookListingFields = {
+  displayName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  middleName?: string | null;
+  shortName?: string | null;
+  imageUrl?: string | null;
+  bio?: string | null;
+  location?: string | null;
+  hometown?: string | null;
+  websiteUrl?: string | null;
+  bannerUrl?: string | null;
+  locale?: string | null;
+  gender?: string | null;
+  ageRange?: string | null;
+  hasOfficialImage?: boolean;
+  hasBio?: boolean;
+  hasLocation?: boolean;
+  hasWebsite?: boolean;
+  hasBanner?: boolean;
+};
+
+export function facebookVanityHandle(value?: string | null): string {
+  const url = publicFacebookProfileUrl(value);
+  if (!url) return "";
+  try {
+    const first = new URL(url).pathname.split("/").filter(Boolean)[0] ?? "";
+    if (!first || first.toLowerCase() === "profile.php") return "";
+    return first;
+  } catch {
+    return "";
+  }
+}
+
+function optionalOfficialText(value?: string | null) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 export function connectedFacebookSocialProof(
   sellerName: string,
   profileUrl = "",
-  official: {
-    displayName?: string | null;
-    hasOfficialImage?: boolean;
-    hasBio?: boolean;
-    hasLocation?: boolean;
-    hasWebsite?: boolean;
-    hasBanner?: boolean;
-  } = {},
+  official: OfficialFacebookListingFields = {},
 ): SocialProof {
-  const handle = sellerName.trim() || "Facebook";
   const url = publicFacebookProfileUrl(profileUrl);
-  const displayName = official.displayName?.trim() || undefined;
+  const displayName =
+    official.displayName?.trim() || sellerName.trim() || undefined;
+  const handle = facebookVanityHandle(url) || undefined;
+  const imageUrl = optionalOfficialText(official.imageUrl);
+  const bio = optionalOfficialText(official.bio);
+  const location = optionalOfficialText(official.location);
+  const hometown = optionalOfficialText(official.hometown);
+  const websiteUrl = optionalOfficialText(official.websiteUrl);
+  const bannerUrl = optionalOfficialText(official.bannerUrl);
   return {
     provider: "facebook",
     url,
     handle,
     displayName,
-    hasOfficialImage: Boolean(official.hasOfficialImage),
-    hasBio: Boolean(official.hasBio),
-    hasLocation: Boolean(official.hasLocation),
-    hasWebsite: Boolean(official.hasWebsite),
-    hasBanner: Boolean(official.hasBanner),
+    firstName: optionalOfficialText(official.firstName),
+    lastName: optionalOfficialText(official.lastName),
+    middleName: optionalOfficialText(official.middleName),
+    shortName: optionalOfficialText(official.shortName),
+    imageUrl,
+    bio,
+    location,
+    hometown,
+    websiteUrl,
+    bannerUrl,
+    locale: optionalOfficialText(official.locale),
+    gender: optionalOfficialText(official.gender),
+    ageRange: optionalOfficialText(official.ageRange),
+    hasOfficialImage: Boolean(official.hasOfficialImage || imageUrl),
+    hasBio: Boolean(official.hasBio || bio),
+    hasLocation: Boolean(official.hasLocation || location || hometown),
+    hasWebsite: Boolean(official.hasWebsite || websiteUrl),
+    hasBanner: Boolean(official.hasBanner || bannerUrl),
     metricsSource: "oauth",
     health: "active",
     healthMessage: "Connected with Facebook Login.",
@@ -143,14 +195,7 @@ export function mergeConnectedFacebookProof(
     connectedFacebookSocialProof(
       sellerName,
       publicFacebookProfileUrl(oauthFacebook?.url),
-      {
-        displayName: oauthFacebook?.displayName,
-        hasOfficialImage: oauthFacebook?.hasOfficialImage,
-        hasBio: oauthFacebook?.hasBio,
-        hasLocation: oauthFacebook?.hasLocation,
-        hasWebsite: oauthFacebook?.hasWebsite,
-        hasBanner: oauthFacebook?.hasBanner,
-      },
+      oauthFacebook,
     ),
     ...others,
   ];
@@ -160,14 +205,7 @@ export function upsertConnectedFacebookAccount(
   accounts: SocialProof[],
   sellerName: string,
   profileUrl: string,
-  official: {
-    displayName?: string | null;
-    hasOfficialImage?: boolean;
-    hasBio?: boolean;
-    hasLocation?: boolean;
-    hasWebsite?: boolean;
-    hasBanner?: boolean;
-  } = {},
+  official: OfficialFacebookListingFields = {},
 ): SocialProof[] {
   const others = accounts.filter(
     (account) =>

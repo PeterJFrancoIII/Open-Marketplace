@@ -296,6 +296,9 @@ test("chat and sold-archive source contracts stay private and session-gated", as
     new URL("../app/account/messages/messages-client.tsx", import.meta.url),
     "utf8",
   );
+  assert.match(messagesUi, /OfficialConnectorCatalog/);
+  assert.match(messagesUi, /Buyer official social connectors/);
+  assert.match(messagesUi, /Seller official social connectors/);
   assert.match(messagesUi, /Pending/);
   assert.match(messagesUi, /In-Transfer/);
   assert.match(messagesUi, /SALE_STATUSES.map/);
@@ -537,6 +540,8 @@ test("chat, dual confirm, ratings, and Social Credit follow the owner sale flow"
   const conversation = (await started.json()).conversation;
   assert.equal(conversation.buyerId, buyerId);
   assert.equal(conversation.sellerId, sellerId);
+  assert.deepEqual(conversation.buyerSocialProofs, []);
+  assert.deepEqual(conversation.sellerSocialProofs, []);
 
   const startedAgain = await postJson(worker, env, "/api/conversations", buyerJar, {
     listingId: listing.id,

@@ -35,6 +35,7 @@ import {
   type SalePhotoKind,
 } from "./sale-evidence";
 import { requireActualTrackingNumber } from "./tracking-number";
+import { persistAllConnectedSocial } from "./auth";
 import { parseSocialAccountsJson } from "./profile-settings";
 import { computeSocialCreditScore } from "./social-credit";
 import { connectedSocialCreditInput } from "./social-connectors";
@@ -117,6 +118,24 @@ export async function ensureProfile(
     });
 }
 
+async function refreshOfficialSocialForParties(
+  db: Db,
+  row: typeof conversations.$inferSelect,
+) {
+  const [buyer] = await db
+    .select()
+    .from(profiles)
+    .where(eq(profiles.id, row.buyerId))
+    .limit(1);
+  const [seller] = await db
+    .select()
+    .from(profiles)
+    .where(eq(profiles.id, row.sellerId))
+    .limit(1);
+  await persistAllConnectedSocial(row.buyerId, buyer?.displayName ?? "Buyer");
+  await persistAllConnectedSocial(row.sellerId, seller?.displayName ?? "Seller");
+}
+
 export async function startConversation(
   db: Db,
   actor: ConversationActor,
@@ -147,6 +166,8 @@ export async function startConversation(
 
   await ensureProfile(db, actor.id, actor.name);
   await ensureProfile(db, listing.sellerId, listing.sellerName);
+  await persistAllConnectedSocial(actor.id, actor.name);
+  await persistAllConnectedSocial(listing.sellerId, listing.sellerName);
 
   const [existing] = await db
     .select()
@@ -207,6 +228,14 @@ export async function getConversationForUser(
   conversationId: string,
   userId: string,
 ) {
+  const [row] = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  if (row && (row.buyerId === userId || row.sellerId === userId)) {
+    await refreshOfficialSocialForParties(db, row);
+  }
   return conversationPayload(db, conversationId, userId);
 }
 
@@ -215,7 +244,7 @@ export async function listMessages(
   conversationId: string,
   userId: string,
 ) {
-  const conversation = await conversationPayload(db, conversationId, userId);
+  const conversation = await getConversationForUser(db, conversationId, userId);
   if (!conversation) return null;
   const messages = await db
     .select()
@@ -1455,6 +1484,8 @@ async function conversationPayload(db: Db, conversationId: string, userId: strin
     sellerId: row.sellerId,
     buyerName: buyer?.displayName ?? buyerUser?.name ?? "Buyer",
     sellerName: seller?.displayName ?? listing?.sellerName ?? "Seller",
+    buyerSocialProofs: parseSocialAccountsJson(buyer?.socialAccountsJson),
+    sellerSocialProofs: parseSocialAccountsJson(seller?.socialAccountsJson),
     lastMessageAt: row.lastMessageAt,
     lastMessagePreview: lastMessage?.body?.slice(0, 140) ?? "",
     buyerSaleStatus: partySaleStatus(row, "buyer"),

@@ -223,6 +223,13 @@ export function connectedSocialProof(
     fallbackName.trim() ||
     connector?.label ||
     profile.provider;
+  const imageUrl = profile.imageUrl?.trim() || undefined;
+  const bio = profile.bio?.trim() || undefined;
+  const location = profile.location?.trim() || undefined;
+  const websiteUrl = profile.websiteUrl?.trim() || undefined;
+  const bannerUrl = profile.bannerUrl?.trim() || undefined;
+  const locale = profile.locale?.trim() || undefined;
+  const accountType = profile.accountType?.trim() || undefined;
   return {
     provider: profile.provider,
     url: publicSocialProfileUrl(profile.provider, profile.profileUrl),
@@ -239,12 +246,19 @@ export function connectedSocialProof(
     contentCount: Number.isFinite(profile.contentCount)
       ? profile.contentCount
       : undefined,
-    hasOfficialImage: Boolean(profile.imageUrl?.trim()),
-    hasBio: Boolean(profile.bio?.trim()),
-    hasLocation: Boolean(profile.location?.trim()),
-    hasWebsite: Boolean(profile.websiteUrl?.trim()),
-    hasBanner: Boolean(profile.bannerUrl?.trim()),
-    hasAccountType: Boolean(profile.accountType?.trim()),
+    imageUrl,
+    bio,
+    location,
+    websiteUrl,
+    bannerUrl,
+    locale,
+    accountType,
+    hasOfficialImage: Boolean(imageUrl),
+    hasBio: Boolean(bio),
+    hasLocation: Boolean(location),
+    hasWebsite: Boolean(websiteUrl),
+    hasBanner: Boolean(bannerUrl),
+    hasAccountType: Boolean(accountType),
     hasProviderBadge: profile.providerVerified === true,
     listedCount: Number.isFinite(profile.listedCount) ? profile.listedCount : undefined,
     connectionLabel: connector?.connectionLabel,

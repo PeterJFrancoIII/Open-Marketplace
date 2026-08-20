@@ -678,6 +678,22 @@ test("Facebook identity stays connection-scoped and is not copied into the core 
       body.facebookConnection.coverUrl,
       "https://scontent.xx.fbcdn.net/cover.jpg",
     );
+    const stored = d1.__sqlite
+      .prepare("select social_accounts_json from profiles where id = ?")
+      .get(user.id);
+    const accounts = JSON.parse(stored?.social_accounts_json ?? "[]");
+    assert.equal(accounts[0]?.provider, "facebook");
+    assert.equal(accounts[0]?.displayName, "Peter Franco");
+    assert.equal(accounts[0]?.firstName, "Peter");
+    assert.equal(accounts[0]?.lastName, "Franco");
+    assert.equal(accounts[0]?.handle, "openmarketplace.seller");
+    assert.equal(accounts[0]?.location, "New York, NY");
+    assert.equal(accounts[0]?.hometown, "Philadelphia, PA");
+    assert.equal(accounts[0]?.bio, "Seller bio from Facebook");
+    assert.equal(accounts[0]?.websiteUrl, "https://www.example.com");
+    assert.equal(accounts[0]?.locale, "en_US");
+    assert.equal(accounts[0]?.gender, "male");
+    assert.equal(accounts[0]?.ageRange, "21-21");
     assertNoSecrets(body);
 
     const row = d1.__sqlite
@@ -764,7 +780,8 @@ test("listings show a connected Facebook account without a typed profile URL", a
     assert.equal(publishedSocial.length, 1);
     assert.equal(publishedSocial[0]?.provider, "facebook");
     assert.equal(publishedSocial[0]?.metricsSource, "oauth");
-    assert.equal(publishedSocial[0]?.handle, "Listing Owner");
+    assert.equal(publishedSocial[0]?.handle, "openmarketplace.seller");
+    assert.equal(publishedSocial[0]?.displayName, "Listing Owner");
     assert.equal(publishedSocial[0]?.url, "https://www.facebook.com/openmarketplace.seller");
     assert.equal(publishedSocial[0]?.connectionCount, undefined);
     assert.doesNotMatch(JSON.stringify(publishedSocial), /spoofed\.listing|facebook-app-scoped-id/);
@@ -775,7 +792,8 @@ test("listings show a connected Facebook account without a typed profile URL", a
     const listedBody = await listed.json();
     const listedSocial = JSON.parse(listedBody.listings?.[0]?.socialProofsJson ?? "[]");
     assert.equal(listedSocial[0]?.metricsSource, "oauth");
-    assert.equal(listedSocial[0]?.handle, "Listing Owner");
+    assert.equal(listedSocial[0]?.handle, "openmarketplace.seller");
+    assert.equal(listedSocial[0]?.displayName, "Listing Owner");
     assertNoSecrets(listedBody);
 
     const unlinked = await postJson(
@@ -811,6 +829,10 @@ test("account settings source offers Connect, Connected, and Disconnect only", a
   assert.match(source, /user_hometown/);
   assert.match(source, /user_location/);
   assert.match(source, /Open Facebook profile/);
+  assert.match(source, /officialConnectorDisplay/);
+  assert.match(source, /OfficialConnectorDisclosure/);
+  assert.match(source, /Buyers see these same official/);
+  assert.match(source, /factsFromFacebookConnection/);
   assert.match(source, /Typed usernames[\s\S]*pasted links are not accepted/);
   assert.match(source, /Connect \$\{connector\.label\}/);
   assert.match(source, /SOCIAL_CONNECTORS/);

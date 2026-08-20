@@ -24,7 +24,8 @@ import {
   requireActualTrackingNumber,
   saleTrackingDetails,
 } from "../../../lib/tracking-embed";
-import type { MediaManifest } from "../../../lib/types";
+import type { MediaManifest, SocialProof } from "../../../lib/types";
+import { OfficialConnectorCatalog } from "../../official-connector-disclosure";
 
 type Rating = { score: number; note: string };
 
@@ -54,6 +55,8 @@ type ConversationSummary = {
   sellerId: string;
   buyerName: string;
   sellerName: string;
+  buyerSocialProofs: SocialProof[];
+  sellerSocialProofs: SocialProof[];
   lastMessageAt: string | null;
   lastMessagePreview: string;
   completed: boolean;
@@ -1017,6 +1020,18 @@ export default function MessagesClient({
             <p className="portal-lead">
               With {otherName}. Listing is {conversation.listingStatus}.
             </p>
+            <OfficialConnectorCatalog
+              accounts={
+                conversation.myRole === "buyer"
+                  ? conversation.sellerSocialProofs
+                  : conversation.buyerSocialProofs
+              }
+              heading={
+                conversation.myRole === "buyer"
+                  ? "Seller official social connectors"
+                  : "Buyer official social connectors"
+              }
+            />
 
             <ol className="portal-message-list">
               {messages.length === 0 ? (

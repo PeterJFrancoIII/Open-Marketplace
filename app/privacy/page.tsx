@@ -106,12 +106,16 @@ export default function PrivacyPage() {
           Signed-in people can choose Connect. That uses Facebook Login and
           asks for <code>public_profile</code>, <code>user_link</code>,{" "}
           <code>user_hometown</code>, and <code>user_location</code>. We use
-          the public name, profile photo, profile link, hometown, location,
-          locale, gender, age range, and cover Facebook returns so Account settings
-          can show that the account is Connected and so a listing connector
-          can open that Facebook profile. Those Facebook details stay with
-          the Facebook link. They do not replace your Open Marketplace name
-          or email.
+          the public name, profile photo, profile link, hometown, and current
+          city Facebook returns so the seller in Account settings and buyers on
+          listings see those same official Facebook details. A seller also sees
+          the buyer’s official connectors in Messages. A listing connector can
+          open that Facebook profile. Facebook no longer returns
+          a bio, cover photo,
+          locale, or website to apps. Gender and age range need extra
+          permissions that this app does not request. Those Facebook details
+          stay with the Facebook link. They do not replace your Open
+          Marketplace name or email.
         </p>
         <p>
           Facebook Login is not a way to create or open an Open Marketplace

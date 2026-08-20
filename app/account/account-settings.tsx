@@ -943,7 +943,11 @@ export default function AccountSettings({
           </p>
         </div>
         {MANUAL_PAYMENT_RAILS.map((rail) => (
-          <div className="portal-settings-row" key={rail.id}>
+          <div
+            className="portal-settings-row"
+            id={rail.id === "paypal" ? "paypal-connect-settings" : undefined}
+            key={rail.id}
+          >
             <div className="portal-settings-row-head">
               <strong>{rail.label}</strong>
               {rail.id === "paypal" && paypalConnection.connected ? (
@@ -998,14 +1002,15 @@ export default function AccountSettings({
                     ? "Disconnecting…"
                     : "Disconnect PayPal"}
                 </button>
-              ) : rail.id === "paypal" && paypalConnection.available ? (
+              ) : rail.id === "paypal" ? (
                 <button
                   className="button button-dark"
                   type="button"
+                  data-feedback-surface="Connect PayPal"
                   onClick={onConnectPayPal}
                   disabled={pending !== null}
                 >
-                  {pending === "paypal-connect" ? "Connecting…" : "Link PayPal"}
+                  {pending === "paypal-connect" ? "Connecting…" : "Connect PayPal"}
                 </button>
               ) : null}
               <a

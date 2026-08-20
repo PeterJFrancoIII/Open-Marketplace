@@ -443,6 +443,9 @@ test("account settings and listings source offer Link PayPal without checkout", 
     readFile(new URL("../lib/paypal-pay-link.ts", import.meta.url), "utf8"),
   ]);
   assert.match(settings, /Link PayPal/);
+  assert.match(settings, /Connect PayPal/);
+  assert.match(settings, /data-feedback-surface="Connect PayPal"/);
+  assert.doesNotMatch(settings, /paypal && paypalConnection.available \?/);
   assert.match(settings, /\/api\/paypal\/connect/);
   assert.match(settings, /not a checkout/);
   assert.match(settings, /does not execute, insure, escrow/);

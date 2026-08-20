@@ -575,6 +575,48 @@ export default function AccountSettings({
       setPending(null);
       return;
     }
+    if (railId === "paypal") {
+      try {
+        const response = await fetch("/api/paypal/destination", {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify({ destination }),
+        });
+        const result = (await response.json()) as {
+          error?: string;
+          paypalConnection?: PayPalConnection;
+          paymentDestinations?: PaymentDestination[];
+        };
+        if (response.status === 401) {
+          window.location.assign("/login?returnTo=%2Faccount");
+          return;
+        }
+        if (!response.ok) {
+          setError(result.error ?? "Could not connect PayPal.");
+          return;
+        }
+        if (result.paypalConnection) setPaypalConnection(result.paypalConnection);
+        setPaymentDrafts((current) => ({
+          ...current,
+          paypal:
+            result.paymentDestinations?.find((item) => item.rail === "paypal")
+              ?.destination ?? destination,
+        }));
+        setStatus(
+          "PayPal connected. Buyers will see this public pay-to. This does not sign you in or take payments.",
+        );
+        router.refresh();
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : "Could not connect PayPal.",
+        );
+      } finally {
+        setPending(null);
+      }
+      return;
+    }
     try {
       const result = await saveProfile({
         paymentDestinations: paymentDestinationPayload(),
@@ -596,7 +638,7 @@ export default function AccountSettings({
   }
 
   async function onDisconnectPayment(railId: PaymentRail) {
-    if (railId === "paypal" && paypalConnection.connected) {
+    if (railId === "paypal") {
       await onDisconnectPayPal();
       return;
     }
@@ -649,6 +691,7 @@ export default function AccountSettings({
       const result = (await response.json()) as {
         error?: string;
         paypalConnection?: PayPalConnection;
+        paymentDestinations?: PaymentDestination[];
       };
       if (response.status === 401) {
         window.location.assign("/login?returnTo=%2Faccount");
@@ -1093,10 +1136,12 @@ export default function AccountSettings({
               />
             </label>
             <div className="portal-connector-actions">
-              {rail.id === "paypal" && paypalConnection.connected ? (
+              {rail.id === "paypal" &&
+              (paypalConnection.connected || paymentDrafts.paypal) ? (
                 <button
                   className="button button-ghost"
                   type="button"
+                  data-feedback-surface="Disconnect PayPal"
                   onClick={() => void onDisconnectPayPal()}
                   disabled={pending !== null}
                 >
@@ -1126,8 +1171,7 @@ export default function AccountSettings({
               >
                 Open {rail.label}
               </a>
-              {paymentDrafts[rail.id] &&
-              !(rail.id === "paypal" && paypalConnection.connected) ? (
+              {paymentDrafts[rail.id] && rail.id !== "paypal" ? (
                 <button
                   className="button button-ghost"
                   type="button"

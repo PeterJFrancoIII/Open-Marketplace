@@ -12,7 +12,7 @@ import {
   paypalUsesLiveEnv,
 } from "./paypal-public";
 import { parseShippingBrokersJson, serializePaymentBundle } from "./shipping-brokers";
-import type { PayPalConnection } from "./types";
+import type { PayPalConnection, PaymentDestination } from "./types";
 
 export {
   PAYPAL_CONNECT_SCOPES,
@@ -173,10 +173,10 @@ export async function getPayPalConnection(
   }
 }
 
-export async function writePaypalPaymentDestination(
+export async function replacePaypalDestination(
   userId: string,
   displayName: string,
-  email: string,
+  paypal: PaymentDestination,
 ) {
   const db = await getDb();
   const [profile] = await db
@@ -189,7 +189,7 @@ export async function writePaypalPaymentDestination(
   ).filter((destination) => destination.rail !== "paypal");
   const brokers = parseShippingBrokersJson(profile?.paymentDestinationsJson);
   const paymentDestinationsJson = serializePaymentBundle(
-    [paypalOauthDestination(email), ...destinations],
+    [paypal, ...destinations],
     brokers,
   );
   const updatedAt = new Date().toISOString();
@@ -212,6 +212,18 @@ export async function writePaypalPaymentDestination(
     });
 }
 
+export async function writePaypalPaymentDestination(
+  userId: string,
+  displayName: string,
+  email: string,
+) {
+  await replacePaypalDestination(
+    userId,
+    displayName,
+    paypalOauthDestination(email),
+  );
+}
+
 export async function clearPaypalPaymentDestination(userId: string) {
   const db = await getDb();
   const [profile] = await db
@@ -222,10 +234,7 @@ export async function clearPaypalPaymentDestination(userId: string) {
   if (!profile) return;
   const destinations = parsePaymentDestinationsJson(
     profile.paymentDestinationsJson,
-  ).filter(
-    (destination) =>
-      destination.rail !== "paypal" || destination.source !== "oauth",
-  );
+  ).filter((destination) => destination.rail !== "paypal");
   const brokers = parseShippingBrokersJson(profile.paymentDestinationsJson);
   const paymentDestinationsJson = serializePaymentBundle(destinations, brokers);
   await db

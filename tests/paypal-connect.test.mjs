@@ -425,6 +425,17 @@ test("PayPal connect requires a session and then populates the public pay-to ema
     assert.equal(unlinked.status, 200);
     const unlinkedBody = await unlinked.json();
     assert.equal(unlinkedBody.paypalConnection.connected, false);
+    assert.equal(
+      unlinkedBody.paymentDestinations?.some((item) => item.rail === "paypal"),
+      false,
+    );
+
+    const afterProfile = await getJson(worker, env, "/api/account/profile", cookieJar);
+    const afterProfileBody = await afterProfile.json();
+    assert.equal(
+      afterProfileBody.paymentDestinations?.some((item) => item.rail === "paypal"),
+      false,
+    );
 
     const after = await getJson(worker, env, "/api/listings?limit=80");
     const afterBody = await after.json();
@@ -432,6 +443,80 @@ test("PayPal connect requires a session and then populates the public pay-to ema
   } finally {
     restoreFetch();
   }
+});
+
+test("typed PayPal destination connects and disconnects without other rails", async () => {
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("paypal-typed-destination");
+  const env = createTestEnv(d1, { paypal: false });
+  const cookieJar = new Map();
+
+  await signUp(worker, env, {
+    name: "Typed PayPal Owner",
+    email: "typed-paypal@example.com",
+    password: USER_PASSWORD,
+  });
+  await signIn(worker, env, cookieJar, {
+    email: "typed-paypal@example.com",
+    password: USER_PASSWORD,
+  });
+
+  const savedVenmo = await putJson(worker, env, "/api/account/profile", cookieJar, {
+    paymentDestinations: [
+      { rail: "venmo", destination: "@sellerreed" },
+      { rail: "paypal", destination: "old-paypal@example.com" },
+    ],
+  });
+  assert.equal(savedVenmo.status, 200);
+
+  const unsigned = await postJson(worker, env, "/api/paypal/destination", undefined, {
+    destination: "seller-paypal@example.com",
+  });
+  assert.equal(unsigned.status, 401);
+
+  const connected = await postJson(worker, env, "/api/paypal/destination", cookieJar, {
+    destination: "seller-paypal@example.com",
+  });
+  assert.equal(connected.status, 200);
+  const connectedBody = await connected.json();
+  assert.equal(connectedBody.paypalConnection.available, false);
+  assert.equal(
+    connectedBody.paymentDestinations.find((item) => item.rail === "paypal")?.destination,
+    "seller-paypal@example.com",
+  );
+  assert.equal(
+    connectedBody.paymentDestinations.find((item) => item.rail === "venmo")?.destination,
+    "@sellerreed",
+  );
+
+  const rejected = await postJson(worker, env, "/api/paypal/destination", cookieJar, {
+    destination: "not-a-paypal-value",
+  });
+  assert.equal(rejected.status, 400);
+
+  const unlinked = await postJson(worker, env, "/api/paypal/disconnect", cookieJar, {});
+  assert.equal(unlinked.status, 200);
+  const unlinkedBody = await unlinked.json();
+  assert.equal(
+    unlinkedBody.paymentDestinations?.some((item) => item.rail === "paypal"),
+    false,
+  );
+  assert.equal(
+    unlinkedBody.paymentDestinations.find((item) => item.rail === "venmo")?.destination,
+    "@sellerreed",
+  );
+
+  const after = await getJson(worker, env, "/api/account/profile", cookieJar);
+  const afterBody = await after.json();
+  assert.equal(
+    afterBody.paymentDestinations?.some((item) => item.rail === "paypal"),
+    false,
+  );
+  assert.equal(
+    afterBody.paymentDestinations.find((item) => item.rail === "venmo")?.destination,
+    "@sellerreed",
+  );
 });
 
 test("account settings and listings source offer Link PayPal without checkout", async () => {
@@ -450,7 +535,9 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(settings, /surface-connect-paypal/);
   assert.match(settings, /Enter your public PayPal email or paypal\.me link/);
   assert.match(settings, /onConnectPayment/);
-  assert.match(settings, /onDisconnectPayment/);
+  assert.match(settings, /\/api\/paypal\/destination/);
+  assert.match(settings, /onDisconnectPayPal/);
+  assert.match(settings, /if \(railId === "paypal"\) \{/);
   assert.match(settings, /if \(railId === "paypal" && paypalConnection.available\)/);
   assert.match(settings, /paymentDestinationPayload/);
   assert.doesNotMatch(settings, /paypal && paypalConnection.available \?/);

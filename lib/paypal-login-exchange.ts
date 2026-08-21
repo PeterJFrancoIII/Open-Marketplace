@@ -7,18 +7,20 @@ import {
 } from "./paypal-public";
 
 /**
- * Exchange a Log in with PayPal authorization code. Live Login on this
- * project completed when the token form repeated the same redirect_uri
- * sent to /connect. Keep that URI from the stored attempt, not from the
- * callback request host, so a Pages alias and unique deploy host can differ.
+ * Exchange a Log in with PayPal authorization code using PayPal's current
+ * Login token contract: Basic client authentication plus grant_type and
+ * code only. Live preview recorded paypal-token when the form also sent
+ * redirect_uri. The authorize redirect_uri stays on /connect and in the
+ * stored attempt; it is not repeated here.
  */
 export async function exchangePaypalLoginAuthorizationCode(input: {
   code: string;
-  redirectUri: string;
+  redirectUri?: string;
   clientId: string;
   clientSecret: string;
   live: boolean;
 }) {
+  void input.redirectUri;
   const basic = btoa(`${input.clientId}:${input.clientSecret}`);
   const tokenResponse = await fetch(`${paypalApiOrigin(input.live)}/v1/oauth2/token`, {
     method: "POST",
@@ -30,7 +32,6 @@ export async function exchangePaypalLoginAuthorizationCode(input: {
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code: input.code,
-      redirect_uri: input.redirectUri,
     }),
   });
   if (!tokenResponse.ok) return null;

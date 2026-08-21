@@ -150,7 +150,7 @@ test("PayPal callback can finish from one-time server state when the browser ses
       const body = new URLSearchParams(String(init?.body ?? ""));
       assert.equal(body.get("grant_type"), "authorization_code");
       assert.equal(body.get("code"), "test-paypal-code");
-      assert.equal(body.get("redirect_uri"), "http://localhost/api/paypal/callback");
+      assert.equal(body.get("redirect_uri"), null);
       return new Response(
         JSON.stringify({
           access_token: PAYPAL_ACCESS_TOKEN,
@@ -352,7 +352,7 @@ test("PayPal callback still links when Pages unique host differs from the stored
     assert.equal(callback.status, 302);
     assert.match(callback.headers.get("location") ?? "", /paypal=linked/);
     assert.match(callback.headers.get("location") ?? "", new RegExp(alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.equal(seenRedirectUri, `${alias}/api/paypal/callback`);
+    assert.equal(seenRedirectUri, "");
 
     const profile = await workerFetch(worker, env, "/api/account/profile", {
       headers: { accept: "application/json" },

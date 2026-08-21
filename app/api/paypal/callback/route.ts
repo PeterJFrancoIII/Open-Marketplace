@@ -2,7 +2,6 @@ import { getMarketplaceSession } from "../../../../lib/auth";
 import {
   PAYPAL_OAUTH_COOKIE,
   clearPaypalOauthCookie,
-  exchangePaypalAuthorizationCode,
   paypalFallbackAccountId,
   paypalPublicPayTo,
   readPaypalOAuthSecrets,
@@ -10,6 +9,7 @@ import {
   verifyPaypalOAuthState,
   writePaypalPaymentDestination,
 } from "../../../../lib/paypal-connect";
+import { exchangePaypalLoginAuthorizationCode } from "../../../../lib/paypal-login-exchange";
 import {
   consumePaypalOAuthAttempt,
   paypalOAuthDisplayName,
@@ -88,9 +88,8 @@ export async function GET(request: Request) {
     return redirectToAccount(attempt.returnOrigin, secure, "paypal-state");
   }
 
-  const exchanged = await exchangePaypalAuthorizationCode({
+  const exchanged = await exchangePaypalLoginAuthorizationCode({
     code,
-    redirectUri: attempt.redirectUri,
     clientId: secrets.clientId,
     clientSecret: secrets.clientSecret,
     live: secrets.live,

@@ -7,13 +7,16 @@ import {
 } from "./payment-destinations";
 import { paypalMeHandle } from "./paypal-pay-link";
 import {
+  emptyPayPalConnection,
   mergePaypalIdentity,
   parsePaypalIdToken,
   parsePaypalIdentity,
+  parsePaypalStoredProfile,
   paypalApiOrigin,
   paypalOauthDestination,
   paypalUserInfoUrls,
   paypalUsesLiveEnv,
+  serializePaypalStoredProfile,
 } from "./paypal-public";
 import { parseShippingBrokersJson, serializePaymentBundle } from "./shipping-brokers";
 import type { PayPalConnection, PaymentDestination } from "./types";
@@ -27,6 +30,7 @@ export {
   overlayPaypalDestinations,
   parsePaypalIdToken,
   parsePaypalIdentity,
+  parsePaypalStoredProfile,
   parsePaypalUserInfo,
   payerIdFromPaypalIdToken,
   paypalAuthorizeUrl,
@@ -61,17 +65,28 @@ function publicPayPalConnection(
   available: boolean,
   connected: boolean,
   destination: string | null = null,
+  profile: ReturnType<typeof parsePaypalStoredProfile> = null,
 ): PayPalConnection {
-  const handle = destination ? paypalMeHandle(destination) : null;
-  const email =
-    !handle && destination && destination.includes("@")
+  if (!connected) return emptyPayPalConnection(available);
+  const handle =
+    (destination ? paypalMeHandle(destination) : null) ?? profile?.paypalMe ?? null;
+  const destEmail =
+    destination && !handle && destination.includes("@")
       ? destination.trim().toLowerCase()
       : null;
+  const email = destEmail || profile?.email || null;
   return {
     available,
-    connected,
-    email: connected ? email : null,
-    paypalMe: connected ? handle : null,
+    connected: true,
+    email: email && email.includes("@") ? email : null,
+    paypalMe: handle,
+    name: profile?.name ?? null,
+    givenName: profile?.givenName ?? null,
+    familyName: profile?.familyName ?? null,
+    imageUrl: profile?.picture ?? null,
+    accountType: profile?.accountType ?? null,
+    verifiedAccount: profile?.verifiedAccount ?? null,
+    locale: profile?.locale ?? null,
   };
 }
 
@@ -173,7 +188,10 @@ export async function getPayPalConnection(
     if (!session?.user.id) return publicPayPalConnection(true, false);
     const db = await getDb();
     const [paypal] = await db
-      .select({ id: authAccounts.id })
+      .select({
+        id: authAccounts.id,
+        idToken: authAccounts.idToken,
+      })
       .from(authAccounts)
       .where(
         and(
@@ -187,6 +205,7 @@ export async function getPayPalConnection(
       true,
       true,
       await paypalDestinationForUser(session.user.id),
+      parsePaypalStoredProfile(paypal.idToken),
     );
   } catch {
     return publicPayPalConnection(true, false);
@@ -274,6 +293,7 @@ export async function upsertPaypalAccount(input: {
   refreshToken: string | null;
   expiresIn: number | null;
   scope: string | null;
+  profile?: Parameters<typeof serializePaypalStoredProfile>[0];
 }) {
   const db = await getDb();
   const now = Date.now();
@@ -300,6 +320,9 @@ export async function upsertPaypalAccount(input: {
         refreshToken: input.refreshToken,
         accessTokenExpiresAt: expiresAt,
         scope: input.scope,
+        ...(input.profile
+          ? { idToken: serializePaypalStoredProfile(input.profile) }
+          : {}),
         updatedAt: new Date(now),
       })
       .where(eq(authAccounts.id, existing.id));
@@ -314,6 +337,7 @@ export async function upsertPaypalAccount(input: {
     refreshToken: input.refreshToken,
     accessTokenExpiresAt: expiresAt,
     scope: input.scope,
+    idToken: input.profile ? serializePaypalStoredProfile(input.profile) : null,
     createdAt: new Date(now),
     updatedAt: new Date(now),
   });
@@ -372,7 +396,6 @@ export async function exchangePaypalAuthorizationCode(input: {
       identity,
       parsePaypalIdentity(await userResponse.json()),
     );
-    if (identity.payerId && (identity.email || identity.paypalMe)) break;
   }
   if (typeof tokenPayload.id_token === "string") {
     identity = mergePaypalIdentity(
@@ -382,10 +405,8 @@ export async function exchangePaypalAuthorizationCode(input: {
   }
   if (!identity.payerId) return null;
   return {
+    ...identity,
     payerId: identity.payerId,
-    email: identity.email,
-    name: identity.name,
-    paypalMe: identity.paypalMe,
     accessToken: tokenPayload.access_token,
     refreshToken:
       typeof tokenPayload.refresh_token === "string"

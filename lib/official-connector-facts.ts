@@ -3,7 +3,7 @@ import {
   SOCIAL_CONNECTORS,
   type SocialConnectorId,
 } from "./social-connectors.ts";
-import type { FacebookConnection, SocialProof } from "./types";
+import type { FacebookConnection, PayPalConnection, SocialProof } from "./types";
 
 function facebookVanityFromUrl(value?: string | null) {
   if (!value?.trim()) return "";
@@ -236,6 +236,29 @@ export function factsFromSocialProof(account: SocialProof): OfficialConnectorFac
     connectionLabel: account.connectionLabel,
     providerVerified: account.hasProviderBadge,
     profileUrl: account.url,
+  };
+}
+
+export function factsFromPaypalConnection(
+  paypal: PayPalConnection,
+): OfficialConnectorFacts {
+  const paypalMeUrl = paypal.paypalMe
+    ? `https://www.paypal.me/${paypal.paypalMe}`
+    : null;
+  const accountType = paypal.accountType?.trim();
+  return {
+    name: paypal.name,
+    firstName: paypal.givenName,
+    lastName: paypal.familyName,
+    handle: paypal.paypalMe,
+    imageUrl: paypal.imageUrl,
+    accountType: accountType
+      ? accountType.charAt(0).toUpperCase() + accountType.slice(1).toLowerCase()
+      : null,
+    locale: paypal.locale,
+    providerVerified: paypal.verifiedAccount === true,
+    profileUrl: paypalMeUrl,
+    websiteUrl: paypalMeUrl,
   };
 }
 

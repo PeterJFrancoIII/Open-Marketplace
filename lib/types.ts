@@ -31,6 +31,13 @@ export type PayPalConnection = {
   connected: boolean;
   email: string | null;
   paypalMe: string | null;
+  name: string | null;
+  givenName: string | null;
+  familyName: string | null;
+  imageUrl: string | null;
+  accountType: string | null;
+  verifiedAccount: boolean | null;
+  locale: string | null;
 };
 
 export type SocialProof = {

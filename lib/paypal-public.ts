@@ -1,4 +1,4 @@
-import type { PaymentDestination } from "./types";
+import type { PayPalConnection, PaymentDestination } from "./types";
 
 export const PAYPAL_PAYER_ATTRIBUTE_SCOPE =
   "https://uri.paypal.com/services/paypalattributes";
@@ -55,8 +55,61 @@ export type PaypalIdentity = {
   payerId: string | null;
   email: string;
   name: string | null;
+  givenName: string | null;
+  familyName: string | null;
+  picture: string | null;
+  accountType: string | null;
+  verifiedAccount: boolean | null;
+  emailVerified: boolean | null;
+  locale: string | null;
   paypalMe: string | null;
 };
+
+function emptyPaypalIdentity(): PaypalIdentity {
+  return {
+    payerId: null,
+    email: "",
+    name: null,
+    givenName: null,
+    familyName: null,
+    picture: null,
+    accountType: null,
+    verifiedAccount: null,
+    emailVerified: null,
+    locale: null,
+    paypalMe: null,
+  };
+}
+
+function firstPaypalText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function firstPaypalBoolean(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0") return false;
+  }
+  return null;
+}
+
+export function emptyPayPalConnection(available = false): PayPalConnection {
+  return {
+    available,
+    connected: false,
+    email: null,
+    paypalMe: null,
+    name: null,
+    givenName: null,
+    familyName: null,
+    imageUrl: null,
+    accountType: null,
+    verifiedAccount: null,
+    locale: null,
+  };
+}
 
 function firstPaypalEmail(record: Record<string, unknown>) {
   const candidates = [record.email, record.email_address, record.emailAddress];
@@ -96,27 +149,48 @@ function firstPaypalPayerId(record: Record<string, unknown>) {
 }
 
 function firstPaypalName(record: Record<string, unknown>) {
-  if (typeof record.name === "string" && record.name.trim()) {
-    return record.name.trim();
-  }
-  const given =
-    typeof record.given_name === "string" ? record.given_name.trim() : "";
+  const explicit = firstPaypalText(record.name);
+  if (explicit) return explicit;
+  const given = firstPaypalText(record.given_name) ?? firstPaypalText(record.givenName);
   const family =
-    typeof record.family_name === "string" ? record.family_name.trim() : "";
-  const combined = `${given} ${family}`.trim();
+    firstPaypalText(record.family_name) ?? firstPaypalText(record.familyName);
+  const combined = `${given ?? ""} ${family ?? ""}`.trim();
   return combined || null;
 }
 
 export function parsePaypalIdentity(payload: unknown): PaypalIdentity | null {
   if (!payload || typeof payload !== "object") return null;
   const record = payload as Record<string, unknown>;
-  const identity = {
+  const givenName =
+    firstPaypalText(record.given_name) ?? firstPaypalText(record.givenName);
+  const familyName =
+    firstPaypalText(record.family_name) ?? firstPaypalText(record.familyName);
+  const identity: PaypalIdentity = {
     payerId: firstPaypalPayerId(record),
     email: firstPaypalEmail(record),
     name: firstPaypalName(record),
+    givenName,
+    familyName,
+    picture:
+      firstPaypalText(record.picture) ?? firstPaypalText(record.picture_url),
+    accountType: firstPaypalText(record.account_type) ?? firstPaypalText(record.accountType),
+    verifiedAccount:
+      firstPaypalBoolean(record.verified_account) ??
+      firstPaypalBoolean(record.verifiedAccount),
+    emailVerified:
+      firstPaypalBoolean(record.email_verified) ??
+      firstPaypalBoolean(record.emailVerified),
+    locale: firstPaypalText(record.locale),
     paypalMe: paypalMeFromUserInfo(payload),
   };
-  if (!identity.payerId && !identity.email && !identity.name && !identity.paypalMe) {
+  if (
+    !identity.payerId &&
+    !identity.email &&
+    !identity.name &&
+    !identity.picture &&
+    !identity.accountType &&
+    !identity.paypalMe
+  ) {
     return null;
   }
   return identity;
@@ -125,20 +199,55 @@ export function parsePaypalIdentity(payload: unknown): PaypalIdentity | null {
 export function mergePaypalIdentity(
   ...parts: Array<PaypalIdentity | null | undefined>
 ): PaypalIdentity {
-  const merged: PaypalIdentity = {
-    payerId: null,
-    email: "",
-    name: null,
-    paypalMe: null,
-  };
+  const merged = emptyPaypalIdentity();
   for (const part of parts) {
     if (!part) continue;
     if (!merged.payerId && part.payerId) merged.payerId = part.payerId;
     if (!merged.email && part.email) merged.email = part.email;
     if (!merged.name && part.name) merged.name = part.name;
+    if (!merged.givenName && part.givenName) merged.givenName = part.givenName;
+    if (!merged.familyName && part.familyName) merged.familyName = part.familyName;
+    if (!merged.picture && part.picture) merged.picture = part.picture;
+    if (!merged.accountType && part.accountType) merged.accountType = part.accountType;
+    if (merged.verifiedAccount == null && part.verifiedAccount != null) {
+      merged.verifiedAccount = part.verifiedAccount;
+    }
+    if (merged.emailVerified == null && part.emailVerified != null) {
+      merged.emailVerified = part.emailVerified;
+    }
+    if (!merged.locale && part.locale) merged.locale = part.locale;
     if (!merged.paypalMe && part.paypalMe) merged.paypalMe = part.paypalMe;
   }
   return merged;
+}
+
+export function serializePaypalStoredProfile(identity: PaypalIdentity) {
+  return JSON.stringify({
+    payer_id: identity.payerId,
+    email: identity.email,
+    name: identity.name,
+    given_name: identity.givenName,
+    family_name: identity.familyName,
+    picture: identity.picture,
+    account_type: identity.accountType,
+    verified_account: identity.verifiedAccount,
+    email_verified: identity.emailVerified,
+    locale: identity.locale,
+    paypalme: identity.paypalMe ? paypalMePublicUrl(identity.paypalMe) : undefined,
+  });
+}
+
+export function parsePaypalStoredProfile(value?: string | null) {
+  if (!value?.trim()) return null;
+  const trimmed = value.trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      return parsePaypalIdentity(JSON.parse(trimmed));
+    } catch {
+      return null;
+    }
+  }
+  return parsePaypalIdToken(trimmed);
 }
 
 export function paypalMePublicUrl(handle: string) {

@@ -403,6 +403,22 @@ test("PayPal userinfo parser keeps payer id, email, and paypal.me when present",
   assert.equal(merged.payerId, "IDTOKENPAYER");
   assert.equal(merged.email, "only-email@example.com");
   assert.equal(merged.paypalMe, "TokenSeller");
+  const official = parsePaypalIdentity({
+    given_name: "Pay",
+    family_name: "Pal",
+    picture: "https://www.paypalobjects.com/example.png",
+    account_type: "PERSONAL",
+    verified_account: true,
+    email_verified: true,
+    locale: "en_US",
+    email: "official@example.com",
+    sub: "OFFICIALPAYER",
+  });
+  assert.equal(official?.name, "Pay Pal");
+  assert.equal(official?.givenName, "Pay");
+  assert.equal(official?.picture, "https://www.paypalobjects.com/example.png");
+  assert.equal(official?.accountType, "PERSONAL");
+  assert.equal(official?.verifiedAccount, true);
 });
 
 test("typed PayPal stays self-reported until Login is linked", () => {
@@ -524,6 +540,9 @@ test("PayPal connect requires a session and then populates the public pay-to ema
     assert.equal(profileBody.paypalConnection.available, true);
     assert.equal(profileBody.paypalConnection.connected, true);
     assert.equal(profileBody.paypalConnection.email, "seller-paypal@example.com");
+    assert.equal(profileBody.paypalConnection.name, "Pay Pal Seller");
+    assert.equal(profileBody.paypalConnection.accountType, "PERSONAL");
+    assert.equal(profileBody.paypalConnection.verifiedAccount, true);
     assert.equal(profileBody.paypalConnection.paypalMe, null);
     const owner = d1.__sqlite
       .prepare("SELECT id FROM auth_users WHERE email = ?")
@@ -544,6 +563,8 @@ test("PayPal connect requires a session and then populates the public pay-to ema
     const savedMeBody = await savedMe.json();
     assert.equal(savedMeBody.paypalConnection.connected, true);
     assert.equal(savedMeBody.paypalConnection.paypalMe, "SellerReed");
+    assert.equal(savedMeBody.paypalConnection.email, "seller-paypal@example.com");
+    assert.equal(savedMeBody.paypalConnection.name, "Pay Pal Seller");
     assert.equal(
       savedMeBody.paymentDestinations[0]?.destination,
       "https://www.paypal.me/SellerReed",
@@ -874,13 +895,14 @@ test("Log in with PayPal fills the pay-to from id_token email when userinfo is e
 });
 
 test("account settings and listings source offer Link PayPal without checkout", async () => {
-  const [settings, marketplace, connect, paypalPublic, payLink, rails] = await Promise.all([
+  const [settings, marketplace, connect, paypalPublic, payLink, rails, facts] = await Promise.all([
     readFile(new URL("../app/account/account-settings.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/marketplace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/paypal-connect.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/paypal-public.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/paypal-pay-link.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/payment-destinations.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/official-connector-facts.ts", import.meta.url), "utf8"),
   ]);
   assert.match(settings, /Connect PayPal/);
   assert.match(settings, /Log in with PayPal/);
@@ -892,6 +914,10 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(settings, /params.get\("paypal"\) === "linked"/);
   assert.match(settings, /#surface-paypal-input/);
   assert.match(settings, /\/api\/account\/profile/);
+  assert.match(settings, /factsFromPaypalConnection/);
+  assert.match(settings, /PayPal email/);
+  assert.match(facts, /factsFromPaypalConnection/);
+  assert.match(paypalPublic, /serializePaypalStoredProfile/);
   assert.match(settings, /paypalme/);
   assert.match(settings, /Connect \$\{rail\.label\}/);
   assert.match(settings, /data-feedback-surface=\{\`Connect \$\{rail\.label\}\`\}/);

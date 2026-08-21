@@ -87,6 +87,7 @@ export async function GET(request: Request) {
     refreshToken: exchanged.refreshToken,
     expiresIn: exchanged.expiresIn,
     scope: exchanged.scope,
+    profile: exchanged,
   });
   const payTo = paypalPublicPayTo({
     email: exchanged.email,

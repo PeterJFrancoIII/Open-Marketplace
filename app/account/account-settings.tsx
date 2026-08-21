@@ -15,7 +15,7 @@ import {
   type ReplicaStatus,
 } from "../../lib/replica-host";
 import { PAYMENT_RAILS } from "../../lib/payment-destinations";
-import { PAYPAL_ME_SETUP_URL } from "../../lib/paypal-public";
+import { emptyPayPalConnection, PAYPAL_ME_SETUP_URL } from "../../lib/paypal-public";
 import {
   SHIPPING_BROKERS,
   type ShippingBrokerConnection,
@@ -26,6 +26,7 @@ import {
   officialConnectorDisplay,
   officialConnectorSummary,
   factsFromFacebookConnection,
+  factsFromPaypalConnection,
 } from "../../lib/official-connector-facts";
 import {
   SOCIAL_CONNECTORS,
@@ -119,12 +120,6 @@ const emptyFacebookConnection: FacebookConnection = {
   coverUrl: null,
 };
 
-const emptyPayPalConnection: PayPalConnection = {
-  available: false,
-  connected: false,
-  email: null,
-  paypalMe: null,
-};
 
 export default function AccountSettings({
   initialName,
@@ -162,7 +157,7 @@ export default function AccountSettings({
     initialSocialConnections ?? [],
   );
   const [paypalConnection, setPaypalConnection] = useState(
-    initialPayPalConnection ?? emptyPayPalConnection,
+    initialPayPalConnection ?? emptyPayPalConnection(),
   );
   const [pending, setPending] = useState<string | null>(null);
   const [mediaNodeOrigin, setMediaNodeOrigin] = useState(
@@ -752,12 +747,7 @@ export default function AccountSettings({
         return;
       }
       setPaypalConnection(
-        result.paypalConnection ?? {
-          available: paypalConnection.available,
-          connected: false,
-          email: null,
-          paypalMe: null,
-        },
+        result.paypalConnection ?? emptyPayPalConnection(paypalConnection.available),
       );
       setPaymentDrafts((current) => ({ ...current, paypal: "" }));
       setStatus("PayPal disconnected. Your Open Marketplace account is unchanged.");
@@ -788,6 +778,10 @@ export default function AccountSettings({
       setPending(null);
     }
   }
+
+  const officialPaypal = officialConnectorDisplay(
+    factsFromPaypalConnection(paypalConnection),
+  );
 
   return (
     <section
@@ -1155,13 +1149,44 @@ export default function AccountSettings({
               <p className="portal-settings-note">
                 Log in with PayPal links your personal PayPal to this Open
                 Marketplace account so buyers cannot spoof a pay-to. Stay
-                connected. Finish on PayPal by continuing back here so the
-                PayPal field can fill from Login. After Login, Open Marketplace
-                fills paypal.me or your PayPal email. If PayPal does not send a
-                paypal.me, create or copy it on PayPal and save it here. This
-                is not a business checkout and does not change your Open
-                Marketplace email or name.
+                connected. Finish on PayPal by continuing back here. Official
+                name, photo, email, account type, and verified mark stay on
+                this PayPal connector. They do not replace your Open Marketplace
+                email or name. paypal.me is filled only when PayPal sends it or
+                you save it after Login. This is not a business checkout.
               </p>
+            ) : null}
+            {rail.id === "paypal" && paypalConnection.connected ? (
+              <div className="portal-connector-identity">
+                {officialPaypal.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={officialPaypal.imageUrl} alt="" width={48} height={48} />
+                ) : null}
+                <div>
+                  <p>
+                    {officialPaypal.headline
+                      ? officialPaypal.headline
+                      : "PayPal account linked."}
+                    {officialConnectorSummary(officialPaypal)
+                      ? ` · ${officialConnectorSummary(officialPaypal)}`
+                      : ""}
+                  </p>
+                  {paypalConnection.email ? (
+                    <p className="portal-settings-note">
+                      PayPal email {paypalConnection.email}
+                    </p>
+                  ) : null}
+                  {officialPaypal.websiteUrl ? (
+                    <p className="portal-settings-note">{officialPaypal.websiteUrl}</p>
+                  ) : null}
+                  {officialPaypal.providerVerified ? (
+                    <p className="portal-settings-note">
+                      PayPal shows its own verified mark on this account. That
+                      is not an Open Marketplace verification badge.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
             ) : null}
             <label
               className="portal-field"

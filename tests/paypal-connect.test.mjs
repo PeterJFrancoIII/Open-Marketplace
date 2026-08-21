@@ -994,6 +994,8 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(settings, /paypal-token/);
   assert.match(settings, /paypal-session/);
   assert.match(settings, /#surface-paypal-input/);
+  assert.match(settings, /surface-paypal-last-return/);
+  assert.match(settings, /PayPal never sent you back to Open Marketplace/);
   assert.match(settings, /\/api\/account\/profile/);
   assert.match(settings, /factsFromPaypalConnection/);
   assert.match(settings, /PayPal email/);

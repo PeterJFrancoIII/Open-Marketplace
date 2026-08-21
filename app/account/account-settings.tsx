@@ -105,7 +105,7 @@ function readOauthError() {
 
 function paypalLastReturnMessage(lastReturn?: string | null) {
   if (lastReturn === "started") {
-    return "PayPal opened. This page stays Not connected until PayPal sends you back here. Stay on PayPal until this Account settings page reloads.";
+    return "PayPal never sent you back to Open Marketplace. Stay on PayPal until this Account settings page reloads by itself. If PayPal leaves you on a remembered or consent page, continue there until the browser leaves paypal.com.";
   }
   if (
     lastReturn === "paypal" ||
@@ -1170,6 +1170,13 @@ export default function AccountSettings({
                 <span className="portal-settings-health">Not connected</span>
               ) : null}
             </div>
+            {rail.id === "paypal" &&
+            !paypalConnection.connected &&
+            paypalLastReturnMessage(paypalConnection.lastReturn) ? (
+              <p className="portal-settings-note" id="surface-paypal-last-return">
+                {paypalLastReturnMessage(paypalConnection.lastReturn)}
+              </p>
+            ) : null}
             {rail.id === "paypal" ? (
               <p className="portal-settings-note">
                 Log in with PayPal links your personal PayPal to this Open

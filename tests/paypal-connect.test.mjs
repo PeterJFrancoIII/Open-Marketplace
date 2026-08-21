@@ -15,7 +15,9 @@ import {
   overlayPaypalDestinations,
   parsePaypalUserInfo,
   paypalAuthorizeUrl,
+  paypalUserInfoUrls,
   PAYPAL_CONNECT_SCOPES,
+  PAYPAL_PAYER_ATTRIBUTE_SCOPE,
 } from "../lib/paypal-public.ts";
 
 register(new URL("./helpers/cloudflare-workers-loader.mjs", import.meta.url));
@@ -195,6 +197,20 @@ function installPaypalFetchStub() {
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }
+    if (/^https:\/\/api-m\.sandbox\.paypal\.com\/v1\/identity\/openidconnect\/userinfo/i.test(url)) {
+      return new Response(
+        JSON.stringify({
+          user_id: "https://www.paypal.com/webapps/auth/identity/user/PAYPALPAYERID1",
+          sub: "PAYPALPAYERID1",
+          name: "Pay Pal Seller",
+          email: "seller-paypal@example.com",
+          email_verified: true,
+          account_type: "PERSONAL",
+          verified_account: true,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
     if (/^https:\/\/api-m\.sandbox\.paypal\.com\/v1\/identity\/oauth2\/userinfo/i.test(url)) {
       return new Response(
         JSON.stringify({
@@ -274,9 +290,23 @@ test("PayPal authorize URL stays on official Log in with PayPal scopes", () => {
   );
   assert.equal(url.hostname, "www.sandbox.paypal.com");
   assert.equal(url.pathname, "/connect");
-  assert.equal(url.searchParams.get("scope"), "openid email profile");
-  assert.deepEqual([...PAYPAL_CONNECT_SCOPES], ["openid", "email", "profile"]);
-  assert.doesNotMatch(url.searchParams.get("scope") ?? "", /address|phone|payout|payment/);
+  assert.equal(
+    url.searchParams.get("scope"),
+    `openid email profile ${PAYPAL_PAYER_ATTRIBUTE_SCOPE}`,
+  );
+  assert.equal(url.searchParams.get("fullPage"), "true");
+  assert.deepEqual(
+    [...PAYPAL_CONNECT_SCOPES],
+    ["openid", "email", "profile", PAYPAL_PAYER_ATTRIBUTE_SCOPE],
+  );
+  assert.doesNotMatch(url.searchParams.get("scope") ?? "", /address|phone|payouts|checkout/);
+  assert.deepEqual(
+    [...paypalUserInfoUrls(false)],
+    [
+      "https://api-m.sandbox.paypal.com/v1/identity/openidconnect/userinfo?schema=openid",
+      "https://api-m.sandbox.paypal.com/v1/identity/oauth2/userinfo?schema=paypalv1.1",
+    ],
+  );
 });
 
 test("PayPal userinfo parser keeps only payer id and email", () => {
@@ -290,6 +320,15 @@ test("PayPal userinfo parser keeps only payer id and email", () => {
   assert.equal(parsed?.payerId, "ABC123");
   assert.equal(parsed?.email, "seller@example.com");
   assert.equal(parsed?.name, "Seller");
+
+  const openid = parsePaypalUserInfo({
+    user_id: "https://www.paypal.com/webapps/auth/identity/user/XYZ789",
+    sub: "XYZ789",
+    email: "Personal@Example.com",
+    account_type: "PERSONAL",
+  });
+  assert.equal(openid?.payerId, "XYZ789");
+  assert.equal(openid?.email, "personal@example.com");
 });
 
 test("typed PayPal stays self-reported until Login is linked", () => {
@@ -388,7 +427,11 @@ test("PayPal connect requires a session and then populates the public pay-to ema
     assert.equal(start.status, 302);
     const authorizeUrl = new URL(start.headers.get("location") ?? "");
     assert.equal(authorizeUrl.hostname, "www.sandbox.paypal.com");
-    assert.equal(authorizeUrl.searchParams.get("scope"), "openid email profile");
+    assert.equal(
+      authorizeUrl.searchParams.get("scope"),
+      `openid email profile ${PAYPAL_PAYER_ATTRIBUTE_SCOPE}`,
+    );
+    assert.equal(authorizeUrl.searchParams.get("fullPage"), "true");
     assert.match(authorizeUrl.searchParams.get("redirect_uri") ?? "", /\/api\/paypal\/callback$/);
     const state = authorizeUrl.searchParams.get("state") ?? "";
     assert.ok(state);
@@ -563,8 +606,9 @@ test("account settings and listings source offer Link PayPal without checkout", 
     readFile(new URL("../lib/payment-destinations.ts", import.meta.url), "utf8"),
   ]);
   assert.match(settings, /Connect PayPal/);
-  assert.match(settings, /personal paypal\.me/);
-  assert.match(settings, /not a business PayPal account/);
+  assert.match(settings, /official Log in with PayPal/);
+  assert.match(settings, /personal PayPal account/);
+  assert.match(settings, /not a business PayPal/);
   assert.match(settings, /Connect \$\{rail\.label\}/);
   assert.match(settings, /data-feedback-surface=\{\`Connect \$\{rail\.label\}\`\}/);
   assert.match(settings, /data-feedback-surface=\{\`\$\{rail.label\} input\`\}/);
@@ -572,13 +616,11 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(settings, /onConnectPayment/);
   assert.match(settings, /onDisconnectPayPal/);
   assert.match(settings, /if \(railId === "paypal"\) \{/);
-  assert.match(settings, /\/api\/paypal\/destination/);
-  assert.doesNotMatch(settings, /window\.location\.assign\("\/api\/paypal\/connect"\)/);
-  assert.doesNotMatch(settings, /paypalConnection\.available\)/);
+  assert.match(settings, /window\.location\.assign\("\/api\/paypal\/connect"\)/);
+  assert.match(settings, /paypalConnection\.available/);
   assert.match(settings, /paymentDestinationPayload/);
   assert.match(settings, /not a checkout/);
-  assert.match(rails, /Personal paypal\.me link or PayPal email/);
-  assert.match(rails, /https:\/\/www\.paypal\.com\/paypalme/);
+  assert.match(rails, /PayPal email filled by official Log in with PayPal/);
   assert.match(settings, /does not execute, insure, escrow/);
   assert.doesNotMatch(settings, /Orders API|CreateShipment|\/v2\/checkout\/orders|payouts/i);
   assert.match(marketplace, /PayPal · Linked/);
@@ -592,7 +634,9 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(payLink, /_xclick/);
   assert.match(payLink, /friends_and_family/);
   assert.match(paypalPublic, /openid/);
-  assert.match(connect, /identity\/oauth2\/userinfo/);
+  assert.match(paypalPublic, /paypalattributes/);
+  assert.match(paypalPublic, /openidconnect\/userinfo/);
+  assert.match(connect, /paypalUserInfoUrls/);
   assert.doesNotMatch(
     `${connect}\n${paypalPublic}\n${payLink}`,
     /\/v2\/checkout\/orders|payouts/,

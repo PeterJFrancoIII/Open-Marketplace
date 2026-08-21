@@ -1,6 +1,14 @@
 import type { PaymentDestination } from "./types";
 
-export const PAYPAL_CONNECT_SCOPES = ["openid", "email", "profile"] as const;
+export const PAYPAL_PAYER_ATTRIBUTE_SCOPE =
+  "https://uri.paypal.com/services/paypalattributes";
+
+export const PAYPAL_CONNECT_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  PAYPAL_PAYER_ATTRIBUTE_SCOPE,
+] as const;
 
 export function paypalUsesLiveEnv(value?: string | null) {
   return value?.trim().toLowerCase() === "live";
@@ -29,7 +37,16 @@ export function paypalAuthorizeUrl(input: {
   url.searchParams.set("scope", PAYPAL_CONNECT_SCOPES.join(" "));
   url.searchParams.set("redirect_uri", input.redirectUri);
   url.searchParams.set("state", input.state);
+  url.searchParams.set("fullPage", "true");
   return url.toString();
+}
+
+export function paypalUserInfoUrls(live: boolean) {
+  const origin = paypalApiOrigin(live);
+  return [
+    `${origin}/v1/identity/openidconnect/userinfo?schema=openid`,
+    `${origin}/v1/identity/oauth2/userinfo?schema=paypalv1.1`,
+  ] as const;
 }
 
 export function parsePaypalUserInfo(payload: unknown): {
@@ -41,6 +58,7 @@ export function parsePaypalUserInfo(payload: unknown): {
   const record = payload as {
     payer_id?: unknown;
     user_id?: unknown;
+    sub?: unknown;
     email?: unknown;
     name?: unknown;
     emails?: unknown;
@@ -58,6 +76,7 @@ export function parsePaypalUserInfo(payload: unknown): {
   const payerId =
     (typeof record.payer_id === "string" && record.payer_id.trim()) ||
     (typeof record.user_id === "string" && record.user_id.trim()) ||
+    (typeof record.sub === "string" && record.sub.trim()) ||
     "";
   if (!email.trim() || !payerId) return null;
   return {

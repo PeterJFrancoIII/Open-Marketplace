@@ -562,53 +562,14 @@ export default function AccountSettings({
     setStatus("");
     setError("");
     if (railId === "paypal") {
-      const destination = paymentDrafts.paypal.trim();
-      if (!destination) {
-        window.open(rail?.connectUrl ?? "https://www.paypal.com/paypalme", "_blank", "noreferrer");
+      if (!paypalConnection.available) {
         setError(
-          "Copy your personal paypal.me link from PayPal, paste it here, then click Connect PayPal.",
+          "Official PayPal Login is not configured on this host yet. Connect PayPal cannot launch until the marketplace PayPal app is bound.",
         );
         setPending(null);
         return;
       }
-      try {
-        const response = await fetch("/api/paypal/destination", {
-          method: "POST",
-          headers: {
-            accept: "application/json",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ destination }),
-        });
-        const result = (await response.json()) as {
-          error?: string;
-          paypalConnection?: PayPalConnection;
-          paymentDestinations?: PaymentDestination[];
-        };
-        if (response.status === 401) {
-          window.location.assign("/login?returnTo=%2Faccount%2Fsettings");
-          return;
-        }
-        if (!response.ok) {
-          setError(result.error ?? "Could not connect PayPal.");
-          return;
-        }
-        if (result.paypalConnection) {
-          setPaypalConnection(result.paypalConnection);
-        }
-        setPaymentDrafts(destinationsByRail(result.paymentDestinations ?? []));
-        setStatus(
-          "PayPal connected. Buyers will see this personal paypal.me or PayPal email. This is not a business checkout.",
-        );
-      } catch (submitError) {
-        setError(
-          submitError instanceof Error
-            ? submitError.message
-            : "Could not connect PayPal.",
-        );
-      } finally {
-        setPending(null);
-      }
+      window.location.assign("/api/paypal/connect");
       return;
     }
     const destination = paymentDrafts[railId].trim();
@@ -1104,10 +1065,11 @@ export default function AccountSettings({
             </div>
             {rail.id === "paypal" ? (
               <p className="portal-settings-note">
-                Paste your personal paypal.me link or PayPal email. This is a
-                public pay-to for buyers, not a business checkout. It does not
-                sign you in, take payments, or hold money. It does not replace
-                your Open Marketplace email or name.
+                Connect PayPal opens official Log in with PayPal and links your
+                personal PayPal account to this Open Marketplace account. PayPal
+                then fills the public pay-to. This is not a business PayPal
+                account or checkout. It does not sign you in, take payments, or
+                replace your Open Marketplace email or name.
               </p>
             ) : null}
             <label
@@ -1133,10 +1095,8 @@ export default function AccountSettings({
                 }
                 autoComplete="off"
                 spellCheck={false}
-                disabled={
-                  pending !== null ||
-                  (rail.id === "paypal" && paypalConnection.connected)
-                }
+                disabled={pending !== null || rail.id === "paypal"}
+                readOnly={rail.id === "paypal"}
               />
             </label>
             <div className="portal-connector-actions">

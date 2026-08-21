@@ -9,6 +9,7 @@ import {
   parsePaypalUserInfo,
   paypalApiOrigin,
   paypalOauthDestination,
+  paypalUserInfoUrls,
   paypalUsesLiveEnv,
 } from "./paypal-public";
 import { parseShippingBrokersJson, serializePaymentBundle } from "./shipping-brokers";
@@ -16,11 +17,13 @@ import type { PayPalConnection, PaymentDestination } from "./types";
 
 export {
   PAYPAL_CONNECT_SCOPES,
+  PAYPAL_PAYER_ATTRIBUTE_SCOPE,
   mergePaymentDestinationsForSave,
   overlayPaypalDestinations,
   parsePaypalUserInfo,
   paypalAuthorizeUrl,
   paypalOauthDestination,
+  paypalUserInfoUrls,
 } from "./paypal-public";
 
 export const PAYPAL_OAUTH_COOKIE = "om_paypal_oauth";
@@ -339,17 +342,17 @@ export async function exchangePaypalAuthorizationCode(input: {
   if (typeof tokenPayload.access_token !== "string" || !tokenPayload.access_token) {
     return null;
   }
-  const userResponse = await fetch(
-    `${paypalApiOrigin(input.live)}/v1/identity/oauth2/userinfo?schema=paypalv1.1`,
-    {
-      headers: {
-        authorization: `Bearer ${tokenPayload.access_token}`,
-        accept: "application/json",
-      },
-    },
-  );
-  if (!userResponse.ok) return null;
-  const profile = parsePaypalUserInfo(await userResponse.json());
+  const userHeaders = {
+    authorization: `Bearer ${tokenPayload.access_token}`,
+    accept: "application/json",
+  };
+  let profile = null;
+  for (const userInfoUrl of paypalUserInfoUrls(input.live)) {
+    const userResponse = await fetch(userInfoUrl, { headers: userHeaders });
+    if (!userResponse.ok) continue;
+    profile = parsePaypalUserInfo(await userResponse.json());
+    if (profile) break;
+  }
   if (!profile) return null;
   return {
     ...profile,

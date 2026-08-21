@@ -6,8 +6,10 @@ import {
   normalizePaymentDestinations,
   parsePaymentDestinationsJson,
 } from "../../../../lib/payment-destinations";
+import { paypalMeHandle } from "../../../../lib/paypal-pay-link";
 import {
   getPayPalConnection,
+  paypalMePublicUrl,
   replacePaypalDestination,
 } from "../../../../lib/paypal-connect";
 
@@ -15,8 +17,19 @@ export async function POST(request: Request) {
   const session = await getMarketplaceSession(request);
   if (!session?.user.id) {
     return Response.json(
-      { error: "Log in to connect PayPal." },
+      { error: "Log in to save your paypal.me." },
       { status: 401 },
+    );
+  }
+
+  const connection = await getPayPalConnection(request);
+  if (!connection.connected) {
+    return Response.json(
+      {
+        error:
+          "Log in with PayPal first so this paypal.me stays tied to your PayPal account.",
+      },
+      { status: 403 },
     );
   }
 
@@ -26,7 +39,7 @@ export async function POST(request: Request) {
     destination = typeof body.destination === "string" ? body.destination : "";
   } catch {
     return Response.json(
-      { error: "Enter your public PayPal email or paypal.me link." },
+      { error: "Enter your paypal.me link." },
       { status: 400 },
     );
   }
@@ -38,9 +51,10 @@ export async function POST(request: Request) {
     return Response.json({ error: normalized.error }, { status: 400 });
   }
   const paypal = normalized.destinations.find((item) => item.rail === "paypal");
-  if (!paypal) {
+  const handle = paypal ? paypalMeHandle(paypal.destination) : null;
+  if (!paypal || !handle) {
     return Response.json(
-      { error: "Enter your public PayPal email or paypal.me link." },
+      { error: "Enter your paypal.me link." },
       { status: 400 },
     );
   }
@@ -48,7 +62,13 @@ export async function POST(request: Request) {
   await replacePaypalDestination(
     session.user.id,
     session.user.name?.trim() || "Member",
-    paypal,
+    {
+      ...paypal,
+      destination: paypalMePublicUrl(handle),
+      source: "oauth",
+      health: "active",
+      healthMessage: "Linked with PayPal Login.",
+    },
   );
 
   const db = await getDb();

@@ -5,6 +5,7 @@ import { getMarketplaceSession } from "./auth";
 import {
   parsePaymentDestinationsJson,
 } from "./payment-destinations";
+import { paypalMeHandle } from "./paypal-pay-link";
 import {
   parsePaypalUserInfo,
   paypalApiOrigin,
@@ -17,12 +18,16 @@ import type { PayPalConnection, PaymentDestination } from "./types";
 
 export {
   PAYPAL_CONNECT_SCOPES,
+  PAYPAL_ME_SETUP_URL,
   PAYPAL_PAYER_ATTRIBUTE_SCOPE,
   mergePaymentDestinationsForSave,
   overlayPaypalDestinations,
   parsePaypalUserInfo,
   paypalAuthorizeUrl,
+  paypalMeFromUserInfo,
+  paypalMePublicUrl,
   paypalOauthDestination,
+  paypalPublicPayTo,
   paypalUserInfoUrls,
 } from "./paypal-public";
 
@@ -49,12 +54,18 @@ export async function getPayPalConnectAvailability() {
 function publicPayPalConnection(
   available: boolean,
   connected: boolean,
-  email: string | null = null,
+  destination: string | null = null,
 ): PayPalConnection {
+  const handle = destination ? paypalMeHandle(destination) : null;
+  const email =
+    !handle && destination && destination.includes("@")
+      ? destination.trim().toLowerCase()
+      : null;
   return {
     available,
     connected,
     email: connected ? email : null,
+    paypalMe: connected ? handle : null,
   };
 }
 
@@ -132,7 +143,7 @@ export async function verifyPaypalOAuthState(
   }
 }
 
-async function paypalEmailForUser(userId: string) {
+async function paypalDestinationForUser(userId: string) {
   const db = await getDb();
   const [profile] = await db
     .select({ paymentDestinationsJson: profiles.paymentDestinationsJson })
@@ -169,7 +180,7 @@ export async function getPayPalConnection(
     return publicPayPalConnection(
       true,
       true,
-      await paypalEmailForUser(session.user.id),
+      await paypalDestinationForUser(session.user.id),
     );
   } catch {
     return publicPayPalConnection(true, false);
@@ -219,12 +230,12 @@ export async function replacePaypalDestination(
 export async function writePaypalPaymentDestination(
   userId: string,
   displayName: string,
-  email: string,
+  destination: string,
 ) {
   await replacePaypalDestination(
     userId,
     displayName,
-    paypalOauthDestination(email),
+    paypalOauthDestination(destination),
   );
 }
 

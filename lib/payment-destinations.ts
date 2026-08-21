@@ -17,8 +17,8 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
   {
     id: "paypal",
     label: "PayPal",
-    hint: "PayPal email filled by official Log in with PayPal",
-    connectUrl: "https://www.paypal.com",
+    hint: "paypal.me filled after Log in with PayPal",
+    connectUrl: "https://www.paypal.com/paypalme",
     asset: null,
     networkId: null,
     networkLabel: null,

@@ -43,6 +43,7 @@ import { publicMediaOriginsFromManifests } from "../lib/image-manifest";
 import { getLocalMediaUrl, pinListingMediaToHost, storeMedia } from "../lib/media-store";
 import { fetchReplicaCatalog, publishReplicaSnapshot } from "../lib/replica-host";
 import { paymentLinkFor, paymentLinksFor } from "../lib/payment-links";
+import { paypalMeHandle } from "../lib/paypal-pay-link";
 import { parsePaymentDestinationsJson } from "../lib/payment-destinations";
 import {
   parcelMonkeyCalculatorUrl,
@@ -817,7 +818,7 @@ function PayPalListingFact({
             : variant === "detail"
               ? "This seller has not connected PayPal."
               : "Seller has not connected PayPal"}
-        {destination ? ` · ${destination}` : ""}
+        {destination && paypalMeHandle(destination) ? ` · ${destination}` : ""}
       </small>
     </>
   );

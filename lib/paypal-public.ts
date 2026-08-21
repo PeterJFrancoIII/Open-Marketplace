@@ -3,12 +3,9 @@ import type { PaymentDestination } from "./types";
 export const PAYPAL_PAYER_ATTRIBUTE_SCOPE =
   "https://uri.paypal.com/services/paypalattributes";
 
-export const PAYPAL_CONNECT_SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  PAYPAL_PAYER_ATTRIBUTE_SCOPE,
-] as const;
+export const PAYPAL_ME_SETUP_URL = "https://www.paypal.com/paypalme";
+
+export const PAYPAL_CONNECT_SCOPES = ["openid"] as const;
 
 export function paypalUsesLiveEnv(value?: string | null) {
   return value?.trim().toLowerCase() === "live";
@@ -30,15 +27,18 @@ export function paypalAuthorizeUrl(input: {
   state: string;
   live: boolean;
 }) {
-  const url = new URL("/connect", paypalAuthorizeOrigin(input.live));
-  url.searchParams.set("flowEntry", "static");
-  url.searchParams.set("client_id", input.clientId);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", PAYPAL_CONNECT_SCOPES.join(" "));
-  url.searchParams.set("redirect_uri", input.redirectUri);
-  url.searchParams.set("state", input.state);
-  url.searchParams.set("fullPage", "true");
-  return url.toString();
+  const query = [
+    ["flowEntry", "static"],
+    ["client_id", input.clientId],
+    ["response_type", "code"],
+    ["scope", PAYPAL_CONNECT_SCOPES.join(" ")],
+    ["redirect_uri", input.redirectUri],
+    ["state", input.state],
+    ["fullPage", "true"],
+  ]
+    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+    .join("&");
+  return `${paypalAuthorizeOrigin(input.live)}/connect?${query}`;
 }
 
 export function paypalUserInfoUrls(live: boolean) {
@@ -49,10 +49,77 @@ export function paypalUserInfoUrls(live: boolean) {
   ] as const;
 }
 
+export function paypalMePublicUrl(handle: string) {
+  return `https://www.paypal.me/${handle.replace(/^@/, "").trim()}`;
+}
+
+function readPaypalMeHandle(destination: string) {
+  const value = destination.trim();
+  if (!value) return null;
+  try {
+    const url = new URL(value.includes("://") ? value : `https://${value}`);
+    const host = url.hostname.toLowerCase();
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (host === "paypal.me" || host === "www.paypal.me") {
+      return parts[0] ?? null;
+    }
+    if (
+      (host === "paypal.com" || host === "www.paypal.com") &&
+      parts[0]?.toLowerCase() === "paypalme"
+    ) {
+      return parts[1] ?? null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function paypalMeFromUserInfo(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const values: unknown[] = Object.values(payload as Record<string, unknown>);
+  for (const value of values) {
+    const handle = paypalMeFromUnknown(value);
+    if (handle) return handle;
+  }
+  return null;
+}
+
+function paypalMeFromUnknown(value: unknown): string | null {
+  if (typeof value === "string") {
+    return readPaypalMeHandle(value);
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const handle = paypalMeFromUnknown(entry);
+      if (handle) return handle;
+    }
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const record = value as { value?: unknown; url?: unknown; href?: unknown };
+  return (
+    paypalMeFromUnknown(record.value) ||
+    paypalMeFromUnknown(record.url) ||
+    paypalMeFromUnknown(record.href)
+  );
+}
+
+export function paypalPublicPayTo(input: {
+  email?: string | null;
+  paypalMe?: string | null;
+}) {
+  const handle = input.paypalMe?.trim();
+  if (handle) return paypalMePublicUrl(handle);
+  const email = input.email?.trim().toLowerCase() ?? "";
+  return email.includes("@") ? email : null;
+}
+
 export function parsePaypalUserInfo(payload: unknown): {
   payerId: string;
   email: string;
   name: string | null;
+  paypalMe: string | null;
 } | null {
   if (!payload || typeof payload !== "object") return null;
   const record = payload as {
@@ -78,7 +145,7 @@ export function parsePaypalUserInfo(payload: unknown): {
     (typeof record.user_id === "string" && record.user_id.trim()) ||
     (typeof record.sub === "string" && record.sub.trim()) ||
     "";
-  if (!email.trim() || !payerId) return null;
+  if (!payerId) return null;
   return {
     payerId: payerId.replace(
       /^https:\/\/www\.paypal\.com\/webapps\/auth\/identity\/user\//,
@@ -86,6 +153,7 @@ export function parsePaypalUserInfo(payload: unknown): {
     ),
     email: email.trim().toLowerCase(),
     name: typeof record.name === "string" && record.name.trim() ? record.name.trim() : null,
+    paypalMe: paypalMeFromUserInfo(payload),
   };
 }
 
@@ -111,10 +179,11 @@ export function overlayPaypalDestinations(
   ];
 }
 
-export function paypalOauthDestination(email: string): PaymentDestination {
+export function paypalOauthDestination(destination: string): PaymentDestination {
+  const handle = readPaypalMeHandle(destination);
   return {
     rail: "paypal",
-    destination: email.trim().toLowerCase(),
+    destination: handle ? paypalMePublicUrl(handle) : destination.trim().toLowerCase(),
     asset: null,
     networkId: null,
     networkLabel: null,

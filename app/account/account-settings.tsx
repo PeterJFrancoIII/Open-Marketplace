@@ -15,6 +15,7 @@ import {
   type ReplicaStatus,
 } from "../../lib/replica-host";
 import { PAYMENT_RAILS } from "../../lib/payment-destinations";
+import { PAYPAL_ME_SETUP_URL } from "../../lib/paypal-public";
 import {
   SHIPPING_BROKERS,
   type ShippingBrokerConnection,
@@ -93,7 +94,7 @@ function readOauthError() {
   const error = new URLSearchParams(window.location.search).get("error");
   if (!error) return "";
   if (error === "paypal") {
-    return "PayPal Login did not finish. Click Connect PayPal to open official PayPal Login again.";
+    return "Log in with PayPal did not finish. Click Log in with PayPal again.";
   }
   return "Social Connect did not complete. Try again.";
 }
@@ -122,6 +123,7 @@ const emptyPayPalConnection: PayPalConnection = {
   available: false,
   connected: false,
   email: null,
+  paypalMe: null,
 };
 
 export default function AccountSettings({
@@ -182,6 +184,15 @@ export default function AccountSettings({
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    if (params.get("paypalme") === "setup") {
+      params.delete("paypalme");
+      const next = `${window.location.pathname}${
+        params.toString() ? `?${params.toString()}` : ""
+      }#payment-options-settings`;
+      window.history.replaceState(null, "", next);
+      window.location.assign(PAYPAL_ME_SETUP_URL);
+      return;
+    }
     if (!params.get("error")) return;
     params.delete("error");
     params.delete("error_description");
@@ -564,7 +575,7 @@ export default function AccountSettings({
     if (railId === "paypal") {
       if (!paypalConnection.available) {
         setError(
-          "Official PayPal Login is not configured on this host yet. Connect PayPal cannot launch until the marketplace PayPal app is bound.",
+          "Log in with PayPal is not available on this copy of the site yet.",
         );
         setPending(null);
         return;
@@ -642,6 +653,45 @@ export default function AccountSettings({
     }
   }
 
+  async function onSavePaypalMe() {
+    setPending("paypal-paypalme");
+    setStatus("");
+    setError("");
+    try {
+      const response = await fetch("/api/paypal/destination", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ destination: paymentDrafts.paypal }),
+      });
+      const result = (await response.json()) as {
+        error?: string;
+        paypalConnection?: PayPalConnection;
+        paymentDestinations?: PaymentDestination[];
+      };
+      if (response.status === 401) {
+        window.location.assign("/login?returnTo=%2Faccount");
+        return;
+      }
+      if (!response.ok) {
+        setError(result.error ?? "Could not save your paypal.me.");
+        return;
+      }
+      if (result.paypalConnection) {
+        setPaypalConnection(result.paypalConnection);
+      }
+      setPaymentDrafts(destinationsByRail(result.paymentDestinations ?? []));
+      setStatus("paypal.me saved. Stay connected so buyers can trust this pay-to.");
+      router.refresh();
+    } catch (submitError) {
+      setError(normalizeAuthError(submitError, "Could not save your paypal.me."));
+    } finally {
+      setPending(null);
+    }
+  }
+
   async function onDisconnectPayPal() {
     setPending("paypal-disconnect");
     setStatus("");
@@ -669,6 +719,7 @@ export default function AccountSettings({
           available: paypalConnection.available,
           connected: false,
           email: null,
+          paypalMe: null,
         },
       );
       setPaymentDrafts((current) => ({ ...current, paypal: "" }));
@@ -1065,11 +1116,12 @@ export default function AccountSettings({
             </div>
             {rail.id === "paypal" ? (
               <p className="portal-settings-note">
-                Connect PayPal opens official Log in with PayPal and links your
-                personal PayPal account to this Open Marketplace account. PayPal
-                then fills the public pay-to. This is not a business PayPal
-                account or checkout. It does not sign you in, take payments, or
-                replace your Open Marketplace email or name.
+                Log in with PayPal links your personal PayPal to this Open
+                Marketplace account so buyers cannot spoof a pay-to. Stay
+                connected. After Login, Open Marketplace fills your paypal.me.
+                If you do not have one, you will be taken to PayPal to create
+                it. This is not a business checkout and does not change your
+                Open Marketplace email or name.
               </p>
             ) : null}
             <label
@@ -1084,7 +1136,10 @@ export default function AccountSettings({
                 data-feedback-surface={`${rail.label} input`}
                 value={
                   rail.id === "paypal"
-                    ? paypalConnection.email ?? paymentDrafts.paypal
+                    ? paymentDrafts.paypal ||
+                      (paypalConnection.paypalMe
+                        ? `https://www.paypal.me/${paypalConnection.paypalMe}`
+                        : paypalConnection.email || "")
                     : paymentDrafts[rail.id]
                 }
                 onChange={(event) =>
@@ -1095,8 +1150,11 @@ export default function AccountSettings({
                 }
                 autoComplete="off"
                 spellCheck={false}
-                disabled={pending !== null || rail.id === "paypal"}
-                readOnly={rail.id === "paypal"}
+                disabled={
+                  pending !== null ||
+                  (rail.id === "paypal" && !paypalConnection.connected)
+                }
+                readOnly={rail.id === "paypal" && !paypalConnection.connected}
               />
             </label>
             <div className="portal-connector-actions">
@@ -1111,7 +1169,20 @@ export default function AccountSettings({
                 >
                   {pending === "paypal-connect"
                     ? "Connecting…"
-                    : "Connect PayPal"}
+                    : "Log in with PayPal"}
+                </button>
+              ) : null}
+              {rail.id === "paypal" && paypalConnection.connected ? (
+                <button
+                  className="button button-dark"
+                  type="button"
+                  data-feedback-surface="Save paypal.me"
+                  onClick={() => void onSavePaypalMe()}
+                  disabled={pending !== null}
+                >
+                  {pending === "paypal-paypalme"
+                    ? "Saving…"
+                    : "Save paypal.me"}
                 </button>
               ) : null}
               {rail.id === "paypal" &&
@@ -1146,7 +1217,7 @@ export default function AccountSettings({
                 target="_blank"
                 rel="noreferrer"
               >
-                Open {rail.label}
+                Open {rail.id === "paypal" ? "paypal.me" : rail.label}
               </a>
               {paymentDrafts[rail.id] && rail.id !== "paypal" ? (
                 <button

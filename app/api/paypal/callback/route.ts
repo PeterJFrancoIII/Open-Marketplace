@@ -3,6 +3,7 @@ import {
   PAYPAL_OAUTH_COOKIE,
   clearPaypalOauthCookie,
   exchangePaypalAuthorizationCode,
+  paypalPublicPayTo,
   readPaypalOAuthSecrets,
   upsertPaypalAccount,
   verifyPaypalOAuthState,
@@ -22,9 +23,11 @@ function redirectToAccount(
   origin: string,
   secure: boolean,
   error?: string,
+  extras?: { paypalme?: string },
 ) {
   const url = new URL("/account/settings", origin);
   if (error) url.searchParams.set("error", error);
+  if (extras?.paypalme) url.searchParams.set("paypalme", extras.paypalme);
   url.hash = "payment-options-settings";
   return new Response(null, {
     status: 302,
@@ -84,11 +87,22 @@ export async function GET(request: Request) {
     expiresIn: exchanged.expiresIn,
     scope: exchanged.scope,
   });
-  await writePaypalPaymentDestination(
-    session.user.id,
-    session.user.name?.trim() || "Member",
-    exchanged.email,
-  );
+  const payTo = paypalPublicPayTo({
+    email: exchanged.email,
+    paypalMe: exchanged.paypalMe,
+  });
+  if (payTo) {
+    await writePaypalPaymentDestination(
+      session.user.id,
+      session.user.name?.trim() || "Member",
+      payTo,
+    );
+  }
 
-  return redirectToAccount(origin, secure);
+  return redirectToAccount(
+    origin,
+    secure,
+    undefined,
+    exchanged.paypalMe ? undefined : { paypalme: "setup" },
+  );
 }

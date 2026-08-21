@@ -30,6 +30,7 @@ export type PayPalConnection = {
   available: boolean;
   connected: boolean;
   email: string | null;
+  paypalMe: string | null;
 };
 
 export type SocialProof = {

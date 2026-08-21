@@ -15,9 +15,11 @@ import {
   overlayPaypalDestinations,
   parsePaypalUserInfo,
   paypalAuthorizeUrl,
+  paypalMeFromUserInfo,
+  paypalPublicPayTo,
   paypalUserInfoUrls,
   PAYPAL_CONNECT_SCOPES,
-  PAYPAL_PAYER_ATTRIBUTE_SCOPE,
+  PAYPAL_ME_SETUP_URL,
 } from "../lib/paypal-public.ts";
 
 register(new URL("./helpers/cloudflare-workers-loader.mjs", import.meta.url));
@@ -174,7 +176,7 @@ async function getJson(worker, env, path, cookieJar) {
   });
 }
 
-function installPaypalFetchStub() {
+function installPaypalFetchStub({ paypalMe } = {}) {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const url =
@@ -207,6 +209,9 @@ function installPaypalFetchStub() {
           email_verified: true,
           account_type: "PERSONAL",
           verified_account: true,
+          ...(paypalMe
+            ? { paypalme: `https://www.paypal.me/${paypalMe}` }
+            : {}),
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
@@ -290,16 +295,13 @@ test("PayPal authorize URL stays on official Log in with PayPal scopes", () => {
   );
   assert.equal(url.hostname, "www.sandbox.paypal.com");
   assert.equal(url.pathname, "/connect");
-  assert.equal(
-    url.searchParams.get("scope"),
-    `openid email profile ${PAYPAL_PAYER_ATTRIBUTE_SCOPE}`,
-  );
+  assert.equal(url.searchParams.get("scope"), "openid");
   assert.equal(url.searchParams.get("fullPage"), "true");
-  assert.deepEqual(
-    [...PAYPAL_CONNECT_SCOPES],
-    ["openid", "email", "profile", PAYPAL_PAYER_ATTRIBUTE_SCOPE],
+  assert.deepEqual([...PAYPAL_CONNECT_SCOPES], ["openid"]);
+  assert.doesNotMatch(
+    url.searchParams.get("scope") ?? "",
+    /email|profile|address|phone|payouts|checkout|paypalattributes/,
   );
-  assert.doesNotMatch(url.searchParams.get("scope") ?? "", /address|phone|payouts|checkout/);
   assert.deepEqual(
     [...paypalUserInfoUrls(false)],
     [
@@ -309,7 +311,7 @@ test("PayPal authorize URL stays on official Log in with PayPal scopes", () => {
   );
 });
 
-test("PayPal userinfo parser keeps only payer id and email", () => {
+test("PayPal userinfo parser keeps payer id, email, and paypal.me when present", () => {
   const parsed = parsePaypalUserInfo({
     payer_id: "ABC123",
     name: "Seller",
@@ -320,15 +322,39 @@ test("PayPal userinfo parser keeps only payer id and email", () => {
   assert.equal(parsed?.payerId, "ABC123");
   assert.equal(parsed?.email, "seller@example.com");
   assert.equal(parsed?.name, "Seller");
+  assert.equal(parsed?.paypalMe, null);
+  assert.equal(paypalMeFromUserInfo({ preferred_username: "Seller" }), null);
+  assert.equal(
+    paypalMeFromUserInfo({ paypalme: "https://www.paypal.me/SellerReed" }),
+    "SellerReed",
+  );
+  assert.equal(
+    paypalPublicPayTo({ email: "seller@example.com", paypalMe: "SellerReed" }),
+    "https://www.paypal.me/SellerReed",
+  );
+  assert.equal(
+    paypalPublicPayTo({ email: "seller@example.com", paypalMe: null }),
+    "seller@example.com",
+  );
 
   const openid = parsePaypalUserInfo({
     user_id: "https://www.paypal.com/webapps/auth/identity/user/XYZ789",
     sub: "XYZ789",
     email: "Personal@Example.com",
     account_type: "PERSONAL",
+    paypalme: "https://paypal.me/PersonalSeller",
   });
   assert.equal(openid?.payerId, "XYZ789");
   assert.equal(openid?.email, "personal@example.com");
+  assert.equal(openid?.paypalMe, "PersonalSeller");
+
+  const openidOnly = parsePaypalUserInfo({
+    sub: "OPENIDONLY1",
+    account_type: "PERSONAL",
+  });
+  assert.equal(openidOnly?.payerId, "OPENIDONLY1");
+  assert.equal(openidOnly?.email, "");
+  assert.equal(paypalPublicPayTo({ email: "", paypalMe: null }), null);
 });
 
 test("typed PayPal stays self-reported until Login is linked", () => {
@@ -427,10 +453,7 @@ test("PayPal connect requires a session and then populates the public pay-to ema
     assert.equal(start.status, 302);
     const authorizeUrl = new URL(start.headers.get("location") ?? "");
     assert.equal(authorizeUrl.hostname, "www.sandbox.paypal.com");
-    assert.equal(
-      authorizeUrl.searchParams.get("scope"),
-      `openid email profile ${PAYPAL_PAYER_ATTRIBUTE_SCOPE}`,
-    );
+    assert.equal(authorizeUrl.searchParams.get("scope"), "openid");
     assert.equal(authorizeUrl.searchParams.get("fullPage"), "true");
     assert.match(authorizeUrl.searchParams.get("redirect_uri") ?? "", /\/api\/paypal\/callback$/);
     const state = authorizeUrl.searchParams.get("state") ?? "";
@@ -444,12 +467,14 @@ test("PayPal connect requires a session and then populates the public pay-to ema
     );
     assert.equal(callback.status, 302);
     assert.match(callback.headers.get("location") ?? "", /\/account/);
+    assert.match(callback.headers.get("location") ?? "", /paypalme=setup/);
 
     const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
     const profileBody = await profile.json();
     assert.equal(profileBody.paypalConnection.available, true);
     assert.equal(profileBody.paypalConnection.connected, true);
     assert.equal(profileBody.paypalConnection.email, "seller-paypal@example.com");
+    assert.equal(profileBody.paypalConnection.paypalMe, null);
     const owner = d1.__sqlite
       .prepare("SELECT id FROM auth_users WHERE email = ?")
       .get("paypal-owner@example.com");
@@ -462,6 +487,19 @@ test("PayPal connect requires a session and then populates the public pay-to ema
     assert.equal(profileBody.paymentDestinations[0]?.source, "oauth");
     assertNoSecrets(profileBody);
 
+    const savedMe = await postJson(worker, env, "/api/paypal/destination", cookieJar, {
+      destination: "paypal.me/SellerReed",
+    });
+    assert.equal(savedMe.status, 200);
+    const savedMeBody = await savedMe.json();
+    assert.equal(savedMeBody.paypalConnection.connected, true);
+    assert.equal(savedMeBody.paypalConnection.paypalMe, "SellerReed");
+    assert.equal(
+      savedMeBody.paymentDestinations[0]?.destination,
+      "https://www.paypal.me/SellerReed",
+    );
+    assert.equal(savedMeBody.paymentDestinations[0]?.source, "oauth");
+
     const spoof = await putJson(worker, env, "/api/account/profile", cookieJar, {
       paymentDestinations: [
         {
@@ -472,7 +510,7 @@ test("PayPal connect requires a session and then populates the public pay-to ema
       ],
     });
     const spoofBody = await spoof.json();
-    assert.equal(spoofBody.paymentDestinations[0]?.destination, "seller-paypal@example.com");
+    assert.equal(spoofBody.paymentDestinations[0]?.destination, "https://www.paypal.me/SellerReed");
     assert.equal(spoofBody.paymentDestinations[0]?.source, "oauth");
 
     const published = await postJson(worker, env, "/api/listings", cookieJar, {
@@ -522,7 +560,7 @@ test("PayPal connect requires a session and then populates the public pay-to ema
   }
 });
 
-test("typed PayPal destination connects and disconnects without other rails", async () => {
+test("paypal.me cannot be saved until Log in with PayPal is connected", async () => {
   const d1 = createMemoryD1();
   applyMarketplaceMigrations(d1);
   const worker = await loadWorker("paypal-typed-destination");
@@ -548,52 +586,65 @@ test("typed PayPal destination connects and disconnects without other rails", as
   assert.equal(savedVenmo.status, 200);
 
   const unsigned = await postJson(worker, env, "/api/paypal/destination", undefined, {
-    destination: "seller-paypal@example.com",
+    destination: "paypal.me/SellerReed",
   });
   assert.equal(unsigned.status, 401);
 
-  const connected = await postJson(worker, env, "/api/paypal/destination", cookieJar, {
+  const blocked = await postJson(worker, env, "/api/paypal/destination", cookieJar, {
     destination: "paypal.me/SellerReed",
   });
-  assert.equal(connected.status, 200);
-  const connectedBody = await connected.json();
-  assert.equal(connectedBody.paypalConnection.available, false);
-  assert.equal(
-    connectedBody.paymentDestinations.find((item) => item.rail === "paypal")?.destination,
-    "https://www.paypal.me/SellerReed",
-  );
-  assert.equal(
-    connectedBody.paymentDestinations.find((item) => item.rail === "venmo")?.destination,
-    "@sellerreed",
-  );
-
-  const rejected = await postJson(worker, env, "/api/paypal/destination", cookieJar, {
-    destination: "not-a-paypal-value",
-  });
-  assert.equal(rejected.status, 400);
-
-  const unlinked = await postJson(worker, env, "/api/paypal/disconnect", cookieJar, {});
-  assert.equal(unlinked.status, 200);
-  const unlinkedBody = await unlinked.json();
-  assert.equal(
-    unlinkedBody.paymentDestinations?.some((item) => item.rail === "paypal"),
-    false,
-  );
-  assert.equal(
-    unlinkedBody.paymentDestinations.find((item) => item.rail === "venmo")?.destination,
-    "@sellerreed",
-  );
+  assert.equal(blocked.status, 403);
 
   const after = await getJson(worker, env, "/api/account/profile", cookieJar);
   const afterBody = await after.json();
-  assert.equal(
-    afterBody.paymentDestinations?.some((item) => item.rail === "paypal"),
-    false,
-  );
+  assert.equal(afterBody.paypalConnection.connected, false);
   assert.equal(
     afterBody.paymentDestinations.find((item) => item.rail === "venmo")?.destination,
     "@sellerreed",
   );
+});
+
+test("Log in with PayPal fills paypal.me when userinfo includes it", async () => {
+  const restoreFetch = installPaypalFetchStub({ paypalMe: "SellerReed" });
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("paypal-me-from-userinfo");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+  try {
+    await signUp(worker, env, {
+      name: "PayPal Me Owner",
+      email: "paypal-me-owner@example.com",
+      password: USER_PASSWORD,
+    });
+    await signIn(worker, env, cookieJar, {
+      email: "paypal-me-owner@example.com",
+      password: USER_PASSWORD,
+    });
+    const start = await workerFetch(worker, env, "/api/paypal/connect", {
+      cookieJar,
+      redirect: "manual",
+    });
+    const state = new URL(start.headers.get("location") ?? "").searchParams.get("state") ?? "";
+    const callback = await workerFetch(
+      worker,
+      env,
+      `/api/paypal/callback?code=test-paypal-code&state=${encodeURIComponent(state)}`,
+      { cookieJar, redirect: "manual" },
+    );
+    assert.equal(callback.status, 302);
+    assert.doesNotMatch(callback.headers.get("location") ?? "", /paypalme=setup/);
+    const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
+    const profileBody = await profile.json();
+    assert.equal(profileBody.paypalConnection.connected, true);
+    assert.equal(profileBody.paypalConnection.paypalMe, "SellerReed");
+    assert.equal(
+      profileBody.paymentDestinations[0]?.destination,
+      "https://www.paypal.me/SellerReed",
+    );
+  } finally {
+    restoreFetch();
+  }
 });
 
 test("account settings and listings source offer Link PayPal without checkout", async () => {
@@ -606,9 +657,12 @@ test("account settings and listings source offer Link PayPal without checkout", 
     readFile(new URL("../lib/payment-destinations.ts", import.meta.url), "utf8"),
   ]);
   assert.match(settings, /Connect PayPal/);
-  assert.match(settings, /official Log in with PayPal/);
-  assert.match(settings, /personal PayPal account/);
-  assert.match(settings, /not a business PayPal/);
+  assert.match(settings, /Log in with PayPal/);
+  assert.match(settings, /personal PayPal/);
+  assert.match(settings, /not a business checkout/);
+  assert.match(settings, /onSavePaypalMe/);
+  assert.match(settings, /PAYPAL_ME_SETUP_URL/);
+  assert.match(settings, /paypalme/);
   assert.match(settings, /Connect \$\{rail\.label\}/);
   assert.match(settings, /data-feedback-surface=\{\`Connect \$\{rail\.label\}\`\}/);
   assert.match(settings, /data-feedback-surface=\{\`\$\{rail.label\} input\`\}/);
@@ -620,7 +674,8 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(settings, /paypalConnection\.available/);
   assert.match(settings, /paymentDestinationPayload/);
   assert.match(settings, /not a checkout/);
-  assert.match(rails, /PayPal email filled by official Log in with PayPal/);
+  assert.match(rails, /paypal\.me filled after Log in with PayPal/);
+  assert.equal(PAYPAL_ME_SETUP_URL, "https://www.paypal.com/paypalme");
   assert.match(settings, /does not execute, insure, escrow/);
   assert.doesNotMatch(settings, /Orders API|CreateShipment|\/v2\/checkout\/orders|payouts/i);
   assert.match(marketplace, /PayPal · Linked/);
@@ -630,12 +685,13 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(marketplace, /PayPalListingFact/);
   assert.match(marketplace, /listingPayDetails/);
   assert.match(marketplace, /goods_and_services/);
+  assert.match(marketplace, /paypalMeHandle/);
   assert.match(payLink, /cmd/);
   assert.match(payLink, /_xclick/);
   assert.match(payLink, /friends_and_family/);
   assert.match(paypalPublic, /openid/);
-  assert.match(paypalPublic, /paypalattributes/);
   assert.match(paypalPublic, /openidconnect\/userinfo/);
+  assert.match(paypalPublic, /PAYPAL_CONNECT_SCOPES = \["openid"\]/);
   assert.match(connect, /paypalUserInfoUrls/);
   assert.doesNotMatch(
     `${connect}\n${paypalPublic}\n${payLink}`,

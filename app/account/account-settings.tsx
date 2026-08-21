@@ -562,7 +562,53 @@ export default function AccountSettings({
     setStatus("");
     setError("");
     if (railId === "paypal") {
-      window.location.assign("/api/paypal/connect");
+      const destination = paymentDrafts.paypal.trim();
+      if (!destination) {
+        window.open(rail?.connectUrl ?? "https://www.paypal.com/paypalme", "_blank", "noreferrer");
+        setError(
+          "Copy your personal paypal.me link from PayPal, paste it here, then click Connect PayPal.",
+        );
+        setPending(null);
+        return;
+      }
+      try {
+        const response = await fetch("/api/paypal/destination", {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ destination }),
+        });
+        const result = (await response.json()) as {
+          error?: string;
+          paypalConnection?: PayPalConnection;
+          paymentDestinations?: PaymentDestination[];
+        };
+        if (response.status === 401) {
+          window.location.assign("/login?returnTo=%2Faccount%2Fsettings");
+          return;
+        }
+        if (!response.ok) {
+          setError(result.error ?? "Could not connect PayPal.");
+          return;
+        }
+        if (result.paypalConnection) {
+          setPaypalConnection(result.paypalConnection);
+        }
+        setPaymentDrafts(destinationsByRail(result.paymentDestinations ?? []));
+        setStatus(
+          "PayPal connected. Buyers will see this personal paypal.me or PayPal email. This is not a business checkout.",
+        );
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : "Could not connect PayPal.",
+        );
+      } finally {
+        setPending(null);
+      }
       return;
     }
     const destination = paymentDrafts[railId].trim();
@@ -1020,8 +1066,9 @@ export default function AccountSettings({
         <div>
           <h3 id="payment-options-title">Payment options</h3>
           <p className="portal-lead">
-            Connect PayPal opens official PayPal Login and pulls your PayPal
-            account into Open Marketplace. Venmo, Cash App, Zelle, Apple Cash,
+            Connect PayPal saves your personal paypal.me link or PayPal email.
+            It is not a business PayPal account and does not use PayPal
+            Business Login. Venmo, Cash App, Zelle, Apple Cash,
             Bitcoin on Bitcoin Mainnet, Ethereum on Ethereum Mainnet, Tether
             (USDT) on Ethereum Mainnet (ERC-20), BNB on BNB Smart Chain
             Mainnet, and USDC on Ethereum Mainnet (ERC-20) stay typed public
@@ -1057,10 +1104,10 @@ export default function AccountSettings({
             </div>
             {rail.id === "paypal" ? (
               <p className="portal-settings-note">
-                Connect PayPal opens the official PayPal connector and fills
-                this public pay-to from your PayPal account. It does not sign
-                you in, take payments, or hold money. It does not replace your
-                Open Marketplace email or name.
+                Paste your personal paypal.me link or PayPal email. This is a
+                public pay-to for buyers, not a business checkout. It does not
+                sign you in, take payments, or hold money. It does not replace
+                your Open Marketplace email or name.
               </p>
             ) : null}
             <label
@@ -1086,7 +1133,6 @@ export default function AccountSettings({
                 }
                 autoComplete="off"
                 spellCheck={false}
-                readOnly={rail.id === "paypal"}
                 disabled={
                   pending !== null ||
                   (rail.id === "paypal" && paypalConnection.connected)

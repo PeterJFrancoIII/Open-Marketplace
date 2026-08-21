@@ -510,14 +510,14 @@ test("typed PayPal destination connects and disconnects without other rails", as
   assert.equal(unsigned.status, 401);
 
   const connected = await postJson(worker, env, "/api/paypal/destination", cookieJar, {
-    destination: "seller-paypal@example.com",
+    destination: "paypal.me/SellerReed",
   });
   assert.equal(connected.status, 200);
   const connectedBody = await connected.json();
   assert.equal(connectedBody.paypalConnection.available, false);
   assert.equal(
     connectedBody.paymentDestinations.find((item) => item.rail === "paypal")?.destination,
-    "seller-paypal@example.com",
+    "https://www.paypal.me/SellerReed",
   );
   assert.equal(
     connectedBody.paymentDestinations.find((item) => item.rail === "venmo")?.destination,
@@ -554,16 +554,17 @@ test("typed PayPal destination connects and disconnects without other rails", as
 });
 
 test("account settings and listings source offer Link PayPal without checkout", async () => {
-  const [settings, marketplace, connect, paypalPublic, payLink] = await Promise.all([
+  const [settings, marketplace, connect, paypalPublic, payLink, rails] = await Promise.all([
     readFile(new URL("../app/account/account-settings.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/marketplace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/paypal-connect.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/paypal-public.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/paypal-pay-link.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/payment-destinations.ts", import.meta.url), "utf8"),
   ]);
   assert.match(settings, /Connect PayPal/);
-  assert.match(settings, /official PayPal Login/);
-  assert.match(settings, /official PayPal connector/);
+  assert.match(settings, /personal paypal\.me/);
+  assert.match(settings, /not a business PayPal account/);
   assert.match(settings, /Connect \$\{rail\.label\}/);
   assert.match(settings, /data-feedback-surface=\{\`Connect \$\{rail\.label\}\`\}/);
   assert.match(settings, /data-feedback-surface=\{\`\$\{rail.label\} input\`\}/);
@@ -571,12 +572,13 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(settings, /onConnectPayment/);
   assert.match(settings, /onDisconnectPayPal/);
   assert.match(settings, /if \(railId === "paypal"\) \{/);
-  assert.match(settings, /window\.location\.assign\("\/api\/paypal\/connect"\)/);
+  assert.match(settings, /\/api\/paypal\/destination/);
+  assert.doesNotMatch(settings, /window\.location\.assign\("\/api\/paypal\/connect"\)/);
   assert.doesNotMatch(settings, /paypalConnection\.available\)/);
-  assert.doesNotMatch(settings, /\/api\/paypal\/destination/);
   assert.match(settings, /paymentDestinationPayload/);
-  assert.match(settings, /\/api\/paypal\/connect/);
   assert.match(settings, /not a checkout/);
+  assert.match(rails, /Personal paypal\.me link or PayPal email/);
+  assert.match(rails, /https:\/\/www\.paypal\.com\/paypalme/);
   assert.match(settings, /does not execute, insure, escrow/);
   assert.doesNotMatch(settings, /Orders API|CreateShipment|\/v2\/checkout\/orders|payouts/i);
   assert.match(marketplace, /PayPal · Linked/);

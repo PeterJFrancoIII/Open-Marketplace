@@ -17,8 +17,8 @@ export const PAYMENT_RAILS: ReadonlyArray<PaymentRailDefinition> = [
   {
     id: "paypal",
     label: "PayPal",
-    hint: "PayPal email or paypal.me / paypal.com link",
-    connectUrl: "https://www.paypal.com",
+    hint: "Personal paypal.me link or PayPal email",
+    connectUrl: "https://www.paypal.com/paypalme",
     asset: null,
     networkId: null,
     networkLabel: null,
@@ -166,6 +166,13 @@ function httpsUrl(value: string): URL | null {
 
 function normalizePayPal(value: string): string | null {
   if (EMAIL.test(value)) return value.toLowerCase();
+  const handle = value
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/^@/, "");
+  const meMatch = handle.match(/^paypal\.me\/([a-z0-9._-]+)\/?$/i);
+  if (meMatch) return `https://www.paypal.me/${meMatch[1]}`;
   const url = httpsUrl(value);
   if (!url) return null;
   const host = url.hostname.toLowerCase();

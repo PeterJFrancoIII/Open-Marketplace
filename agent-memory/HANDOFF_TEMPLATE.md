@@ -10,7 +10,13 @@ completed_at: "YYYY-MM-DDTHH:MM:SSZ"
 repository: "PeterJFrancoIII/Open-Marketplace"
 branch: "replace-with-branch"
 base_commit: "replace-with-full-sha"
-head_commit: "replace-with-full-sha-or-uncommitted"
+head_commit: "replace-with-pushed-full-sha"
+github_publication:
+  inter_agent_review_handoff: true
+  program_and_memory_pushed: true
+  github_url: "https://github.com/PeterJFrancoIII/Open-Marketplace"
+  handling_branch: "replace-with-branch"
+  pushed_commit: "replace-with-full-sha-on-origin"
 shared_memory_refs:
   github_repository: "PeterJFrancoIII/Open-Marketplace"
   github_url: "https://github.com/PeterJFrancoIII/Open-Marketplace"
@@ -45,6 +51,8 @@ State the assigned objective without expanding it.
 
 ## Shared-memory citations
 Always cite the shared-memory space assigned to the GitHub repository directory that handles this work. Required fields: `github_repository`, `github_url`, `repo_directory`, `assigned_memory_root` (`agent-memory/` in this repository), `canonical_ref_or_commit`, and the exact memory paths read. Do not cite another project's memory, chat history, or a different clone as the canonical space. Do not cite unstored private reasoning.
+
+An inter-agent review handoff is incomplete until GitHub has the latest program and the full assigned `agent-memory/` space at the cited pushed commit. Reviewing agents must read that GitHub commit. Local-only files are not reviewable.
 
 ## Work performed
 List concrete changes and why each was necessary.

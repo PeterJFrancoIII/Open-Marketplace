@@ -30,16 +30,23 @@ branch and commit state, every changed file, commands and exit codes, unresolved
 risks, and the recommended next action. Every handoff must cite the shared-memory
 space assigned to the GitHub repository directory that handles the work:
 `PeterJFrancoIII/Open-Marketplace`, the absolute clone/worktree path, and
-`agent-memory/` in that repository. Report `ready_for_review`; do not mark
-your own work accepted.
+`agent-memory/` in that repository.
+
+A handoff to another agent for review is incomplete until GitHub has the
+latest program and the full assigned `agent-memory/` space. Commit and push
+both to the handling branch, then cite that pushed commit. Reviewing agents
+have no other way to read those documents. This standing owner rule authorizes
+that commit and push. It does not authorize merge, production deploy, or
+Cloudflare production changes. Report `ready_for_review`; do not mark your
+own work accepted.
 
 Do not edit `Master_Descriptor.md`, `agent-memory/STATE.md`,
 `agent-memory/TASKS.md`, or `agent-memory/DECISIONS.md` unless the assigned task
 explicitly authorizes that file. Never put credentials, cookies, passwords,
 tokens, private user data, or identity-document contents in repository memory.
 
-Do not commit, push, merge, deploy, or change Cloudflare or production state
-unless the task explicitly authorizes the exact external action.
+Do not merge, deploy, or change Cloudflare or production state unless the task
+explicitly authorizes that exact external action.
 
 For Cursor Cloud work requested with Grok, verify the selected remote machine is
 `Operator ~/Desktop/Operator @ BigDingDongLittleBrainPoopyButt` and the model is

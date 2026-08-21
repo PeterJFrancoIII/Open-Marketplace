@@ -39,6 +39,24 @@ Create one append-only handoff using `HANDOFF_TEMPLATE.md` and include:
 
 Subagents report only `ready_for_review`, `partial`, or `blocked`. Codex alone changes canonical state to `accepted`.
 
+## Inter-agent GitHub publication gate
+
+A handoff to another agent for review is **not complete** until both of these are on GitHub at the cited commit:
+
+1. the full assigned shared-memory space (`agent-memory/` in this repository);
+2. the latest version of the program that handles that work.
+
+Reviewing agents cannot see local worktrees, uncommitted files, or chat-only documents. They can review only what is on `https://github.com/PeterJFrancoIII/Open-Marketplace`.
+
+Before completing an inter-agent review handoff:
+
+1. Commit the current program and the complete `agent-memory/` space.
+2. Push that commit to the handling branch on GitHub.
+3. Cite `github_repository`, `repo_directory`, `assigned_memory_root`, the pushed `canonical_ref_or_commit`, and the memory paths read.
+4. Tell the reviewing agent to read that GitHub commit. Do not ask them to review files that exist only locally.
+
+This gate authorizes that commit and push. It does not authorize merge, production deploy, or Cloudflare production changes.
+
 ## Functional-preview rule
 
 For every user-facing behavior change, the implementation task must produce a runnable preview for the human owner. Automated tests do not replace the human functional check. Cursor must never claim the owner passed a preview.

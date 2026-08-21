@@ -71,11 +71,24 @@ The `agent-memory/` directory is the repository-backed coordination space.
 
 Use `agent-memory/HANDOFF_TEMPLATE.md` for every implementation handoff.
 
+A handoff to another agent for review is incomplete until the assigned
+shared-memory space is fully on GitHub and the GitHub repository has the
+latest program for that work. Reviewing agents have no other way to read
+those documents or that program. Before completing such a handoff: commit
+the current program and the full `agent-memory/` space, push them to
+`PeterJFrancoIII/Open-Marketplace` on the handling branch, and cite that
+pushed commit. Local-only or chat-only files do not count. This standing
+owner rule authorizes that commit and push. It does not authorize merge,
+production deploy, or Cloudflare production changes.
+
 ## GitHub, Cloudflare, and production safety
 
-- Subagents must not commit, push, merge, deploy, modify Cloudflare state,
-  create credentials, or change production data unless the assigned task
-  explicitly authorizes that exact action.
+- Subagents must not merge, deploy, modify Cloudflare state, create
+  credentials, or change production data unless the assigned task
+  explicitly authorizes that exact action. Commit and push are required
+  before an inter-agent review handoff so GitHub has the latest program
+  and the full assigned `agent-memory/` space. Other commits and pushes
+  still need explicit task or owner authorization.
 - Codex performs repository administration and external-state changes only
   within the human owner's authorization.
 - Preserve the existing `open-marketplace-demo` Pages project as the

@@ -147,7 +147,9 @@ test("PayPal callback can finish from one-time server state when the browser ses
     if (/^https:\/\/api-m\.sandbox\.paypal\.com\/v1\/oauth2\/token/i.test(url)) {
       tokenExchangeCount += 1;
       const body = new URLSearchParams(String(init?.body ?? ""));
-      assert.equal(body.get("redirect_uri"), "http://localhost/api/paypal/callback");
+      assert.equal(body.get("grant_type"), "authorization_code");
+      assert.equal(body.get("code"), "test-paypal-code");
+      assert.equal(body.get("redirect_uri"), null);
       return new Response(
         JSON.stringify({
           access_token: PAYPAL_ACCESS_TOKEN,

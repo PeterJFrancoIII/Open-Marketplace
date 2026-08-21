@@ -41,6 +41,7 @@ async function redirectToAccount(
         : error === "paypal-state" ||
             error === "paypal-session" ||
             error === "paypal-token" ||
+            error === "paypal-token-redirect" ||
             error === "paypal"
           ? error
           : "paypal";

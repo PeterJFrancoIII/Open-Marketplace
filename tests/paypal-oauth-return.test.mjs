@@ -365,3 +365,213 @@ test("PayPal callback still links when Pages unique host differs from the stored
     globalThis.fetch = originalFetch;
   }
 });
+
+function installPaypalTokenMock(onToken) {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input instanceof Request
+            ? input.url
+            : String(input);
+    if (/^https:\/\/api-m\.sandbox\.paypal\.com\/v1\/oauth2\/token/i.test(url)) {
+      const body = new URLSearchParams(String(init?.body ?? ""));
+      calls.push({
+        grantType: body.get("grant_type"),
+        code: body.get("code"),
+        redirectUri: body.get("redirect_uri"),
+      });
+      return onToken(body, calls.length);
+    }
+    if (/^https:\/\/api-m\.sandbox\.paypal\.com\/v1\/identity\//i.test(url)) {
+      return new Response(JSON.stringify({ name: "INVALID_TOKEN" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return originalFetch.call(globalThis, input, init);
+  };
+  return { originalFetch, calls };
+}
+
+async function startPaypalConnect(worker, env, cookieJar, label) {
+  await signUp(worker, env, {
+    name: label,
+    email: `${label.replace(/\s+/g, "-").toLowerCase()}@example.com`,
+    password: USER_PASSWORD,
+  });
+  await signIn(worker, env, cookieJar, {
+    email: `${label.replace(/\s+/g, "-").toLowerCase()}@example.com`,
+    password: USER_PASSWORD,
+  });
+  const start = await workerFetch(worker, env, "/api/paypal/connect", {
+    cookieJar,
+    redirect: "manual",
+  });
+  assert.equal(start.status, 302);
+  const authorizeUrl = new URL(start.headers.get("location") ?? "");
+  return {
+    state: authorizeUrl.searchParams.get("state") ?? "",
+    redirectUri: authorizeUrl.searchParams.get("redirect_uri") ?? "",
+  };
+}
+
+test("PayPal token exchange retries once only when PayPal reports a redirect URI problem", async () => {
+  const { originalFetch, calls } = installPaypalTokenMock((body, attempt) => {
+    if (attempt === 1) {
+      assert.equal(body.get("redirect_uri"), null);
+      return new Response(JSON.stringify({ error: "invalid_redirect_uri" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    assert.equal(body.get("redirect_uri"), "http://localhost/api/paypal/callback");
+    return new Response(
+      JSON.stringify({
+        access_token: PAYPAL_ACCESS_TOKEN,
+        refresh_token: "test-paypal-refresh-token-not-real",
+        expires_in: 28800,
+        scope: "openid",
+        token_type: "Bearer",
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  });
+
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("paypal-token-redirect-retry");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+
+  try {
+    const { state } = await startPaypalConnect(
+      worker,
+      env,
+      cookieJar,
+      "PayPal Redirect Retry",
+    );
+    const callback = await workerFetch(
+      worker,
+      env,
+      `/api/paypal/callback?code=test-paypal-code&state=${encodeURIComponent(state)}`,
+      { cookieJar, redirect: "manual" },
+    );
+    assert.equal(callback.status, 302);
+    assert.match(callback.headers.get("location") ?? "", /paypal=linked/);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].redirectUri, null);
+    assert.equal(calls[1].redirectUri, "http://localhost/api/paypal/callback");
+
+    const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
+    const profileBody = await profile.json();
+    assert.equal(profileBody.paypalConnection.connected, true);
+    assert.equal(profileBody.paypalConnection.lastReturn, "linked");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("PayPal token exchange does not retry invalid client or invalid code", async () => {
+  for (const [label, payload] of [
+    ["client", { error: "invalid_client" }],
+    ["code", { error: "invalid_grant" }],
+  ]) {
+    const { originalFetch, calls } = installPaypalTokenMock(() => {
+      return new Response(JSON.stringify(payload), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const d1 = createMemoryD1();
+    applyMarketplaceMigrations(d1);
+    const worker = await loadWorker(`paypal-token-no-retry-${label}`);
+    const env = createTestEnv(d1);
+    const cookieJar = new Map();
+
+    try {
+      const { state } = await startPaypalConnect(
+        worker,
+        env,
+        cookieJar,
+        `PayPal No Retry ${label}`,
+      );
+      const callback = await workerFetch(
+        worker,
+        env,
+        `/api/paypal/callback?code=test-paypal-code&state=${encodeURIComponent(state)}`,
+        { cookieJar, redirect: "manual" },
+      );
+      assert.equal(callback.status, 302);
+      assert.match(
+        callback.headers.get("location") ?? "",
+        /[?&]error=paypal-token(?:&|#|$)/,
+      );
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].redirectUri, null);
+
+      const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
+      const profileBody = await profile.json();
+      assert.equal(profileBody.paypalConnection.connected, false);
+      assert.equal(profileBody.paypalConnection.lastReturn, "paypal-token");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+});
+
+test("PayPal callback records paypal-token-redirect when the redirect retry still fails", async () => {
+  const { originalFetch, calls } = installPaypalTokenMock(() => {
+    return new Response(
+      JSON.stringify({
+        error: "invalid_request",
+        error_description: "redirect_uri mismatch",
+      }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    );
+  });
+
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("paypal-token-redirect-recorded");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+
+  try {
+    const { state } = await startPaypalConnect(
+      worker,
+      env,
+      cookieJar,
+      "PayPal Redirect Recorded",
+    );
+    const callback = await workerFetch(
+      worker,
+      env,
+      `/api/paypal/callback?code=test-paypal-code&state=${encodeURIComponent(state)}`,
+      { cookieJar, redirect: "manual" },
+    );
+    assert.equal(callback.status, 302);
+    assert.match(
+      callback.headers.get("location") ?? "",
+      /error=paypal-token-redirect/,
+    );
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].redirectUri, null);
+    assert.equal(calls[1].redirectUri, "http://localhost/api/paypal/callback");
+
+    const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
+    const profileBody = await profile.json();
+    assert.equal(profileBody.paypalConnection.connected, false);
+    assert.equal(
+      profileBody.paypalConnection.lastReturn,
+      "paypal-token-redirect",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

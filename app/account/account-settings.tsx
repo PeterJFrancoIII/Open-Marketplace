@@ -97,8 +97,11 @@ function readOauthError() {
   if (error === "paypal" || error === "paypal-session" || error === "paypal-state") {
     return "Log in with PayPal did not finish coming back to Open Marketplace. Click Log in with PayPal again, then continue on PayPal until this page reloads.";
   }
+  if (error === "paypal-token-redirect") {
+    return "PayPal signed you in, but the return address did not match (paypal-token-redirect). Click Log in with PayPal again.";
+  }
   if (error === "paypal-token") {
-    return "PayPal signed you in, but Open Marketplace could not save the connection. Click Log in with PayPal again.";
+    return "PayPal signed you in, but Open Marketplace could not save the connection (paypal-token). Click Log in with PayPal again.";
   }
   return "Social Connect did not complete. Try again.";
 }
@@ -114,8 +117,11 @@ function paypalLastReturnMessage(lastReturn?: string | null) {
   ) {
     return "Log in with PayPal did not finish coming back to Open Marketplace. Click Log in with PayPal again, then continue on PayPal until this page reloads.";
   }
+  if (lastReturn === "paypal-token-redirect") {
+    return "PayPal signed you in, but the return address did not match (paypal-token-redirect). Click Log in with PayPal again.";
+  }
   if (lastReturn === "paypal-token") {
-    return "PayPal signed you in, but Open Marketplace could not save the connection. Click Log in with PayPal again.";
+    return "PayPal signed you in, but Open Marketplace could not save the connection (paypal-token). Click Log in with PayPal again.";
   }
   return "";
 }

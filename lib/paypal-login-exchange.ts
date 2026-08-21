@@ -7,13 +7,14 @@ import {
 } from "./paypal-public";
 
 /**
- * Exchange a Log in with PayPal authorization code using PayPal's current
- * documented token request: Basic client authentication plus grant_type/code.
- * The redirect URI is validated during authorization and the callback attempt;
- * PayPal's Login token request does not include it in the form body.
+ * Exchange a Log in with PayPal authorization code. Live Login on this
+ * project completed when the token form repeated the same redirect_uri
+ * sent to /connect. Keep that URI from the stored attempt, not from the
+ * callback request host, so a Pages alias and unique deploy host can differ.
  */
 export async function exchangePaypalLoginAuthorizationCode(input: {
   code: string;
+  redirectUri: string;
   clientId: string;
   clientSecret: string;
   live: boolean;
@@ -29,6 +30,7 @@ export async function exchangePaypalLoginAuthorizationCode(input: {
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code: input.code,
+      redirect_uri: input.redirectUri,
     }),
   });
   if (!tokenResponse.ok) return null;

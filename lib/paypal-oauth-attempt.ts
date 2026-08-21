@@ -85,6 +85,10 @@ export async function storePaypalOAuthAttempt(input: {
   });
 }
 
+export function paypalCallbackOriginAllowed(origin: string) {
+  return Boolean(normalizeMarketplaceOrigin(origin));
+}
+
 export async function consumePaypalOAuthAttempt(
   nonce: string,
   now = Date.now(),

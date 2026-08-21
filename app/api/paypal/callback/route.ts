@@ -12,6 +12,7 @@ import {
 import { exchangePaypalLoginAuthorizationCode } from "../../../../lib/paypal-login-exchange";
 import {
   consumePaypalOAuthAttempt,
+  paypalCallbackOriginAllowed,
   paypalOAuthDisplayName,
   recordPaypalOAuthResult,
 } from "../../../../lib/paypal-oauth-attempt";
@@ -107,7 +108,7 @@ export async function GET(request: Request) {
   if (
     !attempt ||
     attempt.userId !== parsed.userId ||
-    attempt.redirectUri !== `${origin}/api/paypal/callback`
+    !paypalCallbackOriginAllowed(origin)
   ) {
     return redirectToAccount(
       origin,
@@ -141,6 +142,7 @@ export async function GET(request: Request) {
 
   const exchanged = await exchangePaypalLoginAuthorizationCode({
     code,
+    redirectUri: attempt.redirectUri,
     clientId: secrets.clientId,
     clientSecret: secrets.clientSecret,
     live: secrets.live,

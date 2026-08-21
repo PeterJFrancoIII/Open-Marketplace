@@ -31,18 +31,14 @@ export function paypalAuthorizeUrl(input: {
   state: string;
   live: boolean;
 }) {
-  const query = [
-    ["flowEntry", "static"],
-    ["client_id", input.clientId],
-    ["response_type", "code"],
-    ["scope", PAYPAL_CONNECT_SCOPES.join(" ")],
-    ["redirect_uri", input.redirectUri],
-    ["state", input.state],
-    ["fullPage", "true"],
-  ]
-    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
-    .join("&");
-  return `${paypalAuthorizeOrigin(input.live)}/signin/authorize?${query}`;
+  const url = new URL("/connect", paypalAuthorizeOrigin(input.live));
+  url.searchParams.set("flowEntry", "static");
+  url.searchParams.set("client_id", input.clientId);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", PAYPAL_CONNECT_SCOPES.join(" "));
+  url.searchParams.set("redirect_uri", input.redirectUri);
+  url.searchParams.set("state", input.state);
+  return url.toString();
 }
 
 export function paypalUserInfoUrls(live: boolean) {

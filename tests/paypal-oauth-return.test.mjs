@@ -70,20 +70,21 @@ function createTestEnv(d1) {
 
 async function workerFetch(worker, env, path, init = {}) {
   globalThis.__OPEN_MARKETPLACE_TEST_ENV__ = env;
+  const origin = init.origin ?? "http://localhost";
   const headers = new Headers(init.headers ?? {});
-  if (!headers.has("host")) headers.set("host", "localhost");
+  if (!headers.has("host")) headers.set("host", new URL(origin).host);
   if (!headers.has("cf-connecting-ip")) {
     headers.set("cf-connecting-ip", "127.0.0.1");
   }
   if (!headers.has("origin") && (init.method === "POST" || init.method === "PUT")) {
-    headers.set("origin", "http://localhost");
+    headers.set("origin", origin);
   }
   if (init.cookieJar?.size) {
     headers.set("cookie", cookieHeader(init.cookieJar));
   }
 
   const response = await worker.fetch(
-    new Request(`http://localhost${path}`, {
+    new Request(`${origin}${path}`, {
       ...init,
       headers,
       redirect: init.redirect ?? "manual",
@@ -149,7 +150,7 @@ test("PayPal callback can finish from one-time server state when the browser ses
       const body = new URLSearchParams(String(init?.body ?? ""));
       assert.equal(body.get("grant_type"), "authorization_code");
       assert.equal(body.get("code"), "test-paypal-code");
-      assert.equal(body.get("redirect_uri"), null);
+      assert.equal(body.get("redirect_uri"), "http://localhost/api/paypal/callback");
       return new Response(
         JSON.stringify({
           access_token: PAYPAL_ACCESS_TOKEN,
@@ -196,7 +197,7 @@ test("PayPal callback can finish from one-time server state when the browser ses
     const authorizeUrl = new URL(start.headers.get("location") ?? "");
     const state = authorizeUrl.searchParams.get("state") ?? "";
     assert.ok(state);
-    assert.equal(authorizeUrl.pathname, "/signin/authorize");
+    assert.equal(authorizeUrl.pathname, "/connect");
     assert.equal(
       authorizeUrl.searchParams.get("redirect_uri"),
       "http://localhost/api/paypal/callback",
@@ -247,6 +248,119 @@ test("PayPal callback can finish from one-time server state when the browser ses
     assert.equal(replay.status, 302);
     assert.match(replay.headers.get("location") ?? "", /error=paypal-state/);
     assert.equal(tokenExchangeCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("PayPal callback still links when Pages unique host differs from the stored alias", async () => {
+  const originalFetch = globalThis.fetch;
+  const alias = "https://feature-community-surface-re.open-marketplace-demo.pages.dev";
+  const unique = "https://f428dffc.open-marketplace-demo.pages.dev";
+  let seenRedirectUri = "";
+  globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input instanceof Request
+            ? input.url
+            : String(input);
+    if (/^https:\/\/api-m\.sandbox\.paypal\.com\/v1\/oauth2\/token/i.test(url)) {
+      const body = new URLSearchParams(String(init?.body ?? ""));
+      seenRedirectUri = body.get("redirect_uri") ?? "";
+      return new Response(
+        JSON.stringify({
+          access_token: PAYPAL_ACCESS_TOKEN,
+          refresh_token: "test-paypal-refresh-token-not-real",
+          expires_in: 28800,
+          scope: "openid",
+          token_type: "Bearer",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (/^https:\/\/api-m\.sandbox\.paypal\.com\/v1\/identity\//i.test(url)) {
+      return new Response(JSON.stringify({ name: "INVALID_TOKEN" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return originalFetch.call(globalThis, input, init);
+  };
+
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("paypal-pages-host-return");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+
+  try {
+    await workerFetch(worker, env, "/api/auth/sign-up/email", {
+      method: "POST",
+      origin: alias,
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "PayPal Alias Owner",
+        email: "paypal-alias-owner@example.com",
+        password: USER_PASSWORD,
+      }),
+    });
+    await workerFetch(worker, env, "/api/auth/sign-in/email", {
+      method: "POST",
+      origin: alias,
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      cookieJar,
+      body: JSON.stringify({
+        email: "paypal-alias-owner@example.com",
+        password: USER_PASSWORD,
+        rememberMe: true,
+      }),
+    });
+
+    const start = await workerFetch(worker, env, "/api/paypal/connect", {
+      cookieJar,
+      redirect: "manual",
+      origin: alias,
+    });
+    assert.equal(start.status, 302);
+    const authorizeUrl = new URL(start.headers.get("location") ?? "");
+    assert.equal(authorizeUrl.pathname, "/connect");
+    assert.equal(
+      authorizeUrl.searchParams.get("redirect_uri"),
+      `${alias}/api/paypal/callback`,
+    );
+    const state = authorizeUrl.searchParams.get("state") ?? "";
+
+    const callback = await workerFetch(
+      worker,
+      env,
+      `/api/paypal/callback?code=test-paypal-code&state=${encodeURIComponent(state)}`,
+      {
+        cookieJar,
+        redirect: "manual",
+        origin: unique,
+      },
+    );
+    assert.equal(callback.status, 302);
+    assert.match(callback.headers.get("location") ?? "", /paypal=linked/);
+    assert.match(callback.headers.get("location") ?? "", new RegExp(alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.equal(seenRedirectUri, `${alias}/api/paypal/callback`);
+
+    const profile = await workerFetch(worker, env, "/api/account/profile", {
+      headers: { accept: "application/json" },
+      cookieJar,
+      origin: alias,
+    });
+    const profileBody = await profile.json();
+    assert.equal(profileBody.paypalConnection.connected, true);
   } finally {
     globalThis.fetch = originalFetch;
   }

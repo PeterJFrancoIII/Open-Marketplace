@@ -318,9 +318,9 @@ test("PayPal authorize URL stays on official Log in with PayPal scopes", () => {
     }),
   );
   assert.equal(url.hostname, "www.sandbox.paypal.com");
-  assert.equal(url.pathname, "/signin/authorize");
+  assert.equal(url.pathname, "/connect");
   assert.equal(url.searchParams.get("scope"), "openid");
-  assert.equal(url.searchParams.get("fullPage"), "true");
+  assert.equal(url.searchParams.get("fullPage"), null);
   assert.deepEqual([...PAYPAL_CONNECT_SCOPES], ["openid"]);
   assert.doesNotMatch(
     url.searchParams.get("scope") ?? "",
@@ -517,8 +517,9 @@ test("PayPal connect requires a session and then populates the public pay-to ema
     assert.equal(start.status, 302);
     const authorizeUrl = new URL(start.headers.get("location") ?? "");
     assert.equal(authorizeUrl.hostname, "www.sandbox.paypal.com");
+    assert.equal(authorizeUrl.pathname, "/connect");
     assert.equal(authorizeUrl.searchParams.get("scope"), "openid");
-    assert.equal(authorizeUrl.searchParams.get("fullPage"), "true");
+    assert.equal(authorizeUrl.searchParams.get("fullPage"), null);
     assert.match(authorizeUrl.searchParams.get("redirect_uri") ?? "", /\/api\/paypal\/callback$/);
     const state = authorizeUrl.searchParams.get("state") ?? "";
     assert.ok(state);

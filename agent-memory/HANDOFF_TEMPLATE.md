@@ -12,13 +12,17 @@ branch: "replace-with-branch"
 base_commit: "replace-with-full-sha"
 head_commit: "replace-with-full-sha-or-uncommitted"
 shared_memory_refs:
-  repository: "PeterJFrancoIII/Open-Marketplace"
+  github_repository: "PeterJFrancoIII/Open-Marketplace"
+  github_url: "https://github.com/PeterJFrancoIII/Open-Marketplace"
+  repo_directory: "replace-with-absolute-clone-or-worktree-path-that-handles-this-work"
+  assigned_memory_root: "agent-memory/"
   canonical_ref_or_commit: "replace-with-ref-or-full-sha"
   paths:
-    - "Master_Descriptor.md"
+    - "agent-memory/README.md"
     - "agent-memory/STATE.md"
     - "agent-memory/TASKS.md"
     - "agent-memory/DECISIONS.md"
+    - "Master_Descriptor.md"
 files_changed: []
 verification: []
 functional_preview_required: false
@@ -40,7 +44,7 @@ contains_secrets_or_private_data: false
 State the assigned objective without expanding it.
 
 ## Shared-memory citations
-List the exact GitHub ref/commit and canonical files read before work. Do not cite unstored private reasoning.
+Always cite the shared-memory space assigned to the GitHub repository directory that handles this work. Required fields: `github_repository`, `github_url`, `repo_directory`, `assigned_memory_root` (`agent-memory/` in this repository), `canonical_ref_or_commit`, and the exact memory paths read. Do not cite another project's memory, chat history, or a different clone as the canonical space. Do not cite unstored private reasoning.
 
 ## Work performed
 List concrete changes and why each was necessary.

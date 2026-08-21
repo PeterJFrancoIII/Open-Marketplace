@@ -27,7 +27,10 @@ dependency is missing, stop implementation and write a blocked handoff.
 At the end of every task, create a new task-specific file under
 `agent-memory/handoffs/` using @agent-memory/HANDOFF_TEMPLATE.md. Include the
 branch and commit state, every changed file, commands and exit codes, unresolved
-risks, and the recommended next action. Report `ready_for_review`; do not mark
+risks, and the recommended next action. Every handoff must cite the shared-memory
+space assigned to the GitHub repository directory that handles the work:
+`PeterJFrancoIII/Open-Marketplace`, the absolute clone/worktree path, and
+`agent-memory/` in that repository. Report `ready_for_review`; do not mark
 your own work accepted.
 
 Do not edit `Master_Descriptor.md`, `agent-memory/STATE.md`,

@@ -18,7 +18,7 @@ Every Cursor agent must, before edits:
 1. Fetch/read the repository's canonical GitHub ref specified by the task, defaulting to `main`.
 2. Read `AGENTS.md`, `Master_Descriptor.md`, `agent-memory/README.md`, `STATE.md`, `TASKS.md`, and `DECISIONS.md`.
 3. Locate the exact assigned task ID and verify status, dependencies, branch/base/head constraints, allowed paths, authorized actions, forbidden actions, and acceptance checks.
-4. Record the GitHub repository, ref/commit, and shared-memory file paths actually read.
+4. Record the GitHub repository, the local repo directory handling the work, the assigned shared-memory root (`agent-memory/` in this repository), the ref/commit, and the shared-memory file paths actually read.
 5. Read relevant prior handoffs and inspect working-tree state.
 
 Missing or contradictory data => stop and write a `blocked` handoff. Do not improvise requirements.
@@ -29,7 +29,7 @@ Create one append-only handoff using `HANDOFF_TEMPLATE.md` and include:
 
 - task/agent identifiers and UTC timestamps;
 - repository, branch, base/head commits;
-- `shared_memory_refs` with repository + canonical ref/commit + cited paths;
+- `shared_memory_refs` that cite the shared-memory space assigned to the GitHub repository directory handling the work: `github_repository`, `github_url`, `repo_directory`, `assigned_memory_root` (`agent-memory/` in this repository), canonical ref/commit, and cited paths. Do not substitute another project's memory or a different clone;
 - exact changed paths;
 - verification commands, exit codes, concise results;
 - runnable preview metadata when `functional_preview_required: true`;

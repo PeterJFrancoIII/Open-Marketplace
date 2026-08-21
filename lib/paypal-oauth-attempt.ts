@@ -1,8 +1,11 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { authUsers, authVerifications } from "../db/schema";
+import type { PaypalOAuthLastReturn } from "./types";
 
 const PAYPAL_OAUTH_ATTEMPT_PREFIX = "paypal-oauth:";
+const PAYPAL_OAUTH_RESULT_PREFIX = "paypal-oauth-result:";
+const RESULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type PaypalOAuthAttempt = {
   userId: string;
@@ -126,6 +129,72 @@ export async function consumePaypalOAuthAttempt(
       redirectUri,
       returnOrigin,
     };
+  } catch {
+    return null;
+  }
+}
+
+function isPaypalOAuthLastReturn(value: unknown): value is PaypalOAuthLastReturn {
+  return (
+    value === "started" ||
+    value === "linked" ||
+    value === "paypal" ||
+    value === "paypal-state" ||
+    value === "paypal-session" ||
+    value === "paypal-token"
+  );
+}
+
+export async function recordPaypalOAuthResult(
+  userId: string,
+  status: PaypalOAuthLastReturn,
+) {
+  if (!userId || !isPaypalOAuthLastReturn(status)) return;
+  const db = await getDb();
+  const identifier = `${PAYPAL_OAUTH_RESULT_PREFIX}${userId}`;
+  const now = new Date();
+  const value = JSON.stringify({ status });
+  const [existing] = await db
+    .select({ id: authVerifications.id })
+    .from(authVerifications)
+    .where(eq(authVerifications.identifier, identifier))
+    .limit(1);
+  if (existing) {
+    await db
+      .update(authVerifications)
+      .set({
+        value,
+        expiresAt: new Date(now.getTime() + RESULT_TTL_MS),
+        updatedAt: now,
+      })
+      .where(eq(authVerifications.id, existing.id));
+    return;
+  }
+  await db.insert(authVerifications).values({
+    id: crypto.randomUUID(),
+    identifier,
+    value,
+    expiresAt: new Date(now.getTime() + RESULT_TTL_MS),
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+export async function readPaypalOAuthResult(userId: string) {
+  if (!userId) return null;
+  const db = await getDb();
+  const [row] = await db
+    .select({
+      value: authVerifications.value,
+      expiresAt: authVerifications.expiresAt,
+    })
+    .from(authVerifications)
+    .where(eq(authVerifications.identifier, `${PAYPAL_OAUTH_RESULT_PREFIX}${userId}`))
+    .limit(1);
+  if (!row || row.expiresAt.getTime() < Date.now()) return null;
+  try {
+    const parsed = JSON.parse(row.value) as { status?: unknown };
+    return isPaypalOAuthLastReturn(parsed.status) ? parsed.status : null;
   } catch {
     return null;
   }

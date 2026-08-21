@@ -26,6 +26,14 @@ export type FacebookConnection = {
   coverUrl: string | null;
 };
 
+export type PaypalOAuthLastReturn =
+  | "started"
+  | "linked"
+  | "paypal"
+  | "paypal-state"
+  | "paypal-session"
+  | "paypal-token";
+
 export type PayPalConnection = {
   available: boolean;
   connected: boolean;
@@ -38,6 +46,7 @@ export type PayPalConnection = {
   accountType: string | null;
   verifiedAccount: boolean | null;
   locale: string | null;
+  lastReturn?: PaypalOAuthLastReturn | null;
 };
 
 export type SocialProof = {

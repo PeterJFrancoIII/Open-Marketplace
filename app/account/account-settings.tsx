@@ -103,6 +103,23 @@ function readOauthError() {
   return "Social Connect did not complete. Try again.";
 }
 
+function paypalLastReturnMessage(lastReturn?: string | null) {
+  if (lastReturn === "started") {
+    return "PayPal opened. This page stays Not connected until PayPal sends you back here. Stay on PayPal until this Account settings page reloads.";
+  }
+  if (
+    lastReturn === "paypal" ||
+    lastReturn === "paypal-session" ||
+    lastReturn === "paypal-state"
+  ) {
+    return "Log in with PayPal did not finish coming back to Open Marketplace. Click Log in with PayPal again, then continue on PayPal until this page reloads.";
+  }
+  if (lastReturn === "paypal-token") {
+    return "PayPal signed you in, but Open Marketplace could not save the connection. Click Log in with PayPal again.";
+  }
+  return "";
+}
+
 const emptyFacebookConnection: FacebookConnection = {
   available: false,
   connected: false,
@@ -177,7 +194,12 @@ export default function AccountSettings({
     readOauthError,
     () => "",
   );
-  const visibleError = error || oauthError;
+  const visibleError =
+    error ||
+    oauthError ||
+    (!paypalConnection.connected
+      ? paypalLastReturnMessage(paypalConnection.lastReturn)
+      : "");
   void _initialSocialAccounts;
 
   useEffect(() => {
@@ -1156,7 +1178,8 @@ export default function AccountSettings({
                 name, photo, email, account type, and verified mark stay on
                 this PayPal connector. They do not replace your Open Marketplace
                 email or name. paypal.me is filled only when PayPal sends it or
-                you save it after Login. This is not a business checkout.
+                you save it after Login. Open Marketplace will not invent a
+                paypal.me from your email or name. This is not a business checkout.
               </p>
             ) : null}
             {rail.id === "paypal" && paypalConnection.connected ? (

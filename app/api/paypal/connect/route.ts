@@ -8,7 +8,10 @@ import {
   readPaypalOAuthSecrets,
   signPaypalOAuthState,
 } from "../../../../lib/paypal-connect";
-import { storePaypalOAuthAttempt } from "../../../../lib/paypal-oauth-attempt";
+import {
+  recordPaypalOAuthResult,
+  storePaypalOAuthAttempt,
+} from "../../../../lib/paypal-oauth-attempt";
 
 function accountRedirect(origin: string, error?: string) {
   const url = new URL("/account/settings", origin);
@@ -52,6 +55,7 @@ export async function GET(request: Request) {
     returnOrigin: origin,
     expiresAt,
   });
+  await recordPaypalOAuthResult(session.user.id, "started");
   const location = paypalAuthorizeUrl({
     clientId: secrets.clientId,
     redirectUri,

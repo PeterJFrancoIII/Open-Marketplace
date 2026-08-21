@@ -19,6 +19,7 @@ import {
   serializePaypalStoredProfile,
 } from "./paypal-public";
 import { parseShippingBrokersJson, serializePaymentBundle } from "./shipping-brokers";
+import { readPaypalOAuthResult } from "./paypal-oauth-attempt";
 import type { PayPalConnection, PaymentDestination } from "./types";
 
 export {
@@ -201,13 +202,22 @@ export async function getPayPalConnection(
         ),
       )
       .limit(1);
-    if (!paypal) return publicPayPalConnection(true, false);
-    return publicPayPalConnection(
-      true,
-      true,
-      await paypalDestinationForUser(session.user.id),
-      parsePaypalStoredProfile(paypal.idToken),
-    );
+    const lastReturn = await readPaypalOAuthResult(session.user.id);
+    if (!paypal) {
+      return {
+        ...publicPayPalConnection(true, false),
+        lastReturn,
+      };
+    }
+    return {
+      ...publicPayPalConnection(
+        true,
+        true,
+        await paypalDestinationForUser(session.user.id),
+        parsePaypalStoredProfile(paypal.idToken),
+      ),
+      lastReturn,
+    };
   } catch {
     return publicPayPalConnection(true, false);
   }

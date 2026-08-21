@@ -318,7 +318,7 @@ test("PayPal authorize URL stays on official Log in with PayPal scopes", () => {
     }),
   );
   assert.equal(url.hostname, "www.sandbox.paypal.com");
-  assert.equal(url.pathname, "/connect");
+  assert.equal(url.pathname, "/signin/authorize");
   assert.equal(url.searchParams.get("scope"), "openid");
   assert.equal(url.searchParams.get("fullPage"), "true");
   assert.deepEqual([...PAYPAL_CONNECT_SCOPES], ["openid"]);

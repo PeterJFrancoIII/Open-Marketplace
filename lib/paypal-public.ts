@@ -42,7 +42,7 @@ export function paypalAuthorizeUrl(input: {
   ]
     .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
     .join("&");
-  return `${paypalAuthorizeOrigin(input.live)}/connect?${query}`;
+  return `${paypalAuthorizeOrigin(input.live)}/signin/authorize?${query}`;
 }
 
 export function paypalUserInfoUrls(live: boolean) {
@@ -112,6 +112,7 @@ export function emptyPayPalConnection(available = false): PayPalConnection {
     accountType: null,
     verifiedAccount: null,
     locale: null,
+    lastReturn: null,
   };
 }
 

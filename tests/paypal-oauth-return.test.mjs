@@ -196,10 +196,21 @@ test("PayPal callback can finish from one-time server state when the browser ses
     const authorizeUrl = new URL(start.headers.get("location") ?? "");
     const state = authorizeUrl.searchParams.get("state") ?? "";
     assert.ok(state);
+    assert.equal(authorizeUrl.pathname, "/signin/authorize");
     assert.equal(
       authorizeUrl.searchParams.get("redirect_uri"),
       "http://localhost/api/paypal/callback",
     );
+    const startedProfile = await getJson(
+      worker,
+      env,
+      "/api/account/profile",
+      signedInJar,
+    );
+    assert.equal(startedProfile.status, 200);
+    const startedBody = await startedProfile.json();
+    assert.equal(startedBody.paypalConnection.connected, false);
+    assert.equal(startedBody.paypalConnection.lastReturn, "started");
 
     const callbackJar = new Map();
     const oauthNonce = signedInJar.get("om_paypal_oauth");
@@ -227,6 +238,7 @@ test("PayPal callback can finish from one-time server state when the browser ses
     const profileBody = await profile.json();
     assert.equal(profileBody.paypalConnection.available, true);
     assert.equal(profileBody.paypalConnection.connected, true);
+    assert.equal(profileBody.paypalConnection.lastReturn, "linked");
 
     const replay = await workerFetch(worker, env, callbackPath, {
       cookieJar: restoredSessionJar,

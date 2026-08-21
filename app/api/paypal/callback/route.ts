@@ -10,6 +10,10 @@ import {
   verifyPaypalOAuthState,
   writePaypalPaymentDestination,
 } from "../../../../lib/paypal-connect";
+import {
+  consumePaypalOAuthAttempt,
+  paypalOAuthDisplayName,
+} from "../../../../lib/paypal-oauth-attempt";
 
 function cookieValue(request: Request, name: string) {
   const header = request.headers.get("cookie") ?? "";
@@ -49,11 +53,6 @@ export async function GET(request: Request) {
     return redirectToAccount(origin, secure, "paypal");
   }
 
-  const session = await getMarketplaceSession(request);
-  if (!session?.user.id) {
-    return redirectToAccount(origin, secure, "paypal-session");
-  }
-
   const state = url.searchParams.get("state") ?? "";
   const code = url.searchParams.get("code") ?? "";
   if (!state || !code) {
@@ -64,29 +63,45 @@ export async function GET(request: Request) {
   if (!secrets.clientId || !secrets.clientSecret || !secrets.signingSecret) {
     return redirectToAccount(origin, secure, "paypal");
   }
+
   const parsed = await verifyPaypalOAuthState(state, secrets.signingSecret);
-  const nonce = cookieValue(request, PAYPAL_OAUTH_COOKIE);
-  if (!parsed || parsed.userId !== session.user.id) {
+  if (!parsed) {
     return redirectToAccount(origin, secure, "paypal-state");
   }
-  if (nonce && parsed.nonce !== nonce) {
+
+  const attempt = await consumePaypalOAuthAttempt(parsed.nonce);
+  if (
+    !attempt ||
+    attempt.userId !== parsed.userId ||
+    attempt.redirectUri !== `${origin}/api/paypal/callback`
+  ) {
     return redirectToAccount(origin, secure, "paypal-state");
+  }
+
+  const session = await getMarketplaceSession(request);
+  if (session?.user.id && session.user.id !== attempt.userId) {
+    return redirectToAccount(attempt.returnOrigin, secure, "paypal-session");
+  }
+
+  const nonce = cookieValue(request, PAYPAL_OAUTH_COOKIE);
+  if (nonce && parsed.nonce !== nonce) {
+    return redirectToAccount(attempt.returnOrigin, secure, "paypal-state");
   }
 
   const exchanged = await exchangePaypalAuthorizationCode({
     code,
-    redirectUri: `${origin}/api/paypal/callback`,
+    redirectUri: attempt.redirectUri,
     clientId: secrets.clientId,
     clientSecret: secrets.clientSecret,
     live: secrets.live,
   });
   if (!exchanged) {
-    return redirectToAccount(origin, secure, "paypal-token");
+    return redirectToAccount(attempt.returnOrigin, secure, "paypal-token");
   }
 
-  const payerId = exchanged.payerId || paypalFallbackAccountId(session.user.id);
+  const payerId = exchanged.payerId || paypalFallbackAccountId(attempt.userId);
   await upsertPaypalAccount({
-    userId: session.user.id,
+    userId: attempt.userId,
     payerId,
     accessToken: exchanged.accessToken,
     refreshToken: exchanged.refreshToken,
@@ -100,13 +115,13 @@ export async function GET(request: Request) {
   });
   if (payTo) {
     await writePaypalPaymentDestination(
-      session.user.id,
-      session.user.name?.trim() || "Member",
+      attempt.userId,
+      session?.user.name?.trim() || (await paypalOAuthDisplayName(attempt.userId)),
       payTo,
     );
   }
 
-  return redirectToAccount(origin, secure, undefined, {
+  return redirectToAccount(attempt.returnOrigin, secure, undefined, {
     paypal: "linked",
     paypalme: payTo ? undefined : "setup",
   });

@@ -7,6 +7,10 @@ export const PAYPAL_ME_SETUP_URL = "https://www.paypal.com/paypalme";
 
 export const PAYPAL_CONNECT_SCOPES = ["openid"] as const;
 
+export function paypalFallbackAccountId(userId: string) {
+  return `paypal-oauth:${userId}`;
+}
+
 export function paypalUsesLiveEnv(value?: string | null) {
   return value?.trim().toLowerCase() === "live";
 }

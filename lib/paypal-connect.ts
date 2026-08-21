@@ -28,6 +28,7 @@ export {
   mergePaymentDestinationsForSave,
   mergePaypalIdentity,
   overlayPaypalDestinations,
+  paypalFallbackAccountId,
   parsePaypalIdToken,
   parsePaypalIdentity,
   parsePaypalStoredProfile,
@@ -403,7 +404,6 @@ export async function exchangePaypalAuthorizationCode(input: {
       parsePaypalIdToken(tokenPayload.id_token),
     );
   }
-  if (!identity.payerId) return null;
   return {
     ...identity,
     payerId: identity.payerId,
@@ -433,15 +433,13 @@ export async function readPaypalOAuthSecrets() {
 }
 
 export function paypalOauthCookie(nonce: string, secure: boolean) {
-  return `${PAYPAL_OAUTH_COOKIE}=${nonce}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600${
-    secure ? "; Secure" : ""
-  }`;
+  const sameSite = secure ? "SameSite=None; Secure" : "SameSite=Lax";
+  return `${PAYPAL_OAUTH_COOKIE}=${nonce}; Path=/; HttpOnly; ${sameSite}; Max-Age=3600`;
 }
 
 export function clearPaypalOauthCookie(secure: boolean) {
-  return `${PAYPAL_OAUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${
-    secure ? "; Secure" : ""
-  }`;
+  const sameSite = secure ? "SameSite=None; Secure" : "SameSite=Lax";
+  return `${PAYPAL_OAUTH_COOKIE}=; Path=/; HttpOnly; ${sameSite}; Max-Age=0`;
 }
 
 export function createPaypalOAuthNonce() {

@@ -94,8 +94,11 @@ function readOauthError() {
   if (typeof window === "undefined") return "";
   const error = new URLSearchParams(window.location.search).get("error");
   if (!error) return "";
-  if (error === "paypal") {
-    return "Log in with PayPal did not finish. Click Log in with PayPal again.";
+  if (error === "paypal" || error === "paypal-session" || error === "paypal-state") {
+    return "Log in with PayPal did not finish coming back to Open Marketplace. Click Log in with PayPal again, then continue on PayPal until this page reloads.";
+  }
+  if (error === "paypal-token") {
+    return "PayPal signed you in, but Open Marketplace could not save the connection. Click Log in with PayPal again.";
   }
   return "Social Connect did not complete. Try again.";
 }

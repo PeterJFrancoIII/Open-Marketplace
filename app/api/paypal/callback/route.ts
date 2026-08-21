@@ -3,6 +3,7 @@ import {
   PAYPAL_OAUTH_COOKIE,
   clearPaypalOauthCookie,
   exchangePaypalAuthorizationCode,
+  paypalFallbackAccountId,
   paypalPublicPayTo,
   readPaypalOAuthSecrets,
   upsertPaypalAccount,
@@ -50,13 +51,13 @@ export async function GET(request: Request) {
 
   const session = await getMarketplaceSession(request);
   if (!session?.user.id) {
-    return redirectToAccount(origin, secure, "paypal");
+    return redirectToAccount(origin, secure, "paypal-session");
   }
 
   const state = url.searchParams.get("state") ?? "";
   const code = url.searchParams.get("code") ?? "";
   if (!state || !code) {
-    return redirectToAccount(origin, secure, "paypal");
+    return redirectToAccount(origin, secure, "paypal-state");
   }
 
   const secrets = await readPaypalOAuthSecrets();
@@ -65,8 +66,11 @@ export async function GET(request: Request) {
   }
   const parsed = await verifyPaypalOAuthState(state, secrets.signingSecret);
   const nonce = cookieValue(request, PAYPAL_OAUTH_COOKIE);
-  if (!parsed || parsed.userId !== session.user.id || parsed.nonce !== nonce) {
-    return redirectToAccount(origin, secure, "paypal");
+  if (!parsed || parsed.userId !== session.user.id) {
+    return redirectToAccount(origin, secure, "paypal-state");
+  }
+  if (nonce && parsed.nonce !== nonce) {
+    return redirectToAccount(origin, secure, "paypal-state");
   }
 
   const exchanged = await exchangePaypalAuthorizationCode({
@@ -77,17 +81,18 @@ export async function GET(request: Request) {
     live: secrets.live,
   });
   if (!exchanged) {
-    return redirectToAccount(origin, secure, "paypal");
+    return redirectToAccount(origin, secure, "paypal-token");
   }
 
+  const payerId = exchanged.payerId || paypalFallbackAccountId(session.user.id);
   await upsertPaypalAccount({
     userId: session.user.id,
-    payerId: exchanged.payerId,
+    payerId,
     accessToken: exchanged.accessToken,
     refreshToken: exchanged.refreshToken,
     expiresIn: exchanged.expiresIn,
     scope: exchanged.scope,
-    profile: exchanged,
+    profile: { ...exchanged, payerId },
   });
   const payTo = paypalPublicPayTo({
     email: exchanged.email,

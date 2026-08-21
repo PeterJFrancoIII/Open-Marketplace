@@ -800,6 +800,84 @@ test("Log in with PayPal fills the pay-to from userinfo email plus id_token", as
   }
 });
 
+test("Log in with PayPal still links when PayPal returns a token but no profile", async () => {
+  const restoreFetch = installPaypalFetchStub({ userInfoOk: false });
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("paypal-token-only-link");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+  try {
+    await signUp(worker, env, {
+      name: "PayPal Token Only Owner",
+      email: "paypal-token-only-owner@example.com",
+      password: USER_PASSWORD,
+    });
+    await signIn(worker, env, cookieJar, {
+      email: "paypal-token-only-owner@example.com",
+      password: USER_PASSWORD,
+    });
+    const start = await workerFetch(worker, env, "/api/paypal/connect", {
+      cookieJar,
+      redirect: "manual",
+    });
+    const state = new URL(start.headers.get("location") ?? "").searchParams.get("state") ?? "";
+    const callback = await workerFetch(
+      worker,
+      env,
+      `/api/paypal/callback?code=test-paypal-code&state=${encodeURIComponent(state)}`,
+      { cookieJar, redirect: "manual" },
+    );
+    assert.equal(callback.status, 302);
+    assert.match(callback.headers.get("location") ?? "", /paypal=linked/);
+    const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
+    const profileBody = await profile.json();
+    assert.equal(profileBody.paypalConnection.connected, true);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("Log in with PayPal still links when the OAuth cookie is missing", async () => {
+  const restoreFetch = installPaypalFetchStub();
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("paypal-missing-oauth-cookie");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+  try {
+    await signUp(worker, env, {
+      name: "PayPal Cookie Owner",
+      email: "paypal-cookie-owner@example.com",
+      password: USER_PASSWORD,
+    });
+    await signIn(worker, env, cookieJar, {
+      email: "paypal-cookie-owner@example.com",
+      password: USER_PASSWORD,
+    });
+    const start = await workerFetch(worker, env, "/api/paypal/connect", {
+      cookieJar,
+      redirect: "manual",
+    });
+    const state = new URL(start.headers.get("location") ?? "").searchParams.get("state") ?? "";
+    cookieJar.delete("om_paypal_oauth");
+    const callback = await workerFetch(
+      worker,
+      env,
+      `/api/paypal/callback?code=test-paypal-code&state=${encodeURIComponent(state)}`,
+      { cookieJar, redirect: "manual" },
+    );
+    assert.equal(callback.status, 302);
+    assert.match(callback.headers.get("location") ?? "", /paypal=linked/);
+    const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
+    const profileBody = await profile.json();
+    assert.equal(profileBody.paypalConnection.connected, true);
+    assert.equal(profileBody.paypalConnection.email, "seller-paypal@example.com");
+  } finally {
+    restoreFetch();
+  }
+});
+
 test("Log in with PayPal still links when userinfo is empty but id_token has sub", async () => {
   const restoreFetch = installPaypalFetchStub({
     userInfoOk: false,
@@ -912,6 +990,8 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(settings, /PAYPAL_ME_SETUP_URL/);
   assert.match(settings, /window\.open\(PAYPAL_ME_SETUP_URL/);
   assert.match(settings, /params.get\("paypal"\) === "linked"/);
+  assert.match(settings, /paypal-token/);
+  assert.match(settings, /paypal-session/);
   assert.match(settings, /#surface-paypal-input/);
   assert.match(settings, /\/api\/account\/profile/);
   assert.match(settings, /factsFromPaypalConnection/);

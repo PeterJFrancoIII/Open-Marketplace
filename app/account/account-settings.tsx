@@ -184,13 +184,22 @@ export default function AccountSettings({
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("paypalme") === "setup") {
+    if (params.get("paypal") === "linked" || params.get("paypalme") === "setup") {
+      const needsPaypalMe = params.get("paypalme") === "setup";
+      params.delete("paypal");
       params.delete("paypalme");
       const next = `${window.location.pathname}${
         params.toString() ? `?${params.toString()}` : ""
       }#payment-options-settings`;
       window.history.replaceState(null, "", next);
-      window.location.assign(PAYPAL_ME_SETUP_URL);
+      setStatus(
+        needsPaypalMe
+          ? "PayPal is linked. Open paypal.me to create or copy your link, then save it here so buyers can pay you."
+          : "PayPal is linked to this Open Marketplace account.",
+      );
+      if (needsPaypalMe) {
+        window.open(PAYPAL_ME_SETUP_URL, "_blank", "noopener,noreferrer");
+      }
       return;
     }
     if (!params.get("error")) return;

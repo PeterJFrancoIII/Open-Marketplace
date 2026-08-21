@@ -105,6 +105,22 @@ function paypalMeFromUnknown(value: unknown): string | null {
   );
 }
 
+export function payerIdFromPaypalIdToken(idToken: string) {
+  const parts = idToken.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad =
+      padded.length % 4 === 0 ? "" : "=".repeat(4 - (padded.length % 4));
+    const payload = JSON.parse(atob(`${padded}${pad}`)) as { sub?: unknown };
+    return typeof payload.sub === "string" && payload.sub.trim()
+      ? payload.sub.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function paypalPublicPayTo(input: {
   email?: string | null;
   paypalMe?: string | null;

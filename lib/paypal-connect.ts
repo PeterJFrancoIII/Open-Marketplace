@@ -8,6 +8,7 @@ import {
 import { paypalMeHandle } from "./paypal-pay-link";
 import {
   parsePaypalUserInfo,
+  payerIdFromPaypalIdToken,
   paypalApiOrigin,
   paypalOauthDestination,
   paypalUserInfoUrls,
@@ -23,6 +24,7 @@ export {
   mergePaymentDestinationsForSave,
   overlayPaypalDestinations,
   parsePaypalUserInfo,
+  payerIdFromPaypalIdToken,
   paypalAuthorizeUrl,
   paypalMeFromUserInfo,
   paypalMePublicUrl,
@@ -349,6 +351,7 @@ export async function exchangePaypalAuthorizationCode(input: {
     refresh_token?: unknown;
     expires_in?: unknown;
     scope?: unknown;
+    id_token?: unknown;
   };
   if (typeof tokenPayload.access_token !== "string" || !tokenPayload.access_token) {
     return null;
@@ -363,6 +366,17 @@ export async function exchangePaypalAuthorizationCode(input: {
     if (!userResponse.ok) continue;
     profile = parsePaypalUserInfo(await userResponse.json());
     if (profile) break;
+  }
+  if (!profile && typeof tokenPayload.id_token === "string") {
+    const payerId = payerIdFromPaypalIdToken(tokenPayload.id_token);
+    if (payerId) {
+      profile = {
+        payerId,
+        email: "",
+        name: null,
+        paypalMe: null,
+      };
+    }
   }
   if (!profile) return null;
   return {

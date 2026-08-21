@@ -23,10 +23,11 @@ function redirectToAccount(
   origin: string,
   secure: boolean,
   error?: string,
-  extras?: { paypalme?: string },
+  extras?: { paypal?: string; paypalme?: string },
 ) {
   const url = new URL("/account/settings", origin);
   if (error) url.searchParams.set("error", error);
+  if (extras?.paypal) url.searchParams.set("paypal", extras.paypal);
   if (extras?.paypalme) url.searchParams.set("paypalme", extras.paypalme);
   url.hash = "payment-options-settings";
   return new Response(null, {
@@ -99,10 +100,8 @@ export async function GET(request: Request) {
     );
   }
 
-  return redirectToAccount(
-    origin,
-    secure,
-    undefined,
-    exchanged.paypalMe ? undefined : { paypalme: "setup" },
-  );
+  return redirectToAccount(origin, secure, undefined, {
+    paypal: "linked",
+    paypalme: exchanged.paypalMe ? undefined : "setup",
+  });
 }

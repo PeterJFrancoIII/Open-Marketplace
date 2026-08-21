@@ -190,12 +190,40 @@ export default function AccountSettings({
       params.delete("paypalme");
       const next = `${window.location.pathname}${
         params.toString() ? `?${params.toString()}` : ""
-      }#payment-options-settings`;
+      }#surface-paypal-input`;
       window.history.replaceState(null, "", next);
+      void (async () => {
+        try {
+          const response = await fetch("/api/account/profile", {
+            headers: { accept: "application/json" },
+          });
+          const result = (await response.json()) as {
+            paypalConnection?: PayPalConnection;
+            paymentDestinations?: PaymentDestination[];
+          };
+          if (result.paypalConnection) {
+            setPaypalConnection(result.paypalConnection);
+          }
+          if (result.paymentDestinations) {
+            setPaymentDrafts(destinationsByRail(result.paymentDestinations));
+          }
+          const filled = result.paypalConnection?.paypalMe
+            ? `https://www.paypal.me/${result.paypalConnection.paypalMe}`
+            : result.paypalConnection?.email || "";
+          if (filled) {
+            setPaymentDrafts((current) => ({
+              ...current,
+              paypal: current.paypal || filled,
+            }));
+          }
+        } catch {
+          /* The server-rendered PayPal connection still applies. */
+        }
+      })();
       setStatus(
         needsPaypalMe
           ? "PayPal is linked. Open paypal.me to create or copy your link, then save it here so buyers can pay you."
-          : "PayPal is linked to this Open Marketplace account.",
+          : "PayPal is linked. Your PayPal pay-to is in the PayPal field.",
       );
       if (needsPaypalMe) {
         window.open(PAYPAL_ME_SETUP_URL, "_blank", "noopener,noreferrer");
@@ -1127,10 +1155,12 @@ export default function AccountSettings({
               <p className="portal-settings-note">
                 Log in with PayPal links your personal PayPal to this Open
                 Marketplace account so buyers cannot spoof a pay-to. Stay
-                connected. After Login, Open Marketplace fills your paypal.me.
-                If you do not have one, you will be taken to PayPal to create
-                it. This is not a business checkout and does not change your
-                Open Marketplace email or name.
+                connected. Finish on PayPal by continuing back here so the
+                PayPal field can fill from Login. After Login, Open Marketplace
+                fills paypal.me or your PayPal email. If PayPal does not send a
+                paypal.me, create or copy it on PayPal and save it here. This
+                is not a business checkout and does not change your Open
+                Marketplace email or name.
               </p>
             ) : null}
             <label

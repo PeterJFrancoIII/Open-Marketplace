@@ -12,7 +12,10 @@ import {
 } from "../lib/paypal-pay-link.ts";
 import {
   mergePaymentDestinationsForSave,
+  mergePaypalIdentity,
   overlayPaypalDestinations,
+  parsePaypalIdToken,
+  parsePaypalIdentity,
   parsePaypalUserInfo,
   payerIdFromPaypalIdToken,
   paypalAuthorizeUrl,
@@ -177,10 +180,11 @@ async function getJson(worker, env, path, cookieJar) {
   });
 }
 
-function paypalIdToken(sub) {
+function paypalIdToken(claims) {
+  const payload = typeof claims === "string" ? { sub: claims } : claims;
   const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url");
-  const payload = Buffer.from(JSON.stringify({ sub })).toString("base64url");
-  return `${header}.${payload}.sig`;
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `${header}.${body}.sig`;
 }
 
 function installPaypalFetchStub({ paypalMe, userInfoOk = true, idToken } = {}) {
@@ -325,7 +329,9 @@ test("PayPal authorize URL stays on official Log in with PayPal scopes", () => {
   assert.deepEqual(
     [...paypalUserInfoUrls(false)],
     [
+      "https://api-m.sandbox.paypal.com/v1/identity/openidconnect/userinfo",
       "https://api-m.sandbox.paypal.com/v1/identity/openidconnect/userinfo?schema=openid",
+      "https://api-m.sandbox.paypal.com/v1/identity/oauth2/userinfo",
       "https://api-m.sandbox.paypal.com/v1/identity/oauth2/userinfo?schema=paypalv1.1",
     ],
   );
@@ -377,6 +383,26 @@ test("PayPal userinfo parser keeps payer id, email, and paypal.me when present",
   assert.equal(paypalPublicPayTo({ email: "", paypalMe: null }), null);
   assert.equal(payerIdFromPaypalIdToken(paypalIdToken("IDTOKENPAYER")), "IDTOKENPAYER");
   assert.equal(payerIdFromPaypalIdToken("not-a-token"), null);
+  assert.equal(parsePaypalUserInfo({ email: "only-email@example.com" }), null);
+  const emailOnly = parsePaypalIdentity({
+    email: "only-email@example.com",
+    emails: ["also@example.com"],
+  });
+  assert.equal(emailOnly?.payerId, null);
+  assert.equal(emailOnly?.email, "only-email@example.com");
+  const merged = mergePaypalIdentity(
+    emailOnly,
+    parsePaypalIdToken(
+      paypalIdToken({
+        sub: "IDTOKENPAYER",
+        email: "id-token@example.com",
+        paypalme: "https://www.paypal.me/TokenSeller",
+      }),
+    ),
+  );
+  assert.equal(merged.payerId, "IDTOKENPAYER");
+  assert.equal(merged.email, "only-email@example.com");
+  assert.equal(merged.paypalMe, "TokenSeller");
 });
 
 test("typed PayPal stays self-reported until Login is linked", () => {
@@ -490,7 +516,8 @@ test("PayPal connect requires a session and then populates the public pay-to ema
     assert.equal(callback.status, 302);
     assert.match(callback.headers.get("location") ?? "", /\/account/);
     assert.match(callback.headers.get("location") ?? "", /paypal=linked/);
-    assert.match(callback.headers.get("location") ?? "", /paypalme=setup/);
+    assert.doesNotMatch(callback.headers.get("location") ?? "", /paypalme=setup/);
+    assert.match(callback.headers.get("location") ?? "", /#surface-paypal-input/);
 
     const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
     const profileBody = await profile.json();
@@ -671,6 +698,87 @@ test("Log in with PayPal fills paypal.me when userinfo includes it", async () =>
   }
 });
 
+test("Log in with PayPal fills the pay-to from userinfo email plus id_token", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input instanceof Request
+            ? input.url
+            : String(input);
+    if (/^https:\/\/api-m\.sandbox\.paypal\.com\/v1\/oauth2\/token/i.test(url)) {
+      return new Response(
+        JSON.stringify({
+          access_token: PAYPAL_ACCESS_TOKEN,
+          refresh_token: "test-paypal-refresh-token-not-real",
+          expires_in: 28800,
+          scope: "openid",
+          token_type: "Bearer",
+          id_token: paypalIdToken({ sub: "IDTOKENPAYER2" }),
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (/^https:\/\/api-m\.sandbox\.paypal\.com\/v1\/identity\/openidconnect\/userinfo/i.test(url)) {
+      return new Response(JSON.stringify({ email: "live-openid@example.com" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (/^https:\/\/api-m\.sandbox\.paypal\.com\/v1\/identity\/oauth2\/userinfo/i.test(url)) {
+      return new Response(JSON.stringify({ emails: ["ignored@example.com"] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return originalFetch.call(globalThis, input, init);
+  };
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("paypal-userinfo-email-merge");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+  try {
+    await signUp(worker, env, {
+      name: "PayPal Merge Owner",
+      email: "paypal-merge-owner@example.com",
+      password: USER_PASSWORD,
+    });
+    await signIn(worker, env, cookieJar, {
+      email: "paypal-merge-owner@example.com",
+      password: USER_PASSWORD,
+    });
+    const start = await workerFetch(worker, env, "/api/paypal/connect", {
+      cookieJar,
+      redirect: "manual",
+    });
+    const state = new URL(start.headers.get("location") ?? "").searchParams.get("state") ?? "";
+    const callback = await workerFetch(
+      worker,
+      env,
+      `/api/paypal/callback?code=test-paypal-code&state=${encodeURIComponent(state)}`,
+      { cookieJar, redirect: "manual" },
+    );
+    assert.equal(callback.status, 302);
+    assert.match(callback.headers.get("location") ?? "", /paypal=linked/);
+    assert.match(callback.headers.get("location") ?? "", /#surface-paypal-input/);
+    assert.doesNotMatch(callback.headers.get("location") ?? "", /paypalme=setup/);
+    const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
+    const profileBody = await profile.json();
+    assert.equal(profileBody.paypalConnection.connected, true);
+    assert.equal(profileBody.paypalConnection.email, "live-openid@example.com");
+    assert.equal(
+      profileBody.paymentDestinations[0]?.destination,
+      "live-openid@example.com",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("Log in with PayPal still links when userinfo is empty but id_token has sub", async () => {
   const restoreFetch = installPaypalFetchStub({
     userInfoOk: false,
@@ -704,11 +812,62 @@ test("Log in with PayPal still links when userinfo is empty but id_token has sub
     );
     assert.equal(callback.status, 302);
     assert.match(callback.headers.get("location") ?? "", /paypal=linked/);
+    assert.match(callback.headers.get("location") ?? "", /paypalme=setup/);
     const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
     const profileBody = await profile.json();
     assert.equal(profileBody.paypalConnection.connected, true);
     assert.equal(profileBody.paypalConnection.email, null);
     assert.equal(profileBody.paypalConnection.paypalMe, null);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("Log in with PayPal fills the pay-to from id_token email when userinfo is empty", async () => {
+  const restoreFetch = installPaypalFetchStub({
+    userInfoOk: false,
+    idToken: paypalIdToken({
+      sub: "IDTOKENPAYER3",
+      email: "id-token@example.com",
+    }),
+  });
+  const d1 = createMemoryD1();
+  applyMarketplaceMigrations(d1);
+  const worker = await loadWorker("paypal-id-token-email");
+  const env = createTestEnv(d1);
+  const cookieJar = new Map();
+  try {
+    await signUp(worker, env, {
+      name: "PayPal Token Email Owner",
+      email: "paypal-token-email-owner@example.com",
+      password: USER_PASSWORD,
+    });
+    await signIn(worker, env, cookieJar, {
+      email: "paypal-token-email-owner@example.com",
+      password: USER_PASSWORD,
+    });
+    const start = await workerFetch(worker, env, "/api/paypal/connect", {
+      cookieJar,
+      redirect: "manual",
+    });
+    const state = new URL(start.headers.get("location") ?? "").searchParams.get("state") ?? "";
+    const callback = await workerFetch(
+      worker,
+      env,
+      `/api/paypal/callback?code=test-paypal-code&state=${encodeURIComponent(state)}`,
+      { cookieJar, redirect: "manual" },
+    );
+    assert.equal(callback.status, 302);
+    assert.match(callback.headers.get("location") ?? "", /paypal=linked/);
+    assert.doesNotMatch(callback.headers.get("location") ?? "", /paypalme=setup/);
+    const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
+    const profileBody = await profile.json();
+    assert.equal(profileBody.paypalConnection.connected, true);
+    assert.equal(profileBody.paypalConnection.email, "id-token@example.com");
+    assert.equal(
+      profileBody.paymentDestinations[0]?.destination,
+      "id-token@example.com",
+    );
   } finally {
     restoreFetch();
   }
@@ -731,6 +890,8 @@ test("account settings and listings source offer Link PayPal without checkout", 
   assert.match(settings, /PAYPAL_ME_SETUP_URL/);
   assert.match(settings, /window\.open\(PAYPAL_ME_SETUP_URL/);
   assert.match(settings, /params.get\("paypal"\) === "linked"/);
+  assert.match(settings, /#surface-paypal-input/);
+  assert.match(settings, /\/api\/account\/profile/);
   assert.match(settings, /paypalme/);
   assert.match(settings, /Connect \$\{rail\.label\}/);
   assert.match(settings, /data-feedback-surface=\{\`Connect \$\{rail\.label\}\`\}/);

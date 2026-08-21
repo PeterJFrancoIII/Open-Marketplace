@@ -7,8 +7,9 @@ import {
 } from "./payment-destinations";
 import { paypalMeHandle } from "./paypal-pay-link";
 import {
-  parsePaypalUserInfo,
-  payerIdFromPaypalIdToken,
+  mergePaypalIdentity,
+  parsePaypalIdToken,
+  parsePaypalIdentity,
   paypalApiOrigin,
   paypalOauthDestination,
   paypalUserInfoUrls,
@@ -22,7 +23,10 @@ export {
   PAYPAL_ME_SETUP_URL,
   PAYPAL_PAYER_ATTRIBUTE_SCOPE,
   mergePaymentDestinationsForSave,
+  mergePaypalIdentity,
   overlayPaypalDestinations,
+  parsePaypalIdToken,
+  parsePaypalIdentity,
   parsePaypalUserInfo,
   payerIdFromPaypalIdToken,
   paypalAuthorizeUrl,
@@ -34,7 +38,7 @@ export {
 } from "./paypal-public";
 
 export const PAYPAL_OAUTH_COOKIE = "om_paypal_oauth";
-const STATE_TTL_MS = 10 * 60 * 1000;
+const STATE_TTL_MS = 60 * 60 * 1000;
 
 type PaypalEnv = {
   PAYPAL_CLIENT_ID?: string;
@@ -360,27 +364,28 @@ export async function exchangePaypalAuthorizationCode(input: {
     authorization: `Bearer ${tokenPayload.access_token}`,
     accept: "application/json",
   };
-  let profile = null;
+  let identity = mergePaypalIdentity();
   for (const userInfoUrl of paypalUserInfoUrls(input.live)) {
     const userResponse = await fetch(userInfoUrl, { headers: userHeaders });
     if (!userResponse.ok) continue;
-    profile = parsePaypalUserInfo(await userResponse.json());
-    if (profile) break;
+    identity = mergePaypalIdentity(
+      identity,
+      parsePaypalIdentity(await userResponse.json()),
+    );
+    if (identity.payerId && (identity.email || identity.paypalMe)) break;
   }
-  if (!profile && typeof tokenPayload.id_token === "string") {
-    const payerId = payerIdFromPaypalIdToken(tokenPayload.id_token);
-    if (payerId) {
-      profile = {
-        payerId,
-        email: "",
-        name: null,
-        paypalMe: null,
-      };
-    }
+  if (typeof tokenPayload.id_token === "string") {
+    identity = mergePaypalIdentity(
+      identity,
+      parsePaypalIdToken(tokenPayload.id_token),
+    );
   }
-  if (!profile) return null;
+  if (!identity.payerId) return null;
   return {
-    ...profile,
+    payerId: identity.payerId,
+    email: identity.email,
+    name: identity.name,
+    paypalMe: identity.paypalMe,
     accessToken: tokenPayload.access_token,
     refreshToken:
       typeof tokenPayload.refresh_token === "string"
@@ -407,7 +412,7 @@ export async function readPaypalOAuthSecrets() {
 }
 
 export function paypalOauthCookie(nonce: string, secure: boolean) {
-  return `${PAYPAL_OAUTH_COOKIE}=${nonce}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600${
+  return `${PAYPAL_OAUTH_COOKIE}=${nonce}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600${
     secure ? "; Secure" : ""
   }`;
 }

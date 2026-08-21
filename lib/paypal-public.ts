@@ -44,9 +44,101 @@ export function paypalAuthorizeUrl(input: {
 export function paypalUserInfoUrls(live: boolean) {
   const origin = paypalApiOrigin(live);
   return [
+    `${origin}/v1/identity/openidconnect/userinfo`,
     `${origin}/v1/identity/openidconnect/userinfo?schema=openid`,
+    `${origin}/v1/identity/oauth2/userinfo`,
     `${origin}/v1/identity/oauth2/userinfo?schema=paypalv1.1`,
   ] as const;
+}
+
+export type PaypalIdentity = {
+  payerId: string | null;
+  email: string;
+  name: string | null;
+  paypalMe: string | null;
+};
+
+function firstPaypalEmail(record: Record<string, unknown>) {
+  const candidates = [record.email, record.email_address, record.emailAddress];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.includes("@")) {
+      return candidate.trim().toLowerCase();
+    }
+  }
+  if (!Array.isArray(record.emails)) return "";
+  for (const entry of record.emails) {
+    if (typeof entry === "string" && entry.includes("@")) {
+      return entry.trim().toLowerCase();
+    }
+    if (!entry || typeof entry !== "object") continue;
+    const email = entry as { value?: unknown; email?: unknown; address?: unknown };
+    const value = email.value ?? email.email ?? email.address;
+    if (typeof value === "string" && value.includes("@")) {
+      return value.trim().toLowerCase();
+    }
+  }
+  return "";
+}
+
+function firstPaypalPayerId(record: Record<string, unknown>) {
+  const raw = record.payer_id ?? record.user_id ?? record.sub ?? record.payerId;
+  const text =
+    typeof raw === "number" && Number.isFinite(raw)
+      ? String(raw)
+      : typeof raw === "string"
+        ? raw.trim()
+        : "";
+  if (!text) return null;
+  return text.replace(
+    /^https:\/\/www\.paypal\.com\/webapps\/auth\/identity\/user\//,
+    "",
+  );
+}
+
+function firstPaypalName(record: Record<string, unknown>) {
+  if (typeof record.name === "string" && record.name.trim()) {
+    return record.name.trim();
+  }
+  const given =
+    typeof record.given_name === "string" ? record.given_name.trim() : "";
+  const family =
+    typeof record.family_name === "string" ? record.family_name.trim() : "";
+  const combined = `${given} ${family}`.trim();
+  return combined || null;
+}
+
+export function parsePaypalIdentity(payload: unknown): PaypalIdentity | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const identity = {
+    payerId: firstPaypalPayerId(record),
+    email: firstPaypalEmail(record),
+    name: firstPaypalName(record),
+    paypalMe: paypalMeFromUserInfo(payload),
+  };
+  if (!identity.payerId && !identity.email && !identity.name && !identity.paypalMe) {
+    return null;
+  }
+  return identity;
+}
+
+export function mergePaypalIdentity(
+  ...parts: Array<PaypalIdentity | null | undefined>
+): PaypalIdentity {
+  const merged: PaypalIdentity = {
+    payerId: null,
+    email: "",
+    name: null,
+    paypalMe: null,
+  };
+  for (const part of parts) {
+    if (!part) continue;
+    if (!merged.payerId && part.payerId) merged.payerId = part.payerId;
+    if (!merged.email && part.email) merged.email = part.email;
+    if (!merged.name && part.name) merged.name = part.name;
+    if (!merged.paypalMe && part.paypalMe) merged.paypalMe = part.paypalMe;
+  }
+  return merged;
 }
 
 export function paypalMePublicUrl(handle: string) {
@@ -105,20 +197,21 @@ function paypalMeFromUnknown(value: unknown): string | null {
   );
 }
 
-export function payerIdFromPaypalIdToken(idToken: string) {
+export function parsePaypalIdToken(idToken: string) {
   const parts = idToken.split(".");
   if (parts.length < 2) return null;
   try {
     const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     const pad =
       padded.length % 4 === 0 ? "" : "=".repeat(4 - (padded.length % 4));
-    const payload = JSON.parse(atob(`${padded}${pad}`)) as { sub?: unknown };
-    return typeof payload.sub === "string" && payload.sub.trim()
-      ? payload.sub.trim()
-      : null;
+    return parsePaypalIdentity(JSON.parse(atob(`${padded}${pad}`)));
   } catch {
     return null;
   }
+}
+
+export function payerIdFromPaypalIdToken(idToken: string) {
+  return parsePaypalIdToken(idToken)?.payerId ?? null;
 }
 
 export function paypalPublicPayTo(input: {
@@ -137,39 +230,13 @@ export function parsePaypalUserInfo(payload: unknown): {
   name: string | null;
   paypalMe: string | null;
 } | null {
-  if (!payload || typeof payload !== "object") return null;
-  const record = payload as {
-    payer_id?: unknown;
-    user_id?: unknown;
-    sub?: unknown;
-    email?: unknown;
-    name?: unknown;
-    emails?: unknown;
-  };
-  const emails = Array.isArray(record.emails) ? record.emails : [];
-  const primaryEmail = emails.find((entry) => {
-    if (!entry || typeof entry !== "object") return false;
-    const email = (entry as { value?: unknown }).value;
-    return typeof email === "string" && email.includes("@");
-  }) as { value?: string } | undefined;
-  const email =
-    (typeof record.email === "string" && record.email.includes("@")
-      ? record.email
-      : primaryEmail?.value) ?? "";
-  const payerId =
-    (typeof record.payer_id === "string" && record.payer_id.trim()) ||
-    (typeof record.user_id === "string" && record.user_id.trim()) ||
-    (typeof record.sub === "string" && record.sub.trim()) ||
-    "";
-  if (!payerId) return null;
+  const parsed = parsePaypalIdentity(payload);
+  if (!parsed?.payerId) return null;
   return {
-    payerId: payerId.replace(
-      /^https:\/\/www\.paypal\.com\/webapps\/auth\/identity\/user\//,
-      "",
-    ),
-    email: email.trim().toLowerCase(),
-    name: typeof record.name === "string" && record.name.trim() ? record.name.trim() : null,
-    paypalMe: paypalMeFromUserInfo(payload),
+    payerId: parsed.payerId,
+    email: parsed.email,
+    name: parsed.name,
+    paypalMe: parsed.paypalMe,
   };
 }
 

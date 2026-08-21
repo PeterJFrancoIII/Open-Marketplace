@@ -29,7 +29,7 @@ function redirectToAccount(
   if (error) url.searchParams.set("error", error);
   if (extras?.paypal) url.searchParams.set("paypal", extras.paypal);
   if (extras?.paypalme) url.searchParams.set("paypalme", extras.paypalme);
-  url.hash = "payment-options-settings";
+  url.hash = "surface-paypal-input";
   return new Response(null, {
     status: 302,
     headers: {
@@ -102,6 +102,6 @@ export async function GET(request: Request) {
 
   return redirectToAccount(origin, secure, undefined, {
     paypal: "linked",
-    paypalme: exchanged.paypalMe ? undefined : "setup",
+    paypalme: payTo ? undefined : "setup",
   });
 }

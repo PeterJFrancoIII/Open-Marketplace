@@ -98,10 +98,19 @@ function readOauthError() {
     return "Log in with PayPal did not finish coming back to Open Marketplace. Click Log in with PayPal again, then continue on PayPal until this page reloads.";
   }
   if (error === "paypal-token-redirect") {
-    return "PayPal signed you in, but the return address did not match (paypal-token-redirect). Click Log in with PayPal again.";
+    return "PayPal sent you back, but the return address did not match (paypal-token-redirect). Click Log in with PayPal again.";
   }
-  if (error === "paypal-token") {
-    return "PayPal signed you in, but Open Marketplace could not save the connection (paypal-token). Click Log in with PayPal again.";
+  if (error === "paypal-token-client") {
+    return "PayPal sent you back, but rejected the app credentials (paypal-token-client). Linked was not written.";
+  }
+  if (error === "paypal-token-code") {
+    return "PayPal sent you back, but rejected the login code (paypal-token-code). Click Log in with PayPal again.";
+  }
+  if (error === "paypal-token-service") {
+    return "PayPal sent you back, but its token service failed (paypal-token-service). Click Log in with PayPal again.";
+  }
+  if (error === "paypal-token-request" || error === "paypal-token") {
+    return "PayPal sent you back, but the token exchange failed (paypal-token-request). Open Marketplace did not receive an access token, so Linked was not written.";
   }
   return "Social Connect did not complete. Try again.";
 }
@@ -118,10 +127,19 @@ function paypalLastReturnMessage(lastReturn?: string | null) {
     return "Log in with PayPal did not finish coming back to Open Marketplace. Click Log in with PayPal again, then continue on PayPal until this page reloads.";
   }
   if (lastReturn === "paypal-token-redirect") {
-    return "PayPal signed you in, but the return address did not match (paypal-token-redirect). Click Log in with PayPal again.";
+    return "PayPal sent you back, but the return address did not match (paypal-token-redirect). Click Log in with PayPal again.";
   }
-  if (lastReturn === "paypal-token") {
-    return "PayPal signed you in, but Open Marketplace could not save the connection (paypal-token). Click Log in with PayPal again.";
+  if (lastReturn === "paypal-token-client") {
+    return "PayPal sent you back, but rejected the app credentials (paypal-token-client). Linked was not written.";
+  }
+  if (lastReturn === "paypal-token-code") {
+    return "PayPal sent you back, but rejected the login code (paypal-token-code). Click Log in with PayPal again.";
+  }
+  if (lastReturn === "paypal-token-service") {
+    return "PayPal sent you back, but its token service failed (paypal-token-service). Click Log in with PayPal again.";
+  }
+  if (lastReturn === "paypal-token-request" || lastReturn === "paypal-token") {
+    return "PayPal sent you back, but the token exchange failed (paypal-token-request). Open Marketplace did not receive an access token, so Linked was not written.";
   }
   return "";
 }

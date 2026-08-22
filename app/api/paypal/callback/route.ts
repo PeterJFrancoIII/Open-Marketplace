@@ -9,7 +9,10 @@ import {
   verifyPaypalOAuthState,
   writePaypalPaymentDestination,
 } from "../../../../lib/paypal-connect";
-import { exchangePaypalLoginAuthorizationCode } from "../../../../lib/paypal-login-exchange";
+import {
+  exchangePaypalLoginAuthorizationCode,
+  type PaypalLoginTokenFailure,
+} from "../../../../lib/paypal-login-exchange";
 import {
   consumePaypalOAuthAttempt,
   paypalCallbackOriginAllowed,
@@ -17,6 +20,14 @@ import {
   recordPaypalOAuthResult,
 } from "../../../../lib/paypal-oauth-attempt";
 import type { PaypalOAuthLastReturn } from "../../../../lib/types";
+
+function paypalTokenReturn(reason: PaypalLoginTokenFailure): PaypalOAuthLastReturn {
+  if (reason === "redirect") return "paypal-token-redirect";
+  if (reason === "client") return "paypal-token-client";
+  if (reason === "code") return "paypal-token-code";
+  if (reason === "service") return "paypal-token-service";
+  return "paypal-token-request";
+}
 
 function cookieValue(request: Request, name: string) {
   const header = request.headers.get("cookie") ?? "";
@@ -42,6 +53,10 @@ async function redirectToAccount(
             error === "paypal-session" ||
             error === "paypal-token" ||
             error === "paypal-token-redirect" ||
+            error === "paypal-token-client" ||
+            error === "paypal-token-code" ||
+            error === "paypal-token-request" ||
+            error === "paypal-token-service" ||
             error === "paypal"
           ? error
           : "paypal";
@@ -112,7 +127,7 @@ export async function GET(request: Request) {
     return redirectToAccount(
       attempt.returnOrigin,
       secure,
-      exchanged.reason === "redirect" ? "paypal-token-redirect" : "paypal-token",
+      paypalTokenReturn(exchanged.reason),
       undefined,
       attempt.userId,
     );

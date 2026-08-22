@@ -146,7 +146,11 @@ function isPaypalOAuthLastReturn(value: unknown): value is PaypalOAuthLastReturn
     value === "paypal-state" ||
     value === "paypal-session" ||
     value === "paypal-token" ||
-    value === "paypal-token-redirect"
+    value === "paypal-token-redirect" ||
+    value === "paypal-token-client" ||
+    value === "paypal-token-code" ||
+    value === "paypal-token-request" ||
+    value === "paypal-token-service"
   );
 }
 

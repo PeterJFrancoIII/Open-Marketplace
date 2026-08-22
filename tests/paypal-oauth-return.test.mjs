@@ -477,9 +477,9 @@ test("PayPal token exchange retries once only when PayPal reports a redirect URI
 });
 
 test("PayPal token exchange does not retry invalid client or invalid code", async () => {
-  for (const [label, payload] of [
-    ["client", { error: "invalid_client" }],
-    ["code", { error: "invalid_grant" }],
+  for (const [label, payload, expectedReturn] of [
+    ["client", { error: "invalid_client" }, "paypal-token-client"],
+    ["code", { error: "invalid_grant" }, "paypal-token-code"],
   ]) {
     const { originalFetch, calls } = installPaypalTokenMock(() => {
       return new Response(JSON.stringify(payload), {
@@ -510,7 +510,7 @@ test("PayPal token exchange does not retry invalid client or invalid code", asyn
       assert.equal(callback.status, 302);
       assert.match(
         callback.headers.get("location") ?? "",
-        /[?&]error=paypal-token(?:&|#|$)/,
+        new RegExp(`[?&]error=${expectedReturn}(?:&|#|$)`),
       );
       assert.equal(calls.length, 1);
       assert.equal(calls[0].redirectUri, null);
@@ -518,7 +518,7 @@ test("PayPal token exchange does not retry invalid client or invalid code", asyn
       const profile = await getJson(worker, env, "/api/account/profile", cookieJar);
       const profileBody = await profile.json();
       assert.equal(profileBody.paypalConnection.connected, false);
-      assert.equal(profileBody.paypalConnection.lastReturn, "paypal-token");
+      assert.equal(profileBody.paypalConnection.lastReturn, expectedReturn);
     } finally {
       globalThis.fetch = originalFetch;
     }

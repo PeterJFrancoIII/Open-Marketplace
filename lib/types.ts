@@ -33,7 +33,11 @@ export type PaypalOAuthLastReturn =
   | "paypal-state"
   | "paypal-session"
   | "paypal-token"
-  | "paypal-token-redirect";
+  | "paypal-token-redirect"
+  | "paypal-token-client"
+  | "paypal-token-code"
+  | "paypal-token-request"
+  | "paypal-token-service";
 
 export type PayPalConnection = {
   available: boolean;

@@ -205,11 +205,11 @@ export default function PrivacyPage() {
       >
         <h2 id="paypal-connect-disclosure-title">PayPal Login</h2>
         <p>
-          Signed-in people can choose Link PayPal. That uses official Log in
-          with PayPal and asks for <code>openid</code>, <code>email</code>, and{" "}
-          <code>profile</code> only. We use the PayPal email so your public
-          pay-to contact can be filled and so listings can show whether PayPal
-          is currently linked. PayPal Login is not a way to create or open an
+          Signed-in people can choose Log in with PayPal. That uses official
+          PayPal Login and asks for <code>openid</code> only. If PayPal also
+          returns an email or a paypal.me address, we may use that as the
+          public pay-to after you connect. Listings can show whether PayPal is
+          currently linked. PayPal Login is not a way to create or open an
           Open Marketplace account, and this marketplace does not take, hold,
           or send PayPal payments.
         </p>
@@ -236,6 +236,11 @@ export default function PrivacyPage() {
           server-side. They are not placed in public profile pages, public
           listing records, or public project files.
         </p>
+        <p>
+          PayPal Login tokens and the PayPal client secret also remain
+          server-side. They are not placed in public profile pages, public
+          listing records, or public project files.
+        </p>
       </section>
 
       <section id="purposes" aria-labelledby="purposes-title">
@@ -252,6 +257,10 @@ export default function PrivacyPage() {
             Link a TikTok identity to an existing marketplace account when a
             signed-in person chooses Connect TikTok.
           </li>
+          <li>
+            Link a PayPal identity to an existing marketplace account when a
+            signed-in person chooses Log in with PayPal.
+          </li>
         </ul>
       </section>
 
@@ -262,7 +271,8 @@ export default function PrivacyPage() {
         <h2 id="sharing-and-sale-title">Sharing</h2>
         <p>
           Open Marketplace does not sell Facebook profile data. Open
-          Marketplace does not sell TikTok provider data. Hosting companies
+          Marketplace does not sell TikTok provider data. Open Marketplace
+          does not sell PayPal Login data. Hosting companies
           that run the site may process the records needed to keep the service
           online. We may also disclose information when the law requires it.
         </p>
@@ -275,8 +285,9 @@ export default function PrivacyPage() {
           listing is on the catalog. Facebook Login tokens and the Connected
           profile are removed when you disconnect, or when Facebook asks us to
           delete that link. TikTok Login Kit tokens and the linked TikTok
-          identity are removed when you disconnect TikTok. We do not keep a
-          separate advertising profile.
+          identity are removed when you disconnect TikTok. PayPal Login tokens
+          and the linked PayPal identity are removed when you disconnect
+          PayPal. We do not keep a separate advertising profile.
         </p>
       </section>
 
@@ -328,13 +339,14 @@ export default function PrivacyPage() {
           Open Marketplace is not directed at children under 13. Facebook Login
           is only available to people Facebook already allows to use that
           product. TikTok Login Kit is only available to people TikTok already
-          allows to use that product.
+          allows to use that product. PayPal Login is only available to people
+          PayPal already allows to use that product.
         </p>
       </section>
 
       <section id="effective-date" aria-labelledby="effective-date-title">
         <h2 id="effective-date-title">Effective date</h2>
-        <p className="privacy-effective">20 August 2026</p>
+        <p className="privacy-effective">22 August 2026</p>
       </section>
     </LegalShell>
   );

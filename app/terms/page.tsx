@@ -28,12 +28,14 @@ export default function TermsPage() {
         <h2 id="accounts-title">Accounts</h2>
         <p>
           You are responsible for the email and password you use here. Keep
-          those credentials confidential. Optional Facebook Login and TikTok
-          Login Kit, when offered, only confirm that a signed-in person
-          controls that provider account. Facebook Login, when offered, does
-          not sign you into Open Marketplace and it does not create an
-          account. TikTok Login Kit also does not sign you into Open
-          Marketplace and it does not create an account.
+          those credentials confidential. Optional Facebook Login, TikTok
+          Login Kit, and PayPal Login, when offered, only confirm that a
+          signed-in person controls that provider account. Facebook Login,
+          when offered, does not sign you into Open Marketplace and it does
+          not create an account. TikTok Login Kit also does not sign you into
+          Open Marketplace and it does not create an account. PayPal Login
+          also does not sign you into Open Marketplace and it does not create
+          an account.
         </p>
       </section>
 
@@ -192,12 +194,12 @@ export default function TermsPage() {
         <h2 id="contact-title">Operator and legal contact</h2>
         <p>
           Open Marketplace is operated by Peter J. Franco III. It is
-          independent of Meta, Facebook, Instagram, and TikTok. Use the
-          on-site report control or Account Settings contact paths for
+          independent of Meta, Facebook, Instagram, TikTok, and PayPal. Use
+          the on-site report control or Account Settings contact paths for
           service issues. These terms are for use of this website and do not
           create a partnership, employment, or escrow relationship.
         </p>
-        <p className="privacy-effective">19 August 2026</p>
+        <p className="privacy-effective">22 August 2026</p>
       </section>
     </LegalShell>
   );

@@ -31,11 +31,23 @@ test("privacy page source stays public and does not import auth or data stores",
   );
 
   assert.match(source, /id=["']facebook-data-deletion["']/);
+  assert.match(source, /id=["']paypal-connect-disclosure["']/);
+  assert.match(source, /asks for <code>openid<\/code> only/);
+  assert.doesNotMatch(source, /asks for <code>openid<\/code>, <code>email<\/code>/);
   assert.doesNotMatch(source, /from ["'].*lib\/auth/);
   assert.doesNotMatch(source, /from ["'].*\/db/);
   assert.doesNotMatch(source, /requireMarketplaceSession|getDb|authClient|FacebookProvider|socialProviders/);
   assert.doesNotMatch(source, /from ["']better-auth/);
   assert.doesNotMatch(source, /OM-DEC-|Better Auth|agent handoff/i);
+
+  const termsSource = await readFile(
+    new URL("../app/terms/page.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    termsSource,
+    /PayPal Login[\s\S]*does not sign you into Open Marketplace/,
+  );
 });
 
 test("renders a public unauthenticated /privacy policy", async () => {
@@ -62,7 +74,12 @@ test("renders a public unauthenticated /privacy policy", async () => {
   assert.match(html, /leaves the Open Marketplace[\s\S]*account and session intact/i);
   assert.doesNotMatch(html, /non-production account preview/i);
   assert.doesNotMatch(html, /connection-scoped provider identity/i);
-  assert.match(html, /20 August 2026/);
+  assert.match(html, /22 August 2026/);
+  assert.match(html, /id=["']paypal-connect-disclosure["']/);
+  assert.match(html, /asks for <code>openid<\/code> only/);
+  assert.match(html, /does not sell PayPal Login data/i);
+  assert.match(html, /PayPal Login tokens[\s\S]*remain[\s\S]*server-side/);
+  assert.doesNotMatch(html, /asks for <code>openid<\/code>, <code>email<\/code>/);
   assert.match(html, /user_hometown/);
   assert.match(html, /user_location/);
   assert.match(html, /TikTok Login Kit/);
@@ -92,6 +109,8 @@ test("renders public terms and Facebook data deletion instructions", async () =>
   const termsHtml = await terms.text();
   assert.match(termsHtml, /<h1[^>]*>Terms of Service<\/h1>/i);
   assert.match(termsHtml, /does not sign you into Open Marketplace/i);
+  assert.match(termsHtml, /PayPal Login[\s\S]*does not sign you into Open Marketplace/i);
+  assert.match(termsHtml, /22 August 2026/);
   assert.match(termsHtml, /Your responsibility for listings and transactions/i);
   assert.match(termsHtml, /Prohibited behavior/i);
   assert.match(termsHtml, /Intellectual property/i);

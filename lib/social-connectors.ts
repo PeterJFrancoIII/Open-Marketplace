@@ -39,6 +39,11 @@ export const TIKTOK_SOCIAL_CREDIT_ENABLED = true;
 
 export const INSTAGRAM_CONNECT_SCOPES = ["instagram_business_basic"] as const;
 
+// genericOAuth always authorizes and exchanges against this path, not
+// /api/auth/callback/instagram.
+export const INSTAGRAM_OAUTH_CALLBACK_PATH =
+  "/api/auth/oauth2/callback/instagram";
+
 export type SocialConnectorId = (typeof SOCIAL_CONNECTOR_IDS)[number];
 
 export type SocialConnector = {

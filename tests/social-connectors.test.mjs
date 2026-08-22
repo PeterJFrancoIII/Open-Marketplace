@@ -10,6 +10,7 @@ import {
   SOCIAL_CONNECTOR_IDS,
   SOCIAL_CONNECTORS,
   INSTAGRAM_CONNECT_SCOPES,
+  INSTAGRAM_OAUTH_CALLBACK_PATH,
   TIKTOK_CONNECT_SCOPES,
   TIKTOK_PUBLIC_LISTING_PROOF_ENABLED,
   TIKTOK_SOCIAL_CREDIT_ENABLED,
@@ -117,6 +118,11 @@ test("Instagram Connect uses Instagram Login basic scope only", async () => {
   ]);
   assert.match(auth, /www\.instagram\.com\/oauth\/authorize/);
   assert.match(auth, /api\.instagram\.com\/oauth\/access_token/);
+  assert.match(auth, /oauth2\/callback\/instagram/);
+  assert.equal(
+    INSTAGRAM_OAUTH_CALLBACK_PATH,
+    "/api/auth/oauth2/callback/instagram",
+  );
   assert.match(auth, /disableSignUp:\s*true/);
   assert.doesNotMatch(auth, /user_profile/);
   assert.doesNotMatch(

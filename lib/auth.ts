@@ -234,6 +234,7 @@ export async function getMarketplaceAuth(request?: Request) {
                 clientSecret: env.INSTAGRAM_CLIENT_SECRET!.trim(),
                 authorizationUrl: "https://www.instagram.com/oauth/authorize",
                 tokenUrl: "https://api.instagram.com/oauth/access_token",
+                // Better Auth sends /api/auth/oauth2/callback/instagram.
                 scopes: [...SOCIAL_CONNECTORS.find((item) => item.id === "instagram")!.scopes],
                 disableSignUp: true,
                 getUserInfo: async (tokens) => {

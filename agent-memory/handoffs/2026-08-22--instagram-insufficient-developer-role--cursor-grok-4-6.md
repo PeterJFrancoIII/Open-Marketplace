@@ -12,19 +12,19 @@ implementation_change_authorized: false
 repository: "PeterJFrancoIII/Open-Marketplace"
 branch: "feature/community-surface-reports"
 base_commit: "146f9ba925d04a084e0292399c067fd2b924ad14"
-head_commit: "this_publication_commit"
+head_commit: "1340303e98a5dd118308ab7936c762e8c5cd8ece"
 github_publication:
   inter_agent_review_handoff: true
   program_and_memory_pushed: true
   github_url: "https://github.com/PeterJFrancoIII/Open-Marketplace"
   handling_branch: "feature/community-surface-reports"
-  pushed_commit: "this_publication_commit"
+  pushed_commit: "1340303e98a5dd118308ab7936c762e8c5cd8ece"
 shared_memory_refs:
   github_repository: "PeterJFrancoIII/Open-Marketplace"
   github_url: "https://github.com/PeterJFrancoIII/Open-Marketplace"
   repo_directory: "/Users/computer/App Development/Marketplace/open-exchange-cursor-project/.worktrees/om-crowd-001"
   assigned_memory_root: "agent-memory/"
-  canonical_ref_or_commit: "this_publication_commit"
+  canonical_ref_or_commit: "1340303e98a5dd118308ab7936c762e8c5cd8ece"
   paths:
     - "agent-memory/README.md"
     - "agent-memory/HANDOFF_TEMPLATE.md"
